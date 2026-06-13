@@ -41,7 +41,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Target className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-display font-bold text-lg gradient-text">Think-Shika Personal Account</span>
+            <span className="font-display font-bold text-lg gradient-text">Think-Shika PA</span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-sm">
             <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</Link>
@@ -147,7 +147,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <Target className="w-4 h-4 text-primary" />
-            <span className="font-display font-semibold text-foreground">Think-Shika Personal Account</span>
+            <span className="font-display font-semibold text-foreground">Think-Shika PA</span>
             <span>— Built for Africa</span>
           </div>
           <div className="flex gap-6">
@@ -155,7 +155,7 @@ export default function LandingPage() {
             <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link href="/contact" className="hover:text-foreground transition-colors">Contact</Link>
           </div>
-          <p>© {new Date().getFullYear()} Think-Shika Personal Account</p>
+          <p>© {new Date().getFullYear()} Think-Shika PA</p>
         </div>
       </footer>
     </div>

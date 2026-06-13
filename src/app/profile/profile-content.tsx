@@ -48,7 +48,7 @@ export function ProfileContent({ profile, userId }: Props) {
     resolver: zodResolver(passwordSchema),
   })
 
-  const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'FT'
+  const initials = profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'TS'
 
   const onProfileSubmit = async (data: ProfileForm) => {
     setLoadingProfile(true)

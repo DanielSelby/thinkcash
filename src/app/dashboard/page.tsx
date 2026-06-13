@@ -15,14 +15,34 @@ export default async function DashboardPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
 
-  // Fetch current month income & expenses
-  const [{ data: incomes }, { data: expenses }, { data: budgets }, { data: goals }, { data: profile }] =
+  let { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  // Auto-create profile if missing
+  if (!profile) {
+    const { data: newProfile } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        full_name: user.user_metadata?.full_name || '',
+        email: user.email || '',
+        role: 'user',
+        is_active: true,
+      })
+      .select()
+      .single()
+    profile = newProfile
+  }
+
+  const [{ data: incomes }, { data: expenses }, { data: budgets }, { data: goals }] =
     await Promise.all([
       supabase.from('incomes').select('*').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
       supabase.from('expenses').select('*').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
       supabase.from('budgets').select('*').eq('user_id', user.id),
       supabase.from('savings_goals').select('*').eq('user_id', user.id),
-      supabase.from('profiles').select('*').eq('id', user.id).single(),
     ])
 
   return (

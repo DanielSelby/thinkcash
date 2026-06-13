@@ -62,7 +62,7 @@ export function Sidebar({ isAdmin }: SidebarProps) {
           <Target className="w-4 h-4 text-primary-foreground" />
         </div>
         {sidebarOpen && (
-          <span className="font-display font-bold text-lg gradient-text">FinTrack Pro</span>
+          <span className="font-display font-bold text-lg gradient-text">Think-Shika PA</span>
         )}
       </div>
 

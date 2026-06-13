@@ -21,10 +21,10 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'FinTrack Pro — Smart Personal Finance',
-    template: '%s | FinTrack Pro',
+    default: 'Think-Shika PA — Smart Personal Finance',
+    template: '%s | Think-Shika PA',
   },
-  description: 'Track income, expenses, budgets, and savings goals. Take control of your financial future with FinTrack Pro.',
+  description: 'Track income, expenses, budgets, and savings goals. Take control of your financial future with Think-Shika PA.',
   keywords: ['finance', 'budget', 'expense tracker', 'savings', 'money management'],
 }
 
