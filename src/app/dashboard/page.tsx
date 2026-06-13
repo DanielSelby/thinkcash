@@ -5,7 +5,11 @@ import { DashboardContent } from './dashboard-content'
 
 export const metadata = { title: 'Dashboard' }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: { from?: string; to?: string }
+}) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
@@ -15,6 +19,10 @@ export default async function DashboardPage() {
     .toISOString().split('T')[0]
   const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     .toISOString().split('T')[0]
+
+  // Use URL params if present, otherwise default to current month
+  const from = searchParams?.from ?? monthStart
+  const to   = searchParams?.to   ?? monthEnd
 
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
@@ -27,13 +35,13 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase.from('incomes').select('*')
       .eq('user_id', user.id)
-      .gte('date', monthStart)
-      .lte('date', monthEnd)
+      .gte('date', from)
+      .lte('date', to)
       .order('date', { ascending: false }),
     supabase.from('expenses').select('*')
       .eq('user_id', user.id)
-      .gte('date', monthStart)
-      .lte('date', monthEnd)
+      .gte('date', from)
+      .lte('date', to)
       .order('date', { ascending: false }),
     supabase.from('budgets').select('*')
       .eq('user_id', user.id),
@@ -49,6 +57,8 @@ export default async function DashboardPage() {
         budgets={budgets ?? []}
         goals={goals ?? []}
         profile={profile}
+        from={from}
+        to={to}
       />
     </AppShell>
   )
