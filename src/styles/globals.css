@@ -4,63 +4,61 @@
 
 @layer base {
   :root {
-    --background: 214 60% 96%;
-    --foreground: 210 100% 10%;
+    --background: 120 18% 96%;
+    --foreground: 160 40% 8%;
     --card: 0 0% 100%;
-    --card-foreground: 210 100% 10%;
+    --card-foreground: 160 40% 8%;
     --popover: 0 0% 100%;
-    --popover-foreground: 210 100% 10%;
-    --primary: 210 100% 15%;
+    --popover-foreground: 160 40% 8%;
+    --primary: 155 100% 14%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 40% 90%;
-    --secondary-foreground: 210 100% 15%;
-    --muted: 214 40% 92%;
-    --muted-foreground: 210 30% 45%;
-    --accent: 210 80% 35%;
+    --secondary: 120 15% 92%;
+    --secondary-foreground: 155 40% 15%;
+    --muted: 120 15% 92%;
+    --muted-foreground: 155 15% 45%;
+    --accent: 155 100% 14%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 4 84% 60%;
+    --destructive: 4 84% 55%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 76% 36%;
+    --success: 142 76% 32%;
     --success-foreground: 0 0% 100%;
-    --warning: 37 92% 50%;
+    --warning: 37 92% 48%;
     --warning-foreground: 0 0% 100%;
-    --border: 214 30% 85%;
-    --input: 214 30% 85%;
-    --ring: 210 100% 15%;
+    --border: 120 12% 86%;
+    --input: 120 12% 86%;
+    --ring: 155 100% 14%;
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 210 100% 9%;
-    --foreground: 214 60% 96%;
-    --card: 210 100% 12%;
-    --card-foreground: 214 60% 96%;
-    --popover: 210 100% 12%;
-    --popover-foreground: 214 60% 96%;
-    --primary: 214 60% 75%;
-    --primary-foreground: 210 100% 9%;
-    --secondary: 210 60% 18%;
-    --secondary-foreground: 214 60% 90%;
-    --muted: 210 60% 18%;
-    --muted-foreground: 214 30% 60%;
-    --accent: 214 60% 65%;
-    --accent-foreground: 210 100% 9%;
-    --destructive: 4 75% 55%;
+    --background: 155 40% 5%;
+    --foreground: 120 20% 94%;
+    --card: 155 35% 8%;
+    --card-foreground: 120 20% 94%;
+    --popover: 155 35% 8%;
+    --popover-foreground: 120 20% 94%;
+    --primary: 155 45% 50%;
+    --primary-foreground: 155 40% 5%;
+    --secondary: 155 25% 13%;
+    --secondary-foreground: 120 15% 84%;
+    --muted: 155 25% 13%;
+    --muted-foreground: 155 15% 54%;
+    --accent: 155 45% 48%;
+    --accent-foreground: 155 40% 5%;
+    --destructive: 4 75% 52%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 70% 40%;
+    --success: 142 70% 38%;
     --success-foreground: 0 0% 100%;
-    --warning: 37 90% 55%;
+    --warning: 37 90% 52%;
     --warning-foreground: 0 0% 100%;
-    --border: 210 40% 20%;
-    --input: 210 40% 20%;
-    --ring: 214 60% 75%;
+    --border: 155 20% 16%;
+    --input: 155 20% 16%;
+    --ring: 155 45% 50%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: 'rlig' 1, 'calt' 1;
@@ -77,33 +75,25 @@
   .gradient-text {
     @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
   }
-  .shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--muted)) 25%,
-      hsl(var(--border)) 50%,
-      hsl(var(--muted)) 75%
-    );
-    background-size: 200% 100%;
-  }
+
+  /* UCT-style KPI cards — colored top border + matching value color */
+  .kpi-blue   { border-top: 3px solid #2563eb !important; }
+  .kpi-green  { border-top: 3px solid #16a34a !important; }
+  .kpi-purple { border-top: 3px solid #7c3aed !important; }
+  .kpi-orange { border-top: 3px solid #ea580c !important; }
+  .kpi-red    { border-top: 3px solid #dc2626 !important; }
+  .kpi-teal   { border-top: 3px solid #0d9488 !important; }
+
+  .kpi-blue   .kpi-value { color: #2563eb; }
+  .kpi-green  .kpi-value { color: #16a34a; }
+  .kpi-purple .kpi-value { color: #7c3aed; }
+  .kpi-orange .kpi-value { color: #ea580c; }
+  .kpi-red    .kpi-value { color: #dc2626; }
+  .kpi-teal   .kpi-value { color: #0d9488; }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
-}
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/30;
-}
-
-/* Number font */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/30; }
+.tabular-nums { font-variant-numeric: tabular-nums; }

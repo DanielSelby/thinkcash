@@ -10,31 +10,44 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+  const now        = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString().split('T')[0]
+  const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    .toISOString().split('T')[0]
 
   const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+    .from('profiles').select('*').eq('id', user.id).single()
 
-  const [{ data: incomes }, { data: expenses }, { data: budgets }, { data: goals }] =
-    await Promise.all([
-      supabase.from('incomes').select('*').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
-      supabase.from('expenses').select('*').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
-      supabase.from('budgets').select('*').eq('user_id', user.id),
-      supabase.from('savings_goals').select('*').eq('user_id', user.id),
-    ])
+  const [
+    { data: incomes },
+    { data: expenses },
+    { data: budgets },
+    { data: goals },
+  ] = await Promise.all([
+    supabase.from('incomes').select('*')
+      .eq('user_id', user.id)
+      .gte('date', monthStart)
+      .lte('date', monthEnd)
+      .order('date', { ascending: false }),
+    supabase.from('expenses').select('*')
+      .eq('user_id', user.id)
+      .gte('date', monthStart)
+      .lte('date', monthEnd)
+      .order('date', { ascending: false }),
+    supabase.from('budgets').select('*')
+      .eq('user_id', user.id),
+    supabase.from('savings_goals').select('*')
+      .eq('user_id', user.id),
+  ])
 
   return (
     <AppShell>
       <DashboardContent
-        incomes={incomes || []}
-        expenses={expenses || []}
-        budgets={budgets || []}
-        goals={goals || []}
+        incomes={incomes ?? []}
+        expenses={expenses ?? []}
+        budgets={budgets ?? []}
+        goals={goals ?? []}
         profile={profile}
       />
     </AppShell>

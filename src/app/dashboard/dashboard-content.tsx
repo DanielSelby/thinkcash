@@ -1,254 +1,294 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
-import Link from 'next/link'
+import { TrendingUp, TrendingDown, Wallet, Target, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import {
-  TrendingUp, TrendingDown, PiggyBank, Wallet, Activity, Heart,
-  Plus, ArrowUpDown, Target, BarChart3, FileDown,
-} from 'lucide-react'
-import { StatCard } from '@/components/dashboard/stat-card'
-import { TrendChart, SpendingPieChart, SavingsChart } from '@/components/charts'
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, BarChart, Bar,
+} from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/misc'
-import { Progress } from '@/components/ui/misc'
-import {
-  formatCurrency, CATEGORY_COLORS, calculateHealthScore,
-  getHealthScoreColor, getHealthScoreLabel, getBudgetStatus,
-} from '@/lib/utils'
 import { useAppStore } from '@/store'
-import type { Income, Expense, Budget, SavingsGoal, Profile } from '@/types'
-import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns'
+import { THEMES } from '@/lib/config'
 
 interface Props {
-  incomes: Income[]
-  expenses: Expense[]
-  budgets: Budget[]
-  goals: SavingsGoal[]
-  profile: Profile | null
+  incomes: any[]
+  expenses: any[]
+  budgets: any[]
+  goals: any[]
+  profile: any
+}
+
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-GH', {
+    style: 'currency', currency: 'GHS', maximumFractionDigits: 0,
+  }).format(n)
+
+function KPI({
+  label, value, sub, colorClass, icon: Icon,
+}: {
+  label: string; value: string; sub?: string; colorClass: string; icon: any
+}) {
+  return (
+    <Card className={`${colorClass} rounded-xl shadow-sm border border-border`}>
+      <CardContent className="pt-4 pb-4 px-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate">
+              {label}
+            </p>
+            <p className="kpi-value text-2xl font-bold tabular-nums leading-tight">{value}</p>
+            {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+          </div>
+          <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
+            <Icon className="w-4 h-4 text-muted-foreground" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
 }
 
 export function DashboardContent({ incomes, expenses, budgets, goals, profile }: Props) {
-  const { setProfile } = useAppStore()
+  const { setProfile, activeTheme } = useAppStore()
+  const theme = THEMES[activeTheme] ?? THEMES['green']
 
   useEffect(() => {
     if (profile) setProfile(profile)
-  }, [profile, setProfile])
+  }, [profile])
 
-  const totalIncome = useMemo(() => incomes.reduce((s, i) => s + i.amount, 0), [incomes])
-  const totalExpenses = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses])
-  const savings = totalIncome - totalExpenses
-  const healthScore = calculateHealthScore(totalIncome, totalExpenses, savings, 75)
+  const totalIncome  = useMemo(() => incomes.reduce((s, r)  => s + Number(r.amount), 0), [incomes])
+  const totalExpense = useMemo(() => expenses.reduce((s, r) => s + Number(r.amount), 0), [expenses])
+  const net          = totalIncome - totalExpense
+  const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
-  // Category breakdown for pie
-  const categorySpending = useMemo(() => {
-    const map: Record<string, number> = {}
-    expenses.forEach(e => { map[e.category] = (map[e.category] || 0) + e.amount })
-    return Object.entries(map)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 6)
-      .map(([category, amount]) => ({
-        category,
-        amount,
-        percentage: totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0,
-        color: CATEGORY_COLORS[category] || '#94a3b8',
+  // Chart: built purely from fetched data — no hardcoded/demo rows
+  const chartData = useMemo(() => {
+    const map: Record<string, { date: string; income: number; expense: number }> = {}
+    incomes.forEach(r => {
+      const d = r.date?.slice(0, 10) ?? ''
+      if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+      map[d].income += Number(r.amount)
+    })
+    expenses.forEach(r => {
+      const d = r.date?.slice(0, 10) ?? ''
+      if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+      map[d].expense += Number(r.amount)
+    })
+    return Object.values(map)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(r => ({
+        ...r,
+        label: new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' }),
       }))
-  }, [expenses, totalExpenses])
+  }, [incomes, expenses])
 
-  // Mock 6-month trend (replace with real DB query)
-  const trendData = useMemo(() =>
-    Array.from({ length: 6 }, (_, i) => {
-      const d = subMonths(new Date(), 5 - i)
-      const isCurrentMonth = i === 5
+  // Budget bars
+  const budgetData = useMemo(() =>
+    budgets.map(b => {
+      const spent = expenses
+        .filter(e => e.category === b.category)
+        .reduce((s, e) => s + Number(e.amount), 0)
       return {
-        month: format(d, 'MMM'),
-        income: isCurrentMonth ? totalIncome : Math.random() * 3000 + 2000,
-        expenses: isCurrentMonth ? totalExpenses : Math.random() * 2000 + 1500,
-        savings: isCurrentMonth ? savings : Math.random() * 1000 + 200,
+        name: b.category,
+        budget: Number(b.amount),
+        spent,
+        pct: Number(b.amount) > 0 ? Math.round((spent / Number(b.amount)) * 100) : 0,
       }
-    }), [totalIncome, totalExpenses, savings])
+    }), [budgets, expenses])
 
-  // Budget status
-  const budgetWithSpent = useMemo(() => budgets.map(b => {
-    const spent = expenses.filter(e => e.category === b.category).reduce((s, e) => s + e.amount, 0)
-    const pct = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0
-    return { ...b, spent, remaining: b.monthly_limit - spent, percentage: pct }
-  }), [budgets, expenses])
+  const hour     = new Date().getHours()
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const firstName = profile?.full_name?.split(' ')[0] || 'there'
 
   return (
     <div className="space-y-6 animate-fade-in">
+
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},{' '}
-            <span className="gradient-text">{profile?.full_name?.split(' ')[0] || 'there'}</span> 👋
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            Here's your financial overview for {format(new Date(), 'MMMM yyyy')}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" asChild>
-            <Link href="/reports"><FileDown className="w-4 h-4" />Export</Link>
-          </Button>
-          <Button size="sm" asChild>
-            <Link href="/expenses"><Plus className="w-4 h-4" />Add Expense</Link>
-          </Button>
-        </div>
+      <div>
+        <h1 className="font-display text-2xl font-bold" style={{ color: theme.colors.primary }}>
+          {greeting}, {firstName} 👋
+        </h1>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Financial snapshot for{' '}
+          {new Date().toLocaleDateString('en-GH', { month: 'long', year: 'numeric' })}
+        </p>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="Total Income" value={totalIncome} icon={TrendingUp} color="success" change={5.2} changeLabel="vs last month" />
-        <StatCard title="Total Expenses" value={totalExpenses} icon={TrendingDown} color="destructive" change={-2.1} changeLabel="vs last month" />
-        <StatCard title="Net Savings" value={savings} icon={PiggyBank} color="default" />
-        <StatCard title="Net Cash Flow" value={savings} icon={Activity} color={savings >= 0 ? 'success' : 'destructive'} />
-        <StatCard title="Budgets Active" value={budgets.length} icon={Wallet} color="warning" isCurrency={false} />
-        <div className="glass-card rounded-xl p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
-          <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center">
-            <Heart className="w-5 h-5" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground mb-1">Health Score</p>
-            <p className={`font-display text-2xl font-bold tabular-nums ${getHealthScoreColor(healthScore)}`}>
-              {healthScore}<span className="text-base font-normal">/100</span>
-            </p>
-            <Badge variant={healthScore >= 80 ? 'success' : healthScore >= 60 ? 'warning' : 'destructive'} className="mt-1 text-xs">
-              {getHealthScoreLabel(healthScore)}
-            </Badge>
-          </div>
-        </div>
+      {/* KPI Cards — UCT style, colored top border, colored value */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPI
+          label="Total Income" value={fmt(totalIncome)}
+          sub="This month" colorClass="kpi-green" icon={TrendingUp}
+        />
+        <KPI
+          label="Total Expenses" value={fmt(totalExpense)}
+          sub="This month" colorClass="kpi-red" icon={TrendingDown}
+        />
+        <KPI
+          label="Net Balance" value={fmt(net)}
+          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'} colorClass="kpi-blue" icon={Wallet}
+        />
+        <KPI
+          label="Savings Rate" value={`${savingsRate}%`}
+          sub="Of income saved" colorClass="kpi-purple" icon={Target}
+        />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Income vs Expenses</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TrendChart data={trendData} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Spending by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SpendingPieChart data={categorySpending} />
-            <div className="mt-2 space-y-1">
-              {categorySpending.slice(0, 4).map(c => (
-                <div key={c.category} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: c.color }} />
-                    <span className="capitalize text-muted-foreground">{c.category}</span>
-                  </div>
-                  <span className="font-medium tabular-nums">{formatCurrency(c.amount)}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Bottom Row */}
+      {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Budget Status */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">Budget Status</CardTitle>
-            <Button size="sm" variant="ghost" asChild>
-              <Link href="/budgets">View all</Link>
-            </Button>
+
+        {/* Income vs Expense area chart */}
+        <Card className="rounded-xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Income vs Expenses</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {chartData.length === 0
+                ? 'No transactions recorded yet this month'
+                : `${chartData.length} day(s) with activity`}
+            </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {budgetWithSpent.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground text-sm">
-                <Wallet className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                No budgets set. <Link href="/budgets" className="text-primary hover:underline">Create one</Link>
+          <CardContent>
+            {chartData.length === 0 ? (
+              <div className="h-52 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <TrendingUp className="w-8 h-8 opacity-30" />
+                <p className="text-sm">Add income or expenses to see your chart</p>
               </div>
-            ) : budgetWithSpent.slice(0, 5).map(b => {
-              const status = getBudgetStatus(b.percentage!)
-              return (
-                <div key={b.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium capitalize">{b.budget_name || b.category}</span>
-                    <span className={
-                      status === 'exceeded' ? 'text-destructive' :
-                      status === 'warning' ? 'text-warning' : 'text-muted-foreground'
-                    }>
-                      {formatCurrency(b.spent!)} / {formatCurrency(b.monthly_limit)}
-                    </span>
-                  </div>
-                  <Progress
-                    value={Math.min(b.percentage!, 100)}
-                    className={`h-1.5 ${
-                      status === 'exceeded' ? '[&>div]:bg-destructive' :
-                      status === 'warning' ? '[&>div]:bg-warning' : ''
-                    }`}
+            ) : (
+              <ResponsiveContainer width="100%" height={210}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gExp" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <Area
+                    type="monotone" dataKey="income" stroke="#16a34a"
+                    fill="url(#gInc)" strokeWidth={2} name="Income"
                   />
-                </div>
-              )
-            })}
+                  <Area
+                    type="monotone" dataKey="expense" stroke="#dc2626"
+                    fill="url(#gExp)" strokeWidth={2} name="Expense"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
 
-        {/* Savings Goals */}
-        <Card>
-          <CardHeader className="flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base">Savings Goals</CardTitle>
-            <Button size="sm" variant="ghost" asChild>
-              <Link href="/savings">View all</Link>
-            </Button>
+        {/* Budget usage bar chart */}
+        <Card className="rounded-xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Budget Usage</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {budgetData.length === 0 ? 'No budgets set yet' : `${budgetData.length} active budget(s)`}
+            </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {goals.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground text-sm">
-                <Target className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                No goals yet. <Link href="/savings" className="text-primary hover:underline">Set a goal</Link>
+          <CardContent>
+            {budgetData.length === 0 ? (
+              <div className="h-52 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <Wallet className="w-8 h-8 opacity-30" />
+                <p className="text-sm">Create a budget to track spending</p>
               </div>
-            ) : goals.slice(0, 4).map(g => {
-              const pct = g.target_amount > 0 ? (g.current_amount / g.target_amount) * 100 : 0
-              return (
-                <div key={g.id} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">{g.goal_name}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {formatCurrency(g.current_amount)} / {formatCurrency(g.target_amount)}
-                    </span>
-                  </div>
-                  <Progress value={Math.min(pct, 100)} />
-                  <p className="text-xs text-muted-foreground">{pct.toFixed(0)}% complete</p>
-                </div>
-              )
-            })}
+            ) : (
+              <ResponsiveContainer width="100%" height={210}>
+                <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v / 1000).toFixed(0)}k`} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Quick Actions</CardTitle>
+      {/* Recent Transactions */}
+      <Card className="rounded-xl shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Recent Transactions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            {[
-              { href: '/income', icon: TrendingUp, label: 'Add Income', color: 'text-success' },
-              { href: '/expenses', icon: TrendingDown, label: 'Add Expense', color: 'text-destructive' },
-              { href: '/budgets', icon: Wallet, label: 'Create Budget', color: 'text-warning' },
-              { href: '/savings', icon: PiggyBank, label: 'Add Goal', color: 'text-primary' },
-              { href: '/reports', icon: BarChart3, label: 'View Report', color: 'text-accent' },
-            ].map(({ href, icon: Icon, label, color }) => (
-              <Link key={href} href={href} className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-accent/5 hover:border-accent/30 transition-all group text-center">
-                <Icon className={`w-5 h-5 ${color} group-hover:scale-110 transition-transform`} />
-                <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">{label}</span>
-              </Link>
-            ))}
-          </div>
+          {incomes.length === 0 && expenses.length === 0 ? (
+            <p className="text-center text-sm text-muted-foreground py-8">
+              No transactions this month yet
+            </p>
+          ) : (
+            [...incomes.map(r => ({ ...r, _type: 'income' })),
+             ...expenses.map(r => ({ ...r, _type: 'expense' }))]
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 8)
+              .map((r, i) => (
+                <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      r._type === 'income' ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'
+                    }`}>
+                      {r._type === 'income'
+                        ? <ArrowUpRight   className="w-4 h-4 text-green-600" />
+                        : <ArrowDownRight className="w-4 h-4 text-red-500" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{r.description || r.category || '—'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' })}
+                        {r.category ? ` · ${r.category}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ml-3 ${
+                    r._type === 'income' ? 'text-green-600' : 'text-red-500'
+                  }`}>
+                    {r._type === 'income' ? '+' : '−'}{fmt(Number(r.amount))}
+                  </span>
+                </div>
+              ))
+          )}
         </CardContent>
       </Card>
+
+      {/* Savings Goals */}
+      {goals.length > 0 && (
+        <Card className="rounded-xl shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Savings Goals</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {goals.map((g, i) => {
+              const pct = Math.min(100, Number(g.target_amount) > 0
+                ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100)
+                : 0)
+              return (
+                <div key={i}>
+                  <div className="flex justify-between text-sm mb-1.5">
+                    <span className="font-medium">{g.name}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {pct}% · {fmt(Number(g.current_amount))} / {fmt(Number(g.target_amount))}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: theme.colors.primary }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
