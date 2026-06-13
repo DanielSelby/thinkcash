@@ -1,12 +1,31 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Sidebar } from './sidebar'
 import { TopNav } from './top-nav'
 import { useAppStore } from '@/store'
+import { createClient } from '@/lib/supabase/client'
 
 export function AppShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
-  const { profile } = useAppStore()
+  const { profile, setAppLogo } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
+
+  useEffect(() => {
+    const loadLogo = async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'app_logo')
+          .single()
+        setAppLogo(data?.value ?? null)
+      } catch {
+        // table may not exist yet — fail silently
+      }
+    }
+    loadLogo()
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
