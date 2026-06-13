@@ -14,13 +14,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
 import { Input } from '@/components/ui/input'
-import { cn } from '@/lib/utils'
 
 export function TopNav() {
   const { profile } = useAppStore()
   const { theme, setTheme } = useTheme()
   const router = useRouter()
-  const [searchOpen, setSearchOpen] = useState(false)
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -30,10 +28,10 @@ export function TopNav() {
 
   const initials = profile?.full_name
     ?.split(' ')
-    .map(n => n[0])
+    .map((n: string) => n[0])
     .join('')
     .toUpperCase()
-    .slice(0, 2) || 'FT'
+    .slice(0, 2) || 'TS'
 
   return (
     <header className="h-16 border-b border-border bg-card/80 backdrop-blur-sm flex items-center gap-4 px-6 sticky top-0 z-40">
@@ -78,7 +76,7 @@ export function TopNav() {
           </Link>
         </Button>
 
-        {/* Profile */}
+        {/* Profile dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 h-9 px-2">
@@ -96,16 +94,30 @@ export function TopNav() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <div className="font-medium">{profile?.full_name}</div>
-              <div className="text-xs text-muted-foreground font-normal">{profile?.email}</div>
+              <div className="font-medium">{profile?.full_name || 'User'}</div>
+              <div className="text-xs text-muted-foreground font-normal">{profile?.email || ''}</div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/profile"><User className="w-4 h-4 mr-2" />Profile</Link>
+              <Link href="/profile">
+                <User className="w-4 h-4 mr-2" />Profile
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
-              <Link href="/settings"><Settings className="w-4 h-4 mr-2" />Settings</Link>
+              <Link href="/settings">
+                <Settings className="w-4 h-4 mr-2" />Settings
+              </Link>
             </DropdownMenuItem>
+            {profile?.role === 'admin' && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/admin/dashboard">
+                    <Settings className="w-4 h-4 mr-2" />Admin Panel
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
               <LogOut className="w-4 h-4 mr-2" />Sign Out
