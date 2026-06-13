@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import Image from 'next/image'
 import {
   LayoutDashboard, ArrowUpDown, TrendingUp, TrendingDown,
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
@@ -11,6 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
+import { APP_CONFIG } from '@/lib/config'
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -29,49 +31,46 @@ const bottomItems = [
   { href: '/settings', icon: Settings, label: 'Settings' },
 ]
 
-interface SidebarProps {
-  isAdmin?: boolean
-}
+const adminItems = [
+  { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { href: '/admin/users', icon: Users, label: 'Users' },
+  { href: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
+  { href: '/admin/monitoring', icon: Shield, label: 'Monitoring' },
+]
 
-export function Sidebar({ isAdmin }: SidebarProps) {
+export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname()
-  const { sidebarOpen, setSidebarOpen } = useAppStore()
-
-  const adminItems = [
-    { href: '/admin/dashboard', icon: LayoutDashboard, label: 'Overview' },
-    { href: '/admin/users', icon: Users, label: 'Users' },
-    { href: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
-    { href: '/admin/monitoring', icon: Shield, label: 'Monitoring' },
-  ]
-
+  const { sidebarOpen, setSidebarOpen, getTheme, appLogo } = useAppStore()
+  const theme = getTheme()
+  const { sidebar } = theme
   const items = isAdmin ? adminItems : navItems
 
   return (
     <aside
-      className={cn(
-        'relative flex flex-col h-full bg-card border-r border-border transition-all duration-300 ease-in-out',
-        sidebarOpen ? 'w-64' : 'w-16'
-      )}
+      style={{ background: sidebar.background, borderColor: sidebar.borderColor }}
+      className={cn('relative flex flex-col h-full border-r transition-all duration-300 ease-in-out', sidebarOpen ? 'w-64' : 'w-16')}
     >
       {/* Logo */}
-      <div className={cn(
-        'flex items-center h-16 px-4 border-b border-border gap-3',
-        !sidebarOpen && 'justify-center px-0'
-      )}>
-        <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-          <Target className="w-4 h-4 text-primary-foreground" />
-        </div>
+      <div style={{ borderColor: sidebar.borderColor }} className={cn('flex items-center h-16 px-4 border-b gap-3', !sidebarOpen && 'justify-center px-0')}>
+        {appLogo ? (
+          <img src={appLogo} alt="Logo" className={cn('object-contain', sidebarOpen ? 'h-9 w-auto' : 'h-8 w-8 rounded')} />
+        ) : (
+          <div style={{ background: theme.colors.accent }} className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center">
+            <Target className="w-4 h-4 text-white" />
+          </div>
+        )}
         {sidebarOpen && (
-          <span className="font-display font-bold text-lg gradient-text">Think-Shika PA</span>
+          <div>
+            <span style={{ color: sidebar.text }} className="font-display font-bold text-base leading-tight">{APP_CONFIG.name}</span>
+            {!appLogo && <p style={{ color: sidebar.textMuted }} className="text-xs leading-tight">{APP_CONFIG.tagline}</p>}
+          </div>
         )}
       </div>
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
         {isAdmin && sidebarOpen && (
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 pb-2 pt-1">
-            Admin
-          </p>
+          <p style={{ color: sidebar.textMuted }} className="text-xs font-semibold uppercase tracking-wider px-3 pb-2 pt-1">Admin Panel</p>
         )}
         {items.map(({ href, icon: Icon, label }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
@@ -79,14 +78,10 @@ export function Sidebar({ isAdmin }: SidebarProps) {
             <Link
               key={href}
               href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                'hover:bg-accent/10 hover:text-accent',
-                active
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground',
-                !sidebarOpen && 'justify-center px-0 w-10 mx-auto'
-              )}
+              style={{ background: active ? sidebar.activeBackground : 'transparent', color: active ? sidebar.activeText : sidebar.textMuted }}
+              onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = sidebar.hoverBackground; (e.currentTarget as HTMLElement).style.color = sidebar.text } }}
+              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = sidebar.textMuted } }}
+              className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150', !sidebarOpen && 'justify-center px-0 w-10 mx-auto')}
               title={!sidebarOpen ? label : undefined}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -96,20 +91,14 @@ export function Sidebar({ isAdmin }: SidebarProps) {
         })}
       </nav>
 
-      {/* Bottom items */}
-      <div className="py-4 px-2 space-y-0.5 border-t border-border">
+      {/* Bottom */}
+      <div style={{ borderColor: sidebar.borderColor }} className="py-4 px-2 space-y-0.5 border-t">
         {bottomItems.map(({ href, icon: Icon, label }) => {
           const active = pathname === href
           return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                'hover:bg-accent/10 hover:text-accent',
-                active ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
-                !sidebarOpen && 'justify-center px-0 w-10 mx-auto'
-              )}
+            <Link key={href} href={href}
+              style={{ background: active ? sidebar.activeBackground : 'transparent', color: active ? sidebar.activeText : sidebar.textMuted }}
+              className={cn('flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all', !sidebarOpen && 'justify-center px-0 w-10 mx-auto')}
               title={!sidebarOpen ? label : undefined}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -121,15 +110,12 @@ export function Sidebar({ isAdmin }: SidebarProps) {
 
       {/* Toggle */}
       <Button
-        variant="ghost"
-        size="icon"
+        variant="ghost" size="icon"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full border border-border bg-card shadow-sm hover:bg-accent/10"
+        style={{ background: sidebar.background, borderColor: sidebar.borderColor, color: sidebar.text }}
+        className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
       >
-        {sidebarOpen
-          ? <ChevronLeft className="w-3 h-3" />
-          : <ChevronRight className="w-3 h-3" />
-        }
+        {sidebarOpen ? <ChevronLeft className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
       </Button>
     </aside>
   )

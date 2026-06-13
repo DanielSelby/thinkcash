@@ -1,33 +1,49 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Profile, DashboardStats } from '@/types'
+import { THEMES, type ThemeKey, APP_CONFIG } from '@/lib/config'
 
 interface AppState {
   profile: Profile | null
   stats: DashboardStats | null
   sidebarOpen: boolean
   currency: string
+  activeTheme: ThemeKey
+  appLogo: string | null
   setProfile: (profile: Profile | null) => void
   setStats: (stats: DashboardStats) => void
   setSidebarOpen: (open: boolean) => void
   setCurrency: (currency: string) => void
+  setThemeKey: (theme: ThemeKey) => void
+  setAppLogo: (url: string | null) => void
+  getTheme: () => typeof THEMES[ThemeKey]
 }
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       profile: null,
       stats: null,
       sidebarOpen: true,
-      currency: 'GHS',
+      currency: APP_CONFIG.currency,
+      activeTheme: APP_CONFIG.defaultTheme,
+      appLogo: null,
       setProfile: (profile) => set({ profile }),
       setStats: (stats) => set({ stats }),
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       setCurrency: (currency) => set({ currency }),
+      setThemeKey: (activeTheme) => set({ activeTheme }),
+      setAppLogo: (appLogo) => set({ appLogo }),
+      getTheme: () => THEMES[get().activeTheme],
     }),
     {
       name: 'fintrack-app',
-      partialize: (state) => ({ currency: state.currency, sidebarOpen: state.sidebarOpen }),
+      partialize: (state) => ({
+        currency: state.currency,
+        sidebarOpen: state.sidebarOpen,
+        activeTheme: state.activeTheme,
+        appLogo: state.appLogo,
+      }),
     }
   )
 )
