@@ -58,6 +58,7 @@ export function ProfileContent({ profile, userId }: Props) {
     else {
       if (profile) setProfile({ ...profile, full_name: data.full_name })
       toast({ title: 'Profile updated', variant: 'success' })
+      setTimeout(() => window.location.reload(), 1000)
     }
     setLoadingProfile(false)
   }
@@ -186,3 +187,4 @@ export function ProfileContent({ profile, userId }: Props) {
     </div>
   )
 }
+
