@@ -38,12 +38,55 @@ const adminItems = [
   { href: '/admin/monitoring', icon: Shield,          label: 'Monitoring' },
 ]
 
+function NavLink({
+  href, icon: Icon, label, active, sidebar, sidebarOpen,
+}: {
+  href: string; icon: any; label: string; active: boolean
+  sidebar: any; sidebarOpen: boolean
+}) {
+  return (
+    <Link
+      href={href}
+      title={!sidebarOpen ? label : undefined}
+      className={cn(
+        'flex items-center gap-3 text-sm font-medium transition-all duration-150 rounded-lg',
+        sidebarOpen ? 'px-3 py-2' : 'justify-center w-10 h-10 mx-auto',
+        // UCT pill style: active gets a solid rounded pill background
+        active ? 'rounded-lg' : ''
+      )}
+      style={{
+        background: active ? sidebar.activeBackground : 'transparent',
+        color: active ? sidebar.activeText : sidebar.textMuted,
+        // left accent bar for active item — like UCT's left highlight
+        boxShadow: active && sidebarOpen ? `inset 3px 0 0 ${sidebar.activeText}` : 'none',
+      }}
+      onMouseEnter={e => {
+        if (!active) {
+          const el = e.currentTarget as HTMLElement
+          el.style.background = sidebar.hoverBackground
+          el.style.color = sidebar.text
+        }
+      }}
+      onMouseLeave={e => {
+        if (!active) {
+          const el = e.currentTarget as HTMLElement
+          el.style.background = 'transparent'
+          el.style.color = sidebar.textMuted
+        }
+      }}
+    >
+      <Icon className="w-4 h-4 flex-shrink-0" />
+      {sidebarOpen && <span>{label}</span>}
+    </Link>
+  )
+}
+
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
-  const pathname = usePathname()
+  const pathname    = usePathname()
   const { sidebarOpen, setSidebarOpen, getTheme, appLogo } = useAppStore()
-  const theme = getTheme()
+  const theme       = getTheme()
   const { sidebar } = theme
-  const items = isAdmin ? adminItems : navItems
+  const items       = isAdmin ? adminItems : navItems
 
   return (
     <aside
@@ -53,18 +96,14 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         sidebarOpen ? 'w-64' : 'w-16'
       )}
     >
-      {/* Logo */}
+      {/* Logo area */}
       <div
         style={{ borderColor: sidebar.borderColor }}
-        className={cn(
-          'flex items-center h-16 px-4 border-b gap-3',
-          !sidebarOpen && 'justify-center px-0'
-        )}
+        className={cn('flex items-center h-16 px-4 border-b gap-3', !sidebarOpen && 'justify-center px-0')}
       >
         {appLogo ? (
           <img
-            src={appLogo}
-            alt="Logo"
+            src={appLogo} alt="Logo"
             className={cn('object-contain', sidebarOpen ? 'h-9 w-auto' : 'h-8 w-8 rounded')}
           />
         ) : (
@@ -77,17 +116,11 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
         {sidebarOpen && (
           <div className="min-w-0">
-            <span
-              style={{ color: sidebar.text }}
-              className="font-display font-bold text-base leading-tight block truncate"
-            >
+            <span style={{ color: sidebar.text }} className="font-display font-bold text-base leading-tight block truncate">
               {APP_CONFIG.name}
             </span>
             {!appLogo && (
-              <p
-                style={{ color: sidebar.textMuted }}
-                className="text-xs leading-tight truncate"
-              >
+              <p style={{ color: sidebar.textMuted }} className="text-xs leading-tight truncate">
                 {APP_CONFIG.tagline}
               </p>
             )}
@@ -95,110 +128,42 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       </div>
 
-      {/* Main Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-0.5">
+      {/* Main nav */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {isAdmin && sidebarOpen && (
-          <p
-            style={{ color: sidebar.textMuted }}
-            className="text-xs font-semibold uppercase tracking-wider px-3 pb-2 pt-1"
-          >
+          <p style={{ color: sidebar.textMuted }}
+            className="text-xs font-semibold uppercase tracking-wider px-3 pb-2 pt-1">
             Admin Panel
           </p>
         )}
-        {items.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
-          return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                background: active ? sidebar.activeBackground : 'transparent',
-                color: active ? sidebar.activeText : sidebar.textMuted,
-              }}
-              onMouseEnter={e => {
-                if (!active) {
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = sidebar.hoverBackground
-                  el.style.color = sidebar.text
-                }
-              }}
-              onMouseLeave={e => {
-                if (!active) {
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = 'transparent'
-                  el.style.color = sidebar.textMuted
-                }
-              }}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                !sidebarOpen && 'justify-center px-0 w-10 mx-auto'
-              )}
-              title={!sidebarOpen ? label : undefined}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {sidebarOpen && <span>{label}</span>}
-            </Link>
-          )
-        })}
+        {items.map(({ href, icon, label }) => (
+          <NavLink
+            key={href} href={href} icon={icon} label={label}
+            active={pathname === href || pathname.startsWith(href + '/')}
+            sidebar={sidebar} sidebarOpen={sidebarOpen}
+          />
+        ))}
       </nav>
 
-      {/* Bottom Nav */}
-      <div
-        style={{ borderColor: sidebar.borderColor }}
-        className="py-4 px-2 space-y-0.5 border-t"
-      >
-        {bottomItems.map(({ href, icon: Icon, label }) => {
-          const active = pathname === href
-          return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                background: active ? sidebar.activeBackground : 'transparent',
-                color: active ? sidebar.activeText : sidebar.textMuted,
-              }}
-              onMouseEnter={e => {
-                if (!active) {
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = sidebar.hoverBackground
-                  el.style.color = sidebar.text
-                }
-              }}
-              onMouseLeave={e => {
-                if (!active) {
-                  const el = e.currentTarget as HTMLElement
-                  el.style.background = 'transparent'
-                  el.style.color = sidebar.textMuted
-                }
-              }}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
-                !sidebarOpen && 'justify-center px-0 w-10 mx-auto'
-              )}
-              title={!sidebarOpen ? label : undefined}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {sidebarOpen && <span>{label}</span>}
-            </Link>
-          )
-        })}
+      {/* Bottom nav */}
+      <div style={{ borderColor: sidebar.borderColor }} className="py-3 px-2 space-y-0.5 border-t">
+        {bottomItems.map(({ href, icon, label }) => (
+          <NavLink
+            key={href} href={href} icon={icon} label={label}
+            active={pathname === href}
+            sidebar={sidebar} sidebarOpen={sidebarOpen}
+          />
+        ))}
       </div>
 
-      {/* Collapse Toggle */}
+      {/* Collapse toggle */}
       <Button
-        variant="ghost"
-        size="icon"
+        variant="ghost" size="icon"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        style={{
-          background: sidebar.background,
-          borderColor: sidebar.borderColor,
-          color: sidebar.text,
-        }}
+        style={{ background: sidebar.background, borderColor: sidebar.borderColor, color: sidebar.text }}
         className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
       >
-        {sidebarOpen
-          ? <ChevronLeft className="w-3 h-3" />
-          : <ChevronRight className="w-3 h-3" />}
+        {sidebarOpen ? <ChevronLeft className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
       </Button>
     </aside>
   )

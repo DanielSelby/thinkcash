@@ -1,17 +1,16 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
-  ArrowUpRight, ArrowDownRight, SlidersHorizontal, X,
+  ArrowUpRight, ArrowDownRight, RefreshCw,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 
@@ -26,16 +25,13 @@ interface Props {
 }
 
 const fmt = (n: number) =>
-  new Intl.NumberFormat('en-GH', {
-    style: 'currency', currency: 'GHS', maximumFractionDigits: 0,
-  }).format(n)
+  new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS', maximumFractionDigits: 0 }).format(n)
 
-const QUICK_RANGES = [
-  { label: 'This Month',  getRange: () => { const n = new Date(); return { from: new Date(n.getFullYear(), n.getMonth(), 1).toISOString().split('T')[0], to: new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().split('T')[0] } } },
-  { label: 'Last Month',  getRange: () => { const n = new Date(); return { from: new Date(n.getFullYear(), n.getMonth() - 1, 1).toISOString().split('T')[0], to: new Date(n.getFullYear(), n.getMonth(), 0).toISOString().split('T')[0] } } },
-  { label: 'Last 3 Months', getRange: () => { const n = new Date(); return { from: new Date(n.getFullYear(), n.getMonth() - 2, 1).toISOString().split('T')[0], to: new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().split('T')[0] } } },
-  { label: 'This Year',   getRange: () => { const n = new Date(); return { from: `${n.getFullYear()}-01-01`, to: `${n.getFullYear()}-12-31` } } },
-]
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const INCOME_CATS  = ['All','Salary','Freelance','Business','Investment','Rental','Gift','Bonus','Other']
+const EXPENSE_CATS = ['All','Food & Dining','Transport','Housing','Utilities','Healthcare','Education','Entertainment','Shopping','Clothing','Personal Care','Savings','Debt Payment','Insurance','Travel','Other']
+
+const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
 function KPI({ label, value, sub, colorClass, icon: Icon }: {
   label: string; value: string; sub?: string; colorClass: string; icon: any
@@ -60,136 +56,175 @@ function KPI({ label, value, sub, colorClass, icon: Icon }: {
 
 export function DashboardContent({ incomes, expenses, budgets, goals, profile, from, to }: Props) {
   const { setProfile, activeTheme } = useAppStore()
-  const theme   = THEMES[activeTheme] ?? THEMES['green']
-  const router  = useRouter()
+  const theme = THEMES[activeTheme] ?? THEMES['green']
+  const router = useRouter()
 
-  const [showFilter, setShowFilter] = useState(false)
-  const [localFrom, setLocalFrom]   = useState(from)
-  const [localTo,   setLocalTo]     = useState(to)
+  const now = new Date()
+  const [localFrom,    setLocalFrom]    = useState(from)
+  const [localTo,      setLocalTo]      = useState(to)
+  const [selMonth,     setSelMonth]     = useState('')
+  const [selYear,      setSelYear]      = useState(String(now.getFullYear()))
+  const [incomeCat,    setIncomeCat]    = useState('All')
+  const [expenseCat,   setExpenseCat]   = useState('All')
 
   useEffect(() => { if (profile) setProfile(profile) }, [profile])
 
-  const applyFilter = (f: string, t: string) => {
-    router.push(`/dashboard?from=${f}&to=${t}`)
-    setShowFilter(false)
+  const apply = (f: string, t: string) => router.push(`/dashboard?from=${f}&to=${t}`)
+
+  const handleMonthChange = (m: string) => {
+    setSelMonth(m)
+    if (!m) return
+    const yr  = Number(selYear)
+    const mo  = MONTHS.indexOf(m)
+    const f   = new Date(yr, mo, 1).toISOString().split('T')[0]
+    const t   = new Date(yr, mo + 1, 0).toISOString().split('T')[0]
+    setLocalFrom(f); setLocalTo(t); apply(f, t)
   }
 
-  const clearFilter = () => {
-    const n    = new Date()
-    const from = new Date(n.getFullYear(), n.getMonth(), 1).toISOString().split('T')[0]
-    const to   = new Date(n.getFullYear(), n.getMonth() + 1, 0).toISOString().split('T')[0]
-    router.push(`/dashboard?from=${from}&to=${to}`)
-    setShowFilter(false)
+  const handleYearChange = (y: string) => {
+    setSelYear(y)
+    const yr = Number(y)
+    if (selMonth) {
+      const mo = MONTHS.indexOf(selMonth)
+      const f  = new Date(yr, mo, 1).toISOString().split('T')[0]
+      const t  = new Date(yr, mo + 1, 0).toISOString().split('T')[0]
+      setLocalFrom(f); setLocalTo(t); apply(f, t)
+    } else {
+      const f = `${yr}-01-01`; const t = `${yr}-12-31`
+      setLocalFrom(f); setLocalTo(t); apply(f, t)
+    }
   }
 
-  const totalIncome  = useMemo(() => incomes.reduce((s, r)  => s + Number(r.amount), 0), [incomes])
-  const totalExpense = useMemo(() => expenses.reduce((s, r) => s + Number(r.amount), 0), [expenses])
-  const net          = totalIncome - totalExpense
-  const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
+  const handleFromTo = () => apply(localFrom, localTo)
+
+  const reset = () => {
+    const f = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]
+    const t = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+    setLocalFrom(f); setLocalTo(t); setSelMonth(''); setSelYear(String(now.getFullYear()))
+    setIncomeCat('All'); setExpenseCat('All')
+    apply(f, t)
+  }
+
+  // Filter by category client-side
+  const filteredIncomes  = useMemo(() =>
+    incomeCat  === 'All' ? incomes  : incomes.filter(r  => r.category === incomeCat),  [incomes,  incomeCat])
+  const filteredExpenses = useMemo(() =>
+    expenseCat === 'All' ? expenses : expenses.filter(r => r.category === expenseCat), [expenses, expenseCat])
+
+  const totalIncome  = useMemo(() => filteredIncomes.reduce((s, r)  => s + Number(r.amount), 0), [filteredIncomes])
+  const totalExpense = useMemo(() => filteredExpenses.reduce((s, r) => s + Number(r.amount), 0), [filteredExpenses])
+  const net         = totalIncome - totalExpense
+  const savingsRate = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
-    incomes.forEach(r  => { const d = r.date?.slice(0,10) ?? ''; if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }; map[d].income  += Number(r.amount) })
-    expenses.forEach(r => { const d = r.date?.slice(0,10) ?? ''; if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }; map[d].expense += Number(r.amount) })
+    filteredIncomes.forEach(r  => { const d = r.date?.slice(0,10) ?? ''; if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }; map[d].income  += Number(r.amount) })
+    filteredExpenses.forEach(r => { const d = r.date?.slice(0,10) ?? ''; if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }; map[d].expense += Number(r.amount) })
     return Object.values(map)
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(r => ({ ...r, label: new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' }) }))
-  }, [incomes, expenses])
+  }, [filteredIncomes, filteredExpenses])
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
-      const spent = expenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
+      const spent = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
       return { name: b.category, budget: Number(b.amount), spent }
-    }), [budgets, expenses])
+    }), [budgets, filteredExpenses])
 
   const hour      = new Date().getHours()
   const greeting  = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const firstName = profile?.full_name?.split(' ')[0] || 'there'
 
-  const displayRange = `${new Date(from).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' })} — ${new Date(to).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}`
+  const selectCls = `h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-2 cursor-pointer`
+  const dateCls   = `h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-2`
 
   return (
     <div className="space-y-5">
 
-      {/* Header + Filter bar */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="font-display text-2xl font-bold" style={{ color: theme.colors.primary }}>
-            {greeting}, {firstName} 👋
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">{displayRange}</p>
-        </div>
-        <Button
-          variant="outline" size="sm"
-          onClick={() => setShowFilter(v => !v)}
-          className="flex items-center gap-2 bg-white"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          Filter
-        </Button>
+      {/* Page header */}
+      <div>
+        <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
+          Overview Dashboard
+        </h1>
+        <p className="text-muted-foreground text-xs mt-0.5">
+          {greeting}, {firstName} · {fmt(totalIncome)} income · {fmt(totalExpense)} expenses
+        </p>
       </div>
 
-      {/* Filter Panel */}
-      {showFilter && (
-        <Card className="bg-white rounded-xl shadow-sm border border-border">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-semibold">Filter by Date Range</p>
-              <button onClick={() => setShowFilter(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* ── UCT-style Filter Bar ── */}
+      <div className="flex flex-wrap items-end gap-3 p-4 bg-white rounded-xl border border-border shadow-sm">
 
-            {/* Quick ranges */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              {QUICK_RANGES.map(r => (
-                <button
-                  key={r.label}
-                  onClick={() => { const { from: f, to: t } = r.getRange(); applyFilter(f, t) }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border hover:border-primary bg-white transition-colors"
-                  style={{ color: theme.colors.primary }}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+        {/* FROM */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+          <input type="date" value={localFrom} onChange={e => setLocalFrom(e.target.value)}
+            className={dateCls} />
+        </div>
 
-            {/* Custom range */}
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted-foreground font-medium">From</label>
-                <input
-                  type="date" value={localFrom}
-                  onChange={e => setLocalFrom(e.target.value)}
-                  className="h-9 px-3 rounded-lg border border-border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted-foreground font-medium">To</label>
-                <input
-                  type="date" value={localTo}
-                  onChange={e => setLocalTo(e.target.value)}
-                  className="h-9 px-3 rounded-lg border border-border text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-              </div>
-              <Button size="sm" onClick={() => applyFilter(localFrom, localTo)}
-                style={{ background: theme.colors.primary, color: '#fff' }}>
-                Apply
-              </Button>
-              <Button size="sm" variant="ghost" onClick={clearFilter} className="text-muted-foreground">
-                Reset
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {/* TO */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+          <input type="date" value={localTo} onChange={e => setLocalTo(e.target.value)}
+            className={dateCls} />
+        </div>
+
+        {/* MONTH */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
+          <select value={selMonth} onChange={e => handleMonthChange(e.target.value)} className={selectCls}>
+            <option value="">All Months</option>
+            {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+
+        {/* YEAR */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Year</label>
+          <select value={selYear} onChange={e => handleYearChange(e.target.value)} className={selectCls}>
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        {/* INCOME CATEGORY */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Income Cat.</label>
+          <select value={incomeCat} onChange={e => setIncomeCat(e.target.value)} className={selectCls}>
+            {INCOME_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* EXPENSE CATEGORY */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Expense Cat.</label>
+          <select value={expenseCat} onChange={e => setExpenseCat(e.target.value)} className={selectCls}>
+            {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Apply + Reset */}
+        <div className="flex gap-2 pb-0.5">
+          <button
+            onClick={handleFromTo}
+            style={{ background: theme.colors.primary }}
+            className="h-8 px-4 rounded-lg text-xs font-semibold text-white hover:opacity-90 transition-opacity"
+          >
+            Apply
+          </button>
+          <button
+            onClick={reset}
+            className="h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" /> Reset
+          </button>
+        </div>
+      </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPI label="Total Income"   value={fmt(totalIncome)}  sub="Selected period"   colorClass="kpi-green"  icon={TrendingUp}   />
-        <KPI label="Total Expenses" value={fmt(totalExpense)} sub="Selected period"   colorClass="kpi-red"    icon={TrendingDown}  />
+        <KPI label="Total Income"   value={fmt(totalIncome)}  sub="Selected period"              colorClass="kpi-green"  icon={TrendingUp}   />
+        <KPI label="Total Expenses" value={fmt(totalExpense)} sub="Selected period"              colorClass="kpi-red"    icon={TrendingDown}  />
         <KPI label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'} colorClass="kpi-blue" icon={Wallet} />
-        <KPI label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"   colorClass="kpi-purple" icon={Target}        />
+        <KPI label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"              colorClass="kpi-purple" icon={Target}        />
       </div>
 
       {/* Charts */}
@@ -267,17 +302,20 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile, f
           <CardTitle className="text-sm font-semibold">Recent Transactions</CardTitle>
         </CardHeader>
         <CardContent>
-          {incomes.length === 0 && expenses.length === 0 ? (
+          {filteredIncomes.length === 0 && filteredExpenses.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-8">No transactions in this period</p>
           ) : (
-            [...incomes.map(r => ({ ...r, _type: 'income' })), ...expenses.map(r => ({ ...r, _type: 'expense' }))]
+            [...filteredIncomes.map(r => ({ ...r, _type: 'income' })),
+             ...filteredExpenses.map(r => ({ ...r, _type: 'expense' }))]
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
               .slice(0, 8)
               .map((r, i) => (
                 <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
                   <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${r._type === 'income' ? 'bg-green-50' : 'bg-red-50'}`}>
-                      {r._type === 'income' ? <ArrowUpRight className="w-4 h-4 text-green-600" /> : <ArrowDownRight className="w-4 h-4 text-red-500" />}
+                      {r._type === 'income'
+                        ? <ArrowUpRight   className="w-4 h-4 text-green-600" />
+                        : <ArrowDownRight className="w-4 h-4 text-red-500" />}
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">{r.description || r.category || '—'}</p>
@@ -304,15 +342,19 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile, f
           </CardHeader>
           <CardContent className="space-y-4">
             {goals.map((g, i) => {
-              const pct = Math.min(100, Number(g.target_amount) > 0 ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100) : 0)
+              const pct = Math.min(100, Number(g.target_amount) > 0
+                ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100) : 0)
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1.5">
                     <span className="font-medium">{g.name}</span>
-                    <span className="text-muted-foreground tabular-nums">{pct}% · {fmt(Number(g.current_amount))} / {fmt(Number(g.target_amount))}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {pct}% · {fmt(Number(g.current_amount))} / {fmt(Number(g.target_amount))}
+                    </span>
                   </div>
                   <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: theme.colors.primary }} />
+                    <div className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%`, background: theme.colors.primary }} />
                   </div>
                 </div>
               )
