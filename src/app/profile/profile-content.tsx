@@ -54,7 +54,7 @@ export function ProfileContent({ profile, userId }: Props) {
     setLoadingProfile(true)
     const supabase = createClient()
     const { error } = await supabase.from('profiles').update({ full_name: data.full_name, updated_at: new Date().toISOString() }).eq('id', userId)
-    if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
+    if (error) toast({ title: 'Save error', description: error.message, variant: 'destructive' })
     else {
       if (profile) setProfile({ ...profile, full_name: data.full_name })
       toast({ title: 'Profile updated', variant: 'success' })
