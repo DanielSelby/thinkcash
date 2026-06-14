@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ArrowUpDown, TrendingUp, TrendingDown,
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
   Settings, Shield, Users, ChevronLeft, ChevronRight,
-  Wallet, RefreshCcw, Tag,
+  Wallet, RefreshCcw, Tag, BookMarked,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
@@ -24,6 +24,7 @@ const navItems = [
   { href: '/recurring',    icon: RefreshCcw,      label: 'Recurring' },
   { href: '/reports',      icon: BarChart3,       label: 'Reports' },
   { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics' },
+  { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
 ]
 
 const bottomItems = [
@@ -116,7 +117,6 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       >
         {appLogo ? (
-          /* White circle background behind uploaded logo */
           <div className={cn(
             'flex-shrink-0 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm transition-all duration-300',
             !sidebarOpen
@@ -137,7 +137,6 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             />
           </div>
         ) : (
-          /* Default placeholder — white circle with icon */
           <div
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm"
             style={{
