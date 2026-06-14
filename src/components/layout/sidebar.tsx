@@ -41,8 +41,12 @@ const adminItems = [
 function NavLink({
   href, icon: Icon, label, active, sidebar, sidebarOpen,
 }: {
-  href: string; icon: any; label: string; active: boolean
-  sidebar: any; sidebarOpen: boolean
+  href: string
+  icon: any
+  label: string
+  active: boolean
+  sidebar: any
+  sidebarOpen: boolean
 }) {
   return (
     <Link
@@ -51,27 +55,24 @@ function NavLink({
       className={cn(
         'flex items-center gap-3 text-sm font-medium transition-all duration-150 rounded-lg',
         sidebarOpen ? 'px-3 py-2' : 'justify-center w-10 h-10 mx-auto',
-        // UCT pill style: active gets a solid rounded pill background
-        active ? 'rounded-lg' : ''
       )}
       style={{
         background: active ? sidebar.activeBackground : 'transparent',
-        color: active ? sidebar.activeText : sidebar.textMuted,
-        // left accent bar for active item — like UCT's left highlight
-        boxShadow: active && sidebarOpen ? `inset 3px 0 0 ${sidebar.activeText}` : 'none',
+        color:      active ? sidebar.activeText       : sidebar.textMuted,
+        boxShadow:  active && sidebarOpen ? `inset 3px 0 0 ${sidebar.activeText}` : 'none',
       }}
       onMouseEnter={e => {
         if (!active) {
           const el = e.currentTarget as HTMLElement
           el.style.background = sidebar.hoverBackground
-          el.style.color = sidebar.text
+          el.style.color      = sidebar.text
         }
       }}
       onMouseLeave={e => {
         if (!active) {
           const el = e.currentTarget as HTMLElement
           el.style.background = 'transparent'
-          el.style.color = sidebar.textMuted
+          el.style.color      = sidebar.textMuted
         }
       }}
     >
@@ -81,12 +82,22 @@ function NavLink({
   )
 }
 
+// Logo height classes per size setting
+const LOGO_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'h-7',
+  md: 'h-10',
+  lg: 'h-14',
+}
+
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
-  const pathname    = usePathname()
-  const { sidebarOpen, setSidebarOpen, getTheme, appLogo } = useAppStore()
+  const pathname = usePathname()
+  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize } = useAppStore()
   const theme       = getTheme()
   const { sidebar } = theme
   const items       = isAdmin ? adminItems : navItems
+
+  // Logo area height expands when logo is large
+  const logoAreaHeight = appLogo && sidebarOpen && logoSize === 'lg' ? 'h-20' : 'h-16'
 
   return (
     <aside
@@ -96,15 +107,25 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         sidebarOpen ? 'w-64' : 'w-16'
       )}
     >
-      {/* Logo area */}
+      {/* ── Logo area ── */}
       <div
         style={{ borderColor: sidebar.borderColor }}
-        className={cn('flex items-center h-16 px-4 border-b gap-3', !sidebarOpen && 'justify-center px-0')}
+        className={cn(
+          'flex items-center border-b gap-3 px-4 transition-all duration-300',
+          logoAreaHeight,
+          !sidebarOpen && 'justify-center px-0'
+        )}
       >
         {appLogo ? (
           <img
-            src={appLogo} alt="Logo"
-            className={cn('object-contain', sidebarOpen ? 'h-9 w-auto' : 'h-8 w-8 rounded')}
+            src={appLogo}
+            alt="Logo"
+            className={cn(
+              'object-contain flex-shrink-0 transition-all duration-300',
+              !sidebarOpen
+                ? 'h-8 w-8 rounded'
+                : LOGO_HEIGHT[logoSize ?? 'md'] + ' w-auto'
+            )}
           />
         ) : (
           <div
@@ -114,13 +135,20 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             <Target className="w-4 h-4 text-white" />
           </div>
         )}
+
         {sidebarOpen && (
           <div className="min-w-0">
-            <span style={{ color: sidebar.text }} className="font-display font-bold text-base leading-tight block truncate">
+            <span
+              style={{ color: sidebar.text }}
+              className="font-display font-bold text-base leading-tight block truncate"
+            >
               {APP_CONFIG.name}
             </span>
             {!appLogo && (
-              <p style={{ color: sidebar.textMuted }} className="text-xs leading-tight truncate">
+              <p
+                style={{ color: sidebar.textMuted }}
+                className="text-xs leading-tight truncate"
+              >
                 {APP_CONFIG.tagline}
               </p>
             )}
@@ -128,42 +156,62 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       </div>
 
-      {/* Main nav */}
+      {/* ── Main nav ── */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {isAdmin && sidebarOpen && (
-          <p style={{ color: sidebar.textMuted }}
-            className="text-xs font-semibold uppercase tracking-wider px-3 pb-2 pt-1">
+          <p
+            style={{ color: sidebar.textMuted }}
+            className="text-xs font-semibold uppercase tracking-wider px-3 pb-2 pt-1"
+          >
             Admin Panel
           </p>
         )}
         {items.map(({ href, icon, label }) => (
           <NavLink
-            key={href} href={href} icon={icon} label={label}
+            key={href}
+            href={href}
+            icon={icon}
+            label={label}
             active={pathname === href || pathname.startsWith(href + '/')}
-            sidebar={sidebar} sidebarOpen={sidebarOpen}
+            sidebar={sidebar}
+            sidebarOpen={sidebarOpen}
           />
         ))}
       </nav>
 
-      {/* Bottom nav */}
-      <div style={{ borderColor: sidebar.borderColor }} className="py-3 px-2 space-y-0.5 border-t">
+      {/* ── Bottom nav ── */}
+      <div
+        style={{ borderColor: sidebar.borderColor }}
+        className="py-3 px-2 space-y-0.5 border-t"
+      >
         {bottomItems.map(({ href, icon, label }) => (
           <NavLink
-            key={href} href={href} icon={icon} label={label}
+            key={href}
+            href={href}
+            icon={icon}
+            label={label}
             active={pathname === href}
-            sidebar={sidebar} sidebarOpen={sidebarOpen}
+            sidebar={sidebar}
+            sidebarOpen={sidebarOpen}
           />
         ))}
       </div>
 
-      {/* Collapse toggle */}
+      {/* ── Collapse toggle ── */}
       <Button
-        variant="ghost" size="icon"
+        variant="ghost"
+        size="icon"
         onClick={() => setSidebarOpen(!sidebarOpen)}
-        style={{ background: sidebar.background, borderColor: sidebar.borderColor, color: sidebar.text }}
+        style={{
+          background:   sidebar.background,
+          borderColor:  sidebar.borderColor,
+          color:        sidebar.text,
+        }}
         className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
       >
-        {sidebarOpen ? <ChevronLeft className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {sidebarOpen
+          ? <ChevronLeft  className="w-3 h-3" />
+          : <ChevronRight className="w-3 h-3" />}
       </Button>
     </aside>
   )

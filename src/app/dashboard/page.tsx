@@ -4,15 +4,19 @@ import { AppShell } from '@/components/layout/app-shell'
 import { DashboardContent } from './dashboard-content'
 
 export const metadata = { title: 'Dashboard' }
+export const dynamic  = 'force-dynamic'
 
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: { from?: string; to?: string }
+  searchParams: Promise<{ from?: string; to?: string }>
 }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  // Next.js 15 — searchParams is a Promise, must await
+  const params = await searchParams
 
   const now        = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -20,9 +24,8 @@ export default async function DashboardPage({
   const monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     .toISOString().split('T')[0]
 
-  // Use URL params if present, otherwise default to current month
-  const from = searchParams?.from ?? monthStart
-  const to   = searchParams?.to   ?? monthEnd
+  const from = params?.from ?? monthStart
+  const to   = params?.to   ?? monthEnd
 
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
@@ -52,10 +55,10 @@ export default async function DashboardPage({
   return (
     <AppShell>
       <DashboardContent
-        incomes={incomes ?? []}
+        incomes={incomes   ?? []}
         expenses={expenses ?? []}
-        budgets={budgets ?? []}
-        goals={goals ?? []}
+        budgets={budgets   ?? []}
+        goals={goals       ?? []}
         profile={profile}
         from={from}
         to={to}
