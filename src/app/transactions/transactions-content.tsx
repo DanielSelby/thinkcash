@@ -61,7 +61,7 @@ export function TransactionsContent({ transactions }: Props) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `fintrack-transactions-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `Think-Shika PA-transactions-${new Date().toISOString().split('T')[0]}.csv`
     a.click()
     URL.revokeObjectURL(url)
     toast({ title: 'CSV exported', variant: 'success' })

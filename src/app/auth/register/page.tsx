@@ -90,7 +90,7 @@ export default function RegisterPage() {
             <Target className="w-6 h-6 text-primary-foreground" />
           </div>
           <h1 className="font-display text-2xl font-bold">Create your account</h1>
-          <p className="text-muted-foreground text-sm mt-1">Start your financial journey with FinTrack Pro</p>
+          <p className="text-muted-foreground text-sm mt-1">Start your financial journey with Think-Shika PA</p>
         </div>
 
         <div className="glass-card rounded-2xl p-8">

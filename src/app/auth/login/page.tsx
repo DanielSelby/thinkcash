@@ -55,7 +55,7 @@ export default function LoginPage() {
             <Target className="w-6 h-6 text-primary-foreground" />
           </div>
           <h1 className="font-display text-2xl font-bold">Welcome back</h1>
-          <p className="text-muted-foreground text-sm mt-1">Sign in to your FinTrack Pro account</p>
+          <p className="text-muted-foreground text-sm mt-1">Sign in to your Think-Shika PA account</p>
         </div>
 
         <div className="glass-card rounded-2xl p-8">

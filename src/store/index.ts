@@ -41,7 +41,7 @@ export const useAppStore = create<AppState>()(
       getTheme: () => THEMES[get().activeTheme],
     }),
     {
-      name: 'fintrack-app',
+      name: 'Think-Shika PA-app',
       partialize: (state) => ({
         currency:    state.currency,
         sidebarOpen: state.sidebarOpen,

@@ -57,7 +57,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
 
   const handleExportCSV = () => {
     const rows = [
-      [`FinTrack Pro — ${dateRange.label} Report`],
+      [`Think-Shika PA — ${dateRange.label} Report`],
       [],
       ['INCOME SUMMARY'],
       ['Category', 'Amount'],
@@ -77,7 +77,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `fintrack-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.csv`
+    a.download = `Think-Shika PA-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.csv`
     a.click()
     URL.revokeObjectURL(url)
     toast({ title: 'CSV report exported', variant: 'success' })
@@ -90,7 +90,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
 
       // Summary sheet
       const summaryData = [
-        ['FinTrack Pro Financial Report'],
+        ['Think-Shika PA Financial Report'],
         [`Period: ${dateRange.label}`],
         [`Generated: ${format(new Date(), 'PPP')}`],
         [],
@@ -111,7 +111,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
       const expData = [['Title', 'Category', 'Amount', 'Date', 'Payment Method', 'Notes'], ...filteredExpenses.map(e => [e.title, e.category, e.amount, e.date, e.payment_method, e.notes || ''])]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expData), 'Expenses')
 
-      XLSX.writeFile(wb, `fintrack-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.xlsx`)
+      XLSX.writeFile(wb, `Think-Shika PA-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.xlsx`)
       toast({ title: 'Excel report exported', variant: 'success' })
     } catch {
       toast({ title: 'Export failed', variant: 'destructive' })
@@ -125,7 +125,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
 
       const doc = new jsPDF()
       doc.setFontSize(18)
-      doc.text('FinTrack Pro — Financial Report', 14, 20)
+      doc.text('Think-Shika PA — Financial Report', 14, 20)
       doc.setFontSize(12)
       doc.text(`Period: ${dateRange.label}`, 14, 30)
       doc.text(`Generated: ${format(new Date(), 'PPP')}`, 14, 37)
@@ -162,7 +162,7 @@ export function ReportsContent({ incomes, expenses }: Props) {
         theme: 'striped',
       })
 
-      doc.save(`fintrack-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.pdf`)
+      doc.save(`Think-Shika PA-report-${dateRange.label.replace(/\s/g, '-').toLowerCase()}.pdf`)
       toast({ title: 'PDF report exported', variant: 'success' })
     } catch {
       toast({ title: 'PDF export failed', variant: 'destructive' })
