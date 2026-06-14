@@ -59,7 +59,9 @@ function NavLink({
       style={{
         background: active ? sidebar.activeBackground : 'transparent',
         color:      active ? sidebar.activeText       : sidebar.textMuted,
-        boxShadow:  active && sidebarOpen ? `inset 3px 0 0 ${sidebar.activeText}` : 'none',
+        boxShadow:  active && sidebarOpen
+          ? `inset 3px 0 0 ${sidebar.activeText}`
+          : 'none',
       }}
       onMouseEnter={e => {
         if (!active) {
@@ -82,7 +84,6 @@ function NavLink({
   )
 }
 
-// Logo height classes per size setting
 const LOGO_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-7',
   md: 'h-10',
@@ -95,8 +96,6 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const theme       = getTheme()
   const { sidebar } = theme
   const items       = isAdmin ? adminItems : navItems
-
-  // Logo area height expands when logo is large
   const logoAreaHeight = appLogo && sidebarOpen && logoSize === 'lg' ? 'h-20' : 'h-16'
 
   return (
@@ -117,22 +116,36 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       >
         {appLogo ? (
-          <img
-            src={appLogo}
-            alt="Logo"
-            className={cn(
-              'object-contain flex-shrink-0 transition-all duration-300',
-              !sidebarOpen
-                ? 'h-8 w-8 rounded'
-                : LOGO_HEIGHT[logoSize ?? 'md'] + ' w-auto'
-            )}
-          />
+          /* White circle background behind uploaded logo */
+          <div className={cn(
+            'flex-shrink-0 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm transition-all duration-300',
+            !sidebarOpen
+              ? 'w-10 h-10'
+              : logoSize === 'sm' ? 'w-10 h-10'
+              : logoSize === 'lg' ? 'w-16 h-16'
+              : 'w-12 h-12'
+          )}>
+            <img
+              src={appLogo}
+              alt="Logo"
+              className={cn(
+                'object-contain transition-all duration-300',
+                !sidebarOpen
+                  ? 'h-6 w-6'
+                  : LOGO_HEIGHT[logoSize ?? 'md'] + ' w-auto'
+              )}
+            />
+          </div>
         ) : (
+          /* Default placeholder — white circle with icon */
           <div
-            style={{ background: theme.colors.accent }}
-            className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center"
+            className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm"
+            style={{
+              background: 'rgba(255,255,255,0.18)',
+              border: '2px dashed rgba(255,255,255,0.35)',
+            }}
           >
-            <Target className="w-4 h-4 text-white" />
+            <Target className="w-5 h-5 text-white/80" />
           </div>
         )}
 
@@ -203,9 +216,9 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         size="icon"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         style={{
-          background:   sidebar.background,
-          borderColor:  sidebar.borderColor,
-          color:        sidebar.text,
+          background:  sidebar.background,
+          borderColor: sidebar.borderColor,
+          color:       sidebar.text,
         }}
         className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
       >
