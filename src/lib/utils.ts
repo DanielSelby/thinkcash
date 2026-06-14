@@ -6,10 +6,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Screen display — uses GH₵ symbol
 export function formatCurrency(amount: number, currency = 'GHS'): string {
   return new Intl.NumberFormat('en-GH', {
     style: 'currency',
-    currency,
+    currency: 'GHS',
+    maximumFractionDigits: 2,
+  }).format(amount).replace('GHS', 'GH₵')
+}
+
+// PDF export — uses GHS prefix (jsPDF cannot render ₵ unicode)
+export function formatCurrencyPDF(amount: number): string {
+  return 'GHS ' + new Intl.NumberFormat('en-GH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
@@ -141,3 +149,4 @@ export const FREQUENCIES = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'yearly', label: 'Yearly' },
 ]
+
