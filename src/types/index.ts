@@ -71,6 +71,8 @@ export interface Budget {
   category: ExpenseCategory
   monthly_limit: number
   budget_name: string
+  budget_month?: number
+  budget_year?: number
   created_at: string
   updated_at: string
   // computed

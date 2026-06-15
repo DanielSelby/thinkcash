@@ -7,24 +7,29 @@ import { useAppStore } from '@/store'
 import { createClient } from '@/lib/supabase/client'
 
 export function AppShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
-  const { profile, setAppLogo } = useAppStore()
+  const { profile, setAppLogo, setLogoSize } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
 
   useEffect(() => {
-    const loadLogo = async () => {
+    const loadSettings = async () => {
       try {
         const supabase = createClient()
         const { data } = await supabase
           .from('app_settings')
-          .select('value')
-          .eq('key', 'app_logo')
-          .single()
-        setAppLogo(data?.value ?? null)
+          .select('key, value')
+          .in('key', ['app_logo', 'logo_size'])
+
+        if (data) {
+          const logo = data.find(r => r.key === 'app_logo')
+          const size = data.find(r => r.key === 'logo_size')
+          setAppLogo(logo?.value ?? null)
+          if (size?.value) setLogoSize(size.value as 'sm' | 'md' | 'lg')
+        }
       } catch {
-        // table may not exist yet — fail silently
+        // fail silently
       }
     }
-    loadLogo()
+    loadSettings()
   }, [])
 
   return (

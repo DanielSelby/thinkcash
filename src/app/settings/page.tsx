@@ -34,18 +34,18 @@ export default function SettingsPage() {
       const supabase = createClient()
       const ext  = file.name.split('.').pop()
       const path = `logos/app-logo.${ext}`
-      const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+      const { error } = await supabase.storage
+        .from('avatars').upload(path, file, { upsert: true })
       if (error) {
         toast({ title: 'Upload failed', description: error.message, variant: 'destructive' })
         setUploadingLogo(false)
         return
       }
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-      await supabase
-        .from('app_settings')
+      await supabase.from('app_settings')
         .upsert({ key: 'app_logo', value: publicUrl, updated_at: new Date().toISOString() })
       setAppLogo(publicUrl)
-      toast({ title: 'Logo uploaded successfully!', variant: 'success' })
+      toast({ title: 'Logo uploaded — visible to all users!', variant: 'success' })
     } catch (err: any) {
       toast({ title: 'Upload failed', description: String(err), variant: 'destructive' })
     }
@@ -55,20 +55,32 @@ export default function SettingsPage() {
   const handleRemoveLogo = async () => {
     try {
       const supabase = createClient()
-      await supabase
-        .from('app_settings')
+      await supabase.from('app_settings')
         .upsert({ key: 'app_logo', value: null, updated_at: new Date().toISOString() })
       setAppLogo(null)
-      toast({ title: 'Logo removed successfully' })
+      toast({ title: 'Logo removed for all users' })
     } catch (err: any) {
       toast({ title: 'Remove failed', description: String(err), variant: 'destructive' })
     }
   }
 
-  const LOGO_SIZES: { value: 'sm' | 'md' | 'lg'; label: string; desc: string }[] = [
-    { value: 'sm', label: 'Small',  desc: '28px height' },
-    { value: 'md', label: 'Medium', desc: '40px height' },
-    { value: 'lg', label: 'Large',  desc: '56px height' },
+  // Save logo size to Supabase so ALL users get the same size on login
+  const handleLogoSize = async (value: 'sm' | 'md' | 'lg', label: string) => {
+    setLogoSize(value)
+    try {
+      const supabase = createClient()
+      await supabase.from('app_settings')
+        .upsert({ key: 'logo_size', value, updated_at: new Date().toISOString() })
+      toast({ title: `Logo size set to ${label} — applied for all users`, variant: 'success' })
+    } catch {
+      toast({ title: `Logo size set to ${label}`, variant: 'success' })
+    }
+  }
+
+  const LOGO_SIZES: { value: 'sm' | 'md' | 'lg'; label: string; desc: string; previewH: string }[] = [
+    { value: 'sm', label: 'Small',  desc: '32px',  previewH: 'h-6'  },
+    { value: 'md', label: 'Medium', desc: '48px',  previewH: 'h-10' },
+    { value: 'lg', label: 'Large',  desc: '72px',  previewH: 'h-16' },
   ]
 
   return (
@@ -81,7 +93,7 @@ export default function SettingsPage() {
           <p className="text-muted-foreground text-sm">Customize your Think-Shika PA experience</p>
         </div>
 
-        {/* ── App Theme Toggle ── */}
+        {/* ── App Theme ── */}
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -95,8 +107,7 @@ export default function SettingsPage() {
                 const t        = THEMES[key]
                 const isActive = activeTheme === key
                 return (
-                  <button
-                    key={key}
+                  <button key={key}
                     onClick={() => { setThemeKey(key); toast({ title: `${t.name} theme applied`, variant: 'success' }) }}
                     className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all text-left ${
                       isActive ? 'border-primary shadow-md' : 'border-border hover:border-primary/50'
@@ -117,7 +128,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* ── Light / Dark Mode ── */}
+        {/* ── Display Mode ── */}
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -131,9 +142,7 @@ export default function SettingsPage() {
                 { value: 'dark',   icon: Moon,    label: 'Dark'   },
                 { value: 'system', icon: Monitor, label: 'System' },
               ].map(({ value, icon: Icon, label }) => (
-                <button
-                  key={value}
-                  onClick={() => setTheme(value)}
+                <button key={value} onClick={() => setTheme(value)}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
                     theme === value
                       ? 'border-primary bg-primary/10 text-primary'
@@ -160,16 +169,19 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <p className="text-sm text-muted-foreground">
-                Upload a custom logo for the sidebar. Recommended: PNG with transparent background.
+                Upload a logo for the sidebar. All changes apply instantly to every user.
+                Recommended: PNG with transparent background.
               </p>
 
               {/* Upload / Preview */}
               <div className="flex items-start gap-4 flex-wrap">
                 {appLogo ? (
                   <>
-                    {/* Preview box — height reflects current size setting */}
-                    <div className={`rounded-xl border border-border bg-muted flex items-center justify-center p-3 transition-all ${
-                      logoSize === 'sm' ? 'h-14 w-32' : logoSize === 'lg' ? 'h-24 w-48' : 'h-16 w-40'
+                    {/* Preview reflects chosen size */}
+                    <div className={`rounded-xl border border-border bg-muted flex items-center justify-center p-3 transition-all duration-300 ${
+                      logoSize === 'sm' ? 'h-16 w-32'
+                      : logoSize === 'lg' ? 'h-32 w-64'
+                      : 'h-24 w-48'
                     }`}>
                       <img src={appLogo} alt="App logo" className="h-full w-auto object-contain" />
                     </div>
@@ -202,37 +214,57 @@ export default function SettingsPage() {
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
               </div>
 
-              {/* Logo Size — only shown when a logo is uploaded */}
+              {/* Logo Size — only when logo uploaded */}
               {appLogo && (
-                <div className="pt-2 border-t border-border">
+                <div className="pt-3 border-t border-border">
                   <div className="flex items-center gap-2 mb-3">
                     <Maximize2 className="w-4 h-4 text-muted-foreground" />
                     <p className="text-sm font-semibold">Logo Size in Sidebar</p>
+                    <span className="text-xs text-muted-foreground">— saved for all users</span>
                   </div>
+
                   <div className="flex gap-3 flex-wrap">
-                    {LOGO_SIZES.map(({ value, label, desc }) => (
-                      <button
-                        key={value}
-                        onClick={() => {
-                          setLogoSize(value)
-                          toast({ title: `Logo size set to ${label}`, variant: 'success' })
-                        }}
-                        className={`flex flex-col items-center gap-1 px-5 py-3 rounded-xl border-2 text-sm font-medium transition-all ${
-                          logoSize === value
-                            ? 'border-primary bg-primary/8 text-primary shadow-sm'
-                            : 'border-border hover:border-primary/50 text-muted-foreground'
-                        }`}
-                      >
-                        <span className="font-semibold">{label}</span>
-                        <span className="text-xs opacity-70">{desc}</span>
-                        {logoSize === value && (
-                          <span className="text-xs font-bold" style={{ color: currentTheme.colors.accent }}>✓ Active</span>
-                        )}
-                      </button>
-                    ))}
+                    {LOGO_SIZES.map(({ value, label, desc, previewH }) => {
+                      const isActive = logoSize === value
+                      return (
+                        <button
+                          key={value}
+                          onClick={() => handleLogoSize(value, label)}
+                          className={`flex flex-col items-center gap-2 px-5 py-4 rounded-xl border-2 text-sm font-medium transition-all ${
+                            isActive
+                              ? 'shadow-sm'
+                              : 'border-border hover:border-primary/50 text-muted-foreground'
+                          }`}
+                          style={isActive
+                            ? { borderColor: currentTheme.colors.primary, background: currentTheme.colors.primary + '08' }
+                            : {}}
+                        >
+                          {/* Live logo preview at each size */}
+                          <div className="w-20 h-14 bg-muted rounded-lg flex items-center justify-center overflow-hidden p-1">
+                            <img
+                              src={appLogo}
+                              alt=""
+                              className={`object-contain w-auto ${previewH}`}
+                            />
+                          </div>
+                          <span className="font-semibold"
+                            style={isActive ? { color: currentTheme.colors.primary } : {}}>
+                            {label}
+                          </span>
+                          <span className="text-xs opacity-60">{desc} height</span>
+                          {isActive && (
+                            <span className="text-xs font-bold"
+                              style={{ color: currentTheme.colors.accent }}>
+                              ✓ Active
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
+
                   <p className="text-xs text-muted-foreground mt-3">
-                    Size change applies instantly in the sidebar for all users.
+                    Click a size to apply it instantly for all users across all browsers.
                   </p>
                 </div>
               )}
@@ -271,10 +303,10 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { label: 'Budget limit alerts',           description: 'Notify when you reach 80% of a budget' },
-              { label: 'Savings goal milestones',       description: 'Celebrate when you hit goal milestones' },
+              { label: 'Budget limit alerts',             description: 'Notify when you reach 80% of a budget'       },
+              { label: 'Savings goal milestones',         description: 'Celebrate when you hit goal milestones'       },
               { label: 'Recurring transaction reminders', description: 'Remind before upcoming recurring transactions' },
-              { label: 'Weekly summary',                description: 'Receive a weekly spending summary' },
+              { label: 'Weekly summary',                  description: 'Receive a weekly spending summary'            },
             ].map(item => (
               <div key={item.label} className="flex items-center justify-between py-1.5">
                 <div>
@@ -301,7 +333,8 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Your financial data is encrypted and stored securely on Supabase with Row Level Security. Only you can access your data.
+              Your financial data is encrypted and stored securely on Supabase with
+              Row Level Security. Only you can access your data.
             </p>
           </CardContent>
         </Card>

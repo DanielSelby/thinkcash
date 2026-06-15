@@ -14,28 +14,28 @@ import { Button } from '@/components/ui/button'
 import { APP_CONFIG } from '@/lib/config'
 
 const navItems = [
-  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/transactions', icon: ArrowUpDown,     label: 'Transactions' },
-  { href: '/income',       icon: TrendingUp,      label: 'Income' },
-  { href: '/expenses',     icon: TrendingDown,    label: 'Expenses' },
-  { href: '/categories',   icon: Tag,             label: 'Categories' },
-  { href: '/budgets',      icon: Wallet,          label: 'Budgets' },
-  { href: '/savings',      icon: PiggyBank,       label: 'Savings Goals' },
-  { href: '/recurring',    icon: RefreshCcw,      label: 'Recurring' },
-  { href: '/reports',      icon: BarChart3,       label: 'Reports' },
-  { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics' },
+  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'         },
+  { href: '/transactions', icon: ArrowUpDown,     label: 'Transactions'      },
+  { href: '/income',       icon: TrendingUp,      label: 'Income'            },
+  { href: '/expenses',     icon: TrendingDown,    label: 'Expenses'          },
+  { href: '/categories',   icon: Tag,             label: 'Categories'        },
+  { href: '/budgets',      icon: Wallet,          label: 'Budgets'           },
+  { href: '/savings',      icon: PiggyBank,       label: 'Savings Goals'     },
+  { href: '/recurring',    icon: RefreshCcw,      label: 'Recurring'         },
+  { href: '/reports',      icon: BarChart3,       label: 'Reports'           },
+  { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics'         },
   { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
 ]
 
 const bottomItems = [
   { href: '/notifications', icon: Bell,     label: 'Notifications' },
-  { href: '/settings',      icon: Settings, label: 'Settings' },
+  { href: '/settings',      icon: Settings, label: 'Settings'      },
 ]
 
 const adminItems = [
-  { href: '/admin/dashboard',  icon: LayoutDashboard, label: 'Overview' },
-  { href: '/admin/users',      icon: Users,           label: 'Users' },
-  { href: '/admin/analytics',  icon: BarChart3,       label: 'Analytics' },
+  { href: '/admin/dashboard',  icon: LayoutDashboard, label: 'Overview'   },
+  { href: '/admin/users',      icon: Users,           label: 'Users'      },
+  { href: '/admin/analytics',  icon: BarChart3,       label: 'Analytics'  },
   { href: '/admin/monitoring', icon: Shield,          label: 'Monitoring' },
 ]
 
@@ -85,10 +85,25 @@ function NavLink({
   )
 }
 
-const LOGO_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
-  sm: 'h-7',
-  md: 'h-10',
-  lg: 'h-14',
+// Height of the logo image itself inside the circle
+const LOGO_IMG_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'h-8',
+  md: 'h-12',
+  lg: 'h-20',
+}
+
+// Size of the white circle container
+const LOGO_CIRCLE: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'w-12 h-12',
+  md: 'w-16 h-16',
+  lg: 'w-24 h-24',
+}
+
+// Height of the logo area at the top of the sidebar
+const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'h-16',
+  md: 'h-20',
+  lg: 'h-28',
 }
 
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
@@ -97,7 +112,11 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const theme       = getTheme()
   const { sidebar } = theme
   const items       = isAdmin ? adminItems : navItems
-  const logoAreaHeight = appLogo && sidebarOpen && logoSize === 'lg' ? 'h-20' : 'h-16'
+
+  const size           = logoSize ?? 'md'
+  const logoAreaHeight = appLogo && sidebarOpen
+    ? LOGO_AREA_HEIGHT[size]
+    : 'h-16'
 
   return (
     <aside
@@ -117,31 +136,27 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       >
         {appLogo ? (
+          /* White circle with logo inside */
           <div className={cn(
-            'flex-shrink-0 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm transition-all duration-300',
-            !sidebarOpen
-              ? 'w-10 h-10'
-              : logoSize === 'sm' ? 'w-10 h-10'
-              : logoSize === 'lg' ? 'w-16 h-16'
-              : 'w-12 h-12'
+            'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300 p-1.5',
+            !sidebarOpen ? 'w-10 h-10' : LOGO_CIRCLE[size]
           )}>
             <img
               src={appLogo}
               alt="Logo"
               className={cn(
-                'object-contain transition-all duration-300',
-                !sidebarOpen
-                  ? 'h-6 w-6'
-                  : LOGO_HEIGHT[logoSize ?? 'md'] + ' w-auto'
+                'object-contain transition-all duration-300 w-auto',
+                !sidebarOpen ? 'h-6' : LOGO_IMG_HEIGHT[size]
               )}
             />
           </div>
         ) : (
+          /* Default placeholder — white dashed circle */
           <div
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm"
             style={{
               background: 'rgba(255,255,255,0.18)',
-              border: '2px dashed rgba(255,255,255,0.35)',
+              border:     '2px dashed rgba(255,255,255,0.35)',
             }}
           >
             <Target className="w-5 h-5 text-white/80" />
