@@ -17,7 +17,8 @@ import { Progress } from '@/components/ui/misc'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toaster'
-import { formatCurrency, EXPENSE_CATEGORIES, CATEGORY_COLORS, getBudgetStatus } from '@/lib/utils'
+import { formatCurrency, CATEGORY_COLORS, getBudgetStatus } from '@/lib/utils'
+import { useCategories } from '@/hooks/useCategories'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { Budget } from '@/types'
@@ -45,6 +46,7 @@ interface Props {
 
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme } = useAppStore()
+const { expenseCategories } = useCategories()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const now = new Date()
@@ -283,7 +285,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <div>
                       <p className="font-semibold text-sm">{b.budget_name}</p>
                       <p className="text-xs text-muted-foreground capitalize">
-                        {EXPENSE_CATEGORIES.find(c => c.value === b.category)?.label || b.category}
+                        {b.category}
                         {' · '}{MONTH_NAMES[(b.budget_month ?? 1) - 1]} {b.budget_year ?? viewYear}
                       </p>
                     </div>
@@ -360,8 +362,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <Select onValueChange={v => setValue('category', v)} defaultValue={editing?.category}>
                 <SelectTrigger><SelectValue placeholder="Select expense category" /></SelectTrigger>
                 <SelectContent>
-                  {EXPENSE_CATEGORIES.map(c => (
-                    <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                  {expenseCategories.map(c => (<SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -424,3 +425,4 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     </div>
   )
 }
+

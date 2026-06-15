@@ -15,7 +15,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
-import { formatCurrency, formatDate, EXPENSE_CATEGORIES, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
+import { formatCurrency, formatDate, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
+import { useCategories } from '@/hooks/useCategories'
 import type { Expense } from '@/types'
 
 const schema = z.object({
@@ -40,7 +41,8 @@ export function ExpensesContent({ initialExpenses, userId }: Props) {
   const [editing, setEditing] = useState<Expense | null>(null)
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const { expenseCategories } = useCategories()
+const [categoryFilter, setCategoryFilter] = useState('all')
 
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -108,7 +110,7 @@ export function ExpensesContent({ initialExpenses, userId }: Props) {
           <SelectTrigger className="w-44"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {EXPENSE_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+            {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -137,7 +139,7 @@ export function ExpensesContent({ initialExpenses, userId }: Props) {
                   {filtered.map((expense, i) => (
                     <tr key={expense.id} className={`border-b border-border last:border-0 hover:bg-muted/30 transition-colors ${i % 2 === 0 ? '' : 'bg-muted/10'}`}>
                       <td className="px-6 py-4"><p className="font-medium">{expense.title}</p>{expense.notes && <p className="text-xs text-muted-foreground truncate max-w-xs">{expense.notes}</p>}</td>
-                      <td className="px-6 py-4"><Badge style={{ background: `${CATEGORY_COLORS[expense.category]}20`, color: CATEGORY_COLORS[expense.category] }}>{EXPENSE_CATEGORIES.find(c => c.value === expense.category)?.label || expense.category}</Badge></td>
+                      <td className="px-6 py-4"><Badge style={{ background: `${CATEGORY_COLORS[expense.category]}20`, color: CATEGORY_COLORS[expense.category] }}>{expense.category}</Badge></td>
                       <td className="px-6 py-4 text-muted-foreground capitalize">{expense.payment_method?.replace('_', ' ')}</td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(expense.date)}</td>
                       <td className="px-6 py-4 text-right font-semibold text-destructive tabular-nums">-{formatCurrency(expense.amount)}</td>
@@ -181,7 +183,7 @@ export function ExpensesContent({ initialExpenses, userId }: Props) {
                 <Label>Category</Label>
                 <Select onValueChange={v => setValue('category', v)} defaultValue={editing?.category}>
                   <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-                  <SelectContent>{EXPENSE_CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
@@ -206,3 +208,5 @@ export function ExpensesContent({ initialExpenses, userId }: Props) {
     </div>
   )
 }
+
+

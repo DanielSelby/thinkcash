@@ -1,13 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
   ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, BarChart, Bar,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -27,8 +26,10 @@ const fmt = (n: number) =>
     style: 'currency', currency: 'GHS', maximumFractionDigits: 0,
   }).format(n).replace('GHS', 'GH₵')
 
-const MONTHS = ['January','February','March','April','May','June',
-                'July','August','September','October','November','December']
+const MONTHS = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+]
 const INCOME_CATS  = ['All','Salary','Freelance','Business','Investment','Rental','Gift','Bonus','Other']
 const EXPENSE_CATS = ['All','Food & Dining','Transport','Housing','Utilities','Healthcare',
                       'Education','Entertainment','Shopping','Clothing','Personal Care',
@@ -62,37 +63,32 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
 
   useEffect(() => { if (profile) setProfile(profile) }, [profile])
 
-  // Filter state — default is ALL (no filter)
-  const [showFilter,   setShowFilter]   = useState(false)
-  const [localFrom,    setLocalFrom]    = useState('')
-  const [localTo,      setLocalTo]      = useState('')
-  const [selMonth,     setSelMonth]     = useState('')
-  const [selYear,      setSelYear]      = useState('')
-  const [incomeCat,    setIncomeCat]    = useState('All')
-  const [expenseCat,   setExpenseCat]   = useState('All')
-  const [isFiltered,   setIsFiltered]   = useState(false)
+  // ── Filter state — default ALL (no filter) ──
+  const [showFilter,  setShowFilter]  = useState(false)
+  const [localFrom,   setLocalFrom]   = useState('')
+  const [localTo,     setLocalTo]     = useState('')
+  const [selMonth,    setSelMonth]    = useState('')
+  const [selYear,     setSelYear]     = useState('')
+  const [incomeCat,   setIncomeCat]   = useState('All')
+  const [expenseCat,  setExpenseCat]  = useState('All')
+  const [isFiltered,  setIsFiltered]  = useState(false)
 
-  const applyFilter = () => {
-    setIsFiltered(true)
-    setShowFilter(false)
-  }
-
-  const clearFilter = () => {
-    setLocalFrom(''); setLocalTo('')
-    setSelMonth('');  setSelYear('')
-    setIncomeCat('All'); setExpenseCat('All')
-    setIsFiltered(false)
-    setShowFilter(false)
-  }
+  // Any change triggers filter immediately — no Apply button needed
+  const setFrom  = (v: string) => { setLocalFrom(v);  setIsFiltered(true) }
+  const setTo    = (v: string) => { setLocalTo(v);    setIsFiltered(true) }
+  const setIncCat = (v: string) => { setIncomeCat(v); setIsFiltered(true) }
+  const setExpCat = (v: string) => { setExpenseCat(v); setIsFiltered(true) }
 
   const handleMonthChange = (m: string) => {
     setSelMonth(m)
-    if (m && selYear) {
+    if (m) {
       const yr = Number(selYear || new Date().getFullYear())
       const mo = MONTHS.indexOf(m)
-      setLocalFrom(new Date(yr, mo, 1).toISOString().split('T')[0])
-      setLocalTo(new Date(yr, mo + 1, 0).toISOString().split('T')[0])
+      const f  = new Date(yr, mo, 1).toISOString().split('T')[0]
+      const t  = new Date(yr, mo + 1, 0).toISOString().split('T')[0]
+      setLocalFrom(f); setLocalTo(t)
     }
+    setIsFiltered(true)
   }
 
   const handleYearChange = (y: string) => {
@@ -106,14 +102,23 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
       setLocalFrom(`${yr}-01-01`)
       setLocalTo(`${yr}-12-31`)
     }
+    setIsFiltered(true)
   }
 
-  // Apply filters client-side
+  const clearFilter = () => {
+    setLocalFrom(''); setLocalTo('')
+    setSelMonth('');  setSelYear('')
+    setIncomeCat('All'); setExpenseCat('All')
+    setIsFiltered(false)
+    setShowFilter(false)
+  }
+
+  // ── Client-side filtering ──
   const filteredIncomes = useMemo(() => {
     let data = incomes
     if (isFiltered) {
-      if (localFrom) data = data.filter(r => r.date >= localFrom)
-      if (localTo)   data = data.filter(r => r.date <= localTo)
+      if (localFrom)          data = data.filter(r => r.date >= localFrom)
+      if (localTo)            data = data.filter(r => r.date <= localTo)
       if (incomeCat !== 'All') data = data.filter(r => r.category === incomeCat)
     }
     return data
@@ -122,8 +127,8 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
   const filteredExpenses = useMemo(() => {
     let data = expenses
     if (isFiltered) {
-      if (localFrom)   data = data.filter(r => r.date >= localFrom)
-      if (localTo)     data = data.filter(r => r.date <= localTo)
+      if (localFrom)           data = data.filter(r => r.date >= localFrom)
+      if (localTo)             data = data.filter(r => r.date <= localTo)
       if (expenseCat !== 'All') data = data.filter(r => r.category === expenseCat)
     }
     return data
@@ -134,11 +139,11 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
   const net          = totalIncome - totalExpense
   const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
-  // Group chart by month for full overview
+  // Group by month for chart
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
     filteredIncomes.forEach(r => {
-      const d = r.date?.slice(0, 7) ?? '' // group by YYYY-MM
+      const d = r.date?.slice(0, 7) ?? ''
       if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
       map[d].income += Number(r.amount)
     })
@@ -177,7 +182,7 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
   return (
     <div className="space-y-5">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
@@ -208,94 +213,96 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
         </div>
       </div>
 
-      {/* Filter Panel */}
+      {/* ── Filter Panel — changes apply instantly ── */}
       {showFilter && (
         <Card className="bg-white rounded-xl shadow-sm border border-border">
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm font-semibold">Filter Transactions</p>
-              <button onClick={() => setShowFilter(false)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setShowFilter(false)}
+                className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="flex flex-wrap items-end gap-3">
-              {/* FROM */}
+
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
-                <input type="date" value={localFrom} onChange={e => setLocalFrom(e.target.value)} className={dateCls} />
+                <input type="date" value={localFrom}
+                  onChange={e => setFrom(e.target.value)}
+                  className={dateCls} />
               </div>
 
-              {/* TO */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
-                <input type="date" value={localTo} onChange={e => setLocalTo(e.target.value)} className={dateCls} />
+                <input type="date" value={localTo}
+                  onChange={e => setTo(e.target.value)}
+                  className={dateCls} />
               </div>
 
-              {/* MONTH */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
-                <select value={selMonth} onChange={e => handleMonthChange(e.target.value)} className={selectCls}>
+                <select value={selMonth}
+                  onChange={e => handleMonthChange(e.target.value)}
+                  className={selectCls}>
                   <option value="">All Months</option>
                   {MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
 
-              {/* YEAR */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Year</label>
-                <select value={selYear} onChange={e => handleYearChange(e.target.value)} className={selectCls}>
+                <select value={selYear}
+                  onChange={e => handleYearChange(e.target.value)}
+                  className={selectCls}>
                   <option value="">All Years</option>
                   {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
 
-              {/* INCOME CAT */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Income Cat.</label>
-                <select value={incomeCat} onChange={e => setIncomeCat(e.target.value)} className={selectCls}>
+                <select value={incomeCat}
+                  onChange={e => setIncCat(e.target.value)}
+                  className={selectCls}>
                   {INCOME_CATS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
-              {/* EXPENSE CAT */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Expense Cat.</label>
-                <select value={expenseCat} onChange={e => setExpenseCat(e.target.value)} className={selectCls}>
+                <select value={expenseCat}
+                  onChange={e => setExpCat(e.target.value)}
+                  className={selectCls}>
                   {EXPENSE_CATS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
-              {/* Buttons */}
-              <div className="flex gap-2 pb-0.5">
-                <button onClick={applyFilter}
-                  style={{ background: theme.colors.primary }}
-                  className="h-8 px-4 rounded-lg text-xs font-semibold text-white hover:opacity-90">
-                  Apply
-                </button>
-                <button onClick={clearFilter}
-                  className="h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground flex items-center gap-1">
-                  <RefreshCw className="w-3 h-3" /> Reset
-                </button>
-              </div>
+              {/* Reset only — no Apply button, filters are instant */}
+              <button onClick={clearFilter}
+                className="h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground flex items-center gap-1 mb-0.5">
+                <RefreshCw className="w-3 h-3" /> Reset
+              </button>
+
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* KPI Cards */}
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPI label="Total Income"   value={fmt(totalIncome)}
-          sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}  />
+          sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}   />
         <KPI label="Total Expenses" value={fmt(totalExpense)}
-          sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown} />
+          sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown}  />
         <KPI label="Net Balance"    value={fmt(net)}
-          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}       />
+          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}        />
         <KPI label="Savings Rate"   value={`${savingsRate}%`}
-          sub="Of income saved"                           colorClass="kpi-purple" icon={Target}       />
+          sub="Of income saved"                           colorClass="kpi-purple" icon={Target}        />
       </div>
 
-      {/* Charts */}
+      {/* ── Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
@@ -316,14 +323,13 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
                   <defs>
                     <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0}    />
                     </linearGradient>
                     <linearGradient id="gExp" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0}    />
                     </linearGradient>
                   </defs>
-                  
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
@@ -351,7 +357,6 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
             ) : (
               <ResponsiveContainer width="100%" height={210}>
                 <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
@@ -364,7 +369,7 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
         </Card>
       </div>
 
-      {/* Recent Transactions */}
+      {/* ── Recent Transactions ── */}
       <Card className="rounded-xl shadow-sm bg-white">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
@@ -390,12 +395,16 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
                     }`}>
                       {r._type === 'income'
                         ? <ArrowUpRight   className="w-4 h-4 text-green-600" />
-                        : <ArrowDownRight className="w-4 h-4 text-red-500" />}
+                        : <ArrowDownRight className="w-4 h-4 text-red-500"  />}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{r.description || r.category || '—'}</p>
+                      <p className="text-sm font-medium truncate">
+                        {r.description || r.title || r.category || '—'}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {new Date(r.date).toLocaleDateString('en-GH', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                        })}
                         {r.category ? ` · ${r.category}` : ''}
                       </p>
                     </div>
@@ -411,7 +420,7 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
         </CardContent>
       </Card>
 
-      {/* Savings Goals */}
+      {/* ── Savings Goals ── */}
       {goals.length > 0 && (
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
@@ -420,7 +429,8 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
           <CardContent className="space-y-4">
             {goals.map((g, i) => {
               const pct = Math.min(100, Number(g.target_amount) > 0
-                ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100) : 0)
+                ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100)
+                : 0)
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-1.5">

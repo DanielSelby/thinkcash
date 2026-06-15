@@ -186,3 +186,4 @@ export function TransactionsContent({ transactions }: Props) {
     </div>
   )
 }
+
