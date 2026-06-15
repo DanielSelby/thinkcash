@@ -323,7 +323,7 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
                       <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
@@ -351,7 +351,7 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
             ) : (
               <ResponsiveContainer width="100%" height={210}>
                 <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />

@@ -41,7 +41,7 @@ export function TrendChart({ data }: TrendChartProps) {
             <stop offset="95%" stopColor="hsl(4 84% 60%)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        
         <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
         <YAxis tick={{ fontSize: 12 }} tickLine={false} axisLine={false} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
         <Tooltip content={<CustomTooltip />} />
@@ -61,7 +61,7 @@ export function SavingsChart({ data }: SavingsChartProps) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <BarChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+        
         <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
         <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
         <Tooltip content={<CustomTooltip />} />
@@ -101,3 +101,4 @@ export function SpendingPieChart({ data }: SpendingPieProps) {
     </ResponsiveContainer>
   )
 }
+
