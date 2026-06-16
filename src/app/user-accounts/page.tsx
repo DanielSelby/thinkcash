@@ -15,6 +15,7 @@ export default async function UserAccountsPage() {
     { data: accounts },
     { data: incomes },
     { data: expenses },
+    { data: transfers },
   ] = await Promise.all([
     supabase.from('user_accounts').select('*')
       .eq('user_id', user.id).eq('is_active', true)
@@ -23,6 +24,9 @@ export default async function UserAccountsPage() {
       .eq('user_id', user.id),
     supabase.from('expenses').select('amount, account_id')
       .eq('user_id', user.id),
+    supabase.from('transfers').select('*')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false }),
   ])
 
   return (
@@ -31,6 +35,7 @@ export default async function UserAccountsPage() {
         initialAccounts={accounts ?? []}
         incomes={incomes ?? []}
         expenses={expenses ?? []}
+        initialTransfers={transfers ?? []}
         userId={user.id}
       />
     </AppShell>
