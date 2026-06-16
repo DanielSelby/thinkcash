@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Search, Edit2, Trash2, TrendingUp, Loader2 } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, TrendingDown, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,32 +15,33 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
-import { formatCurrency, formatDate, CATEGORY_COLORS } from '@/lib/utils'
+import { formatCurrency, formatDate, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
 import { useCategories } from '@/hooks/useCategories'
-import type { Income, UserAccount } from '@/types'
+import type { Expense, UserAccount } from '@/types'
 
 const schema = z.object({
-  title:      z.string().min(1, 'Title is required'),
-  amount:     z.coerce.number().positive('Amount must be positive'),
-  category:   z.string().min(1, 'Category is required'),
-  date:       z.string().min(1, 'Date is required'),
-  notes:      z.string().optional(),
-  account_id: z.string().optional(),
+  title:          z.string().min(1, 'Title is required'),
+  amount:         z.coerce.number().positive('Amount must be positive'),
+  category:       z.string().min(1, 'Category is required'),
+  payment_method: z.string().min(1, 'Payment method is required'),
+  date:           z.string().min(1, 'Date is required'),
+  notes:          z.string().optional(),
+  account_id:     z.string().optional(),
 })
 type FormData = z.infer<typeof schema>
 
 interface Props {
-  initialExpenses: Income[]
+  initialExpenses: Expense[]
   accounts: UserAccount[]
   userId: string
 }
 
 export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
-  const { incomeCategories } = useCategories()
+  const { expenseCategories } = useCategories()
 
-  const [incomes,        setIncomes]        = useState(initialExpenses)
+  const [expenses,       setExpenses]       = useState(initialExpenses)
   const [open,           setOpen]           = useState(false)
-  const [editing,        setEditing]        = useState<Income | null>(null)
+  const [editing,        setEditing]        = useState<Expense | null>(null)
   const [loading,        setLoading]        = useState(false)
   const [search,         setSearch]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -57,15 +58,16 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     setOpen(true)
   }
 
-  const openEdit = (income: Income) => {
-    setEditing(income)
+  const openEdit = (e: Expense) => {
+    setEditing(e)
     reset({
-      title:      income.title,
-      amount:     income.amount,
-      category:   income.category,
-      date:       income.date,
-      notes:      income.notes || '',
-      account_id: income.account_id || '',
+      title:          e.title,
+      amount:         e.amount,
+      category:       e.category,
+      payment_method: e.payment_method,
+      date:           e.date,
+      notes:          e.notes || '',
+      account_id:     e.account_id || '',
     })
     setOpen(true)
   }
@@ -76,24 +78,24 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     const payload  = { ...data, account_id: data.account_id || null }
     if (editing) {
       const { data: updated, error } = await supabase
-        .from('incomes')
+        .from('expenses')
         .update({ ...payload, updated_at: new Date().toISOString() })
         .eq('id', editing.id).select().single()
       if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
       else {
-        setIncomes(prev => prev.map(i => i.id === editing.id ? updated : i))
-        toast({ title: 'Income updated', variant: 'success' })
+        setExpenses(prev => prev.map(e => e.id === editing.id ? updated : e))
+        toast({ title: 'Expense updated', variant: 'success' })
         setOpen(false)
       }
     } else {
       const { data: created, error } = await supabase
-        .from('incomes')
+        .from('expenses')
         .insert({ ...payload, user_id: userId })
         .select().single()
       if (error) toast({ title: 'Failed to add', description: error.message, variant: 'destructive' })
       else {
-        setIncomes(prev => [created, ...prev])
-        toast({ title: 'Income added', variant: 'success' })
+        setExpenses(prev => [created, ...prev])
+        toast({ title: 'Expense added', variant: 'success' })
         setOpen(false)
       }
     }
@@ -101,25 +103,23 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this income entry?')) return
+    if (!confirm('Delete this expense?')) return
     const supabase = createClient()
-    const { error } = await supabase.from('incomes').delete().eq('id', id)
+    const { error } = await supabase.from('expenses').delete().eq('id', id)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     else {
-      setIncomes(prev => prev.filter(i => i.id !== id))
-      toast({ title: 'Income deleted' })
+      setExpenses(prev => prev.filter(e => e.id !== id))
+      toast({ title: 'Expense deleted' })
     }
   }
 
   const filtered = useMemo(() =>
-    incomes.filter(i => {
-      const matchSearch  = i.title.toLowerCase().includes(search.toLowerCase())
-      const matchCat     = categoryFilter === 'all' || i.category === categoryFilter
-      const matchAccount = accountFilter  === 'all' || i.account_id === accountFilter
+    expenses.filter(e => {
+      const matchSearch  = e.title.toLowerCase().includes(search.toLowerCase())
+      const matchCat     = categoryFilter === 'all' || e.category === categoryFilter
+      const matchAccount = accountFilter  === 'all' || e.account_id === accountFilter
       return matchSearch && matchCat && matchAccount
-    }), [incomes, search, categoryFilter, accountFilter])
-
-  const totalFiltered = filtered.reduce((s, i) => s + i.amount, 0)
+    }), [expenses, search, categoryFilter, accountFilter])
 
   const getAccountName = (id?: string | null) =>
     accounts.find(a => a.id === id)?.name ?? '—'
@@ -129,26 +129,28 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-xl font-bold">Income</h1>
-          <p className="text-muted-foreground text-sm">Track all your income sources</p>
+          <h1 className="font-display text-xl font-bold">Expenses</h1>
+          <p className="text-muted-foreground text-sm">Monitor and manage your spending</p>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-1" /> Add Income
+          <Plus className="w-4 h-4 mr-1" /> Add Expense
         </Button>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white kpi-green p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Income</p>
+        <Card className="bg-white kpi-red p-5">
+          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Expenses</p>
           <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
-            {formatCurrency(incomes.reduce((s, i) => s + i.amount, 0))}
+            {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
           </p>
         </Card>
         <Card className="bg-white kpi-blue p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">This View</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{formatCurrency(totalFiltered)}</p>
+          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
+            {formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}
+          </p>
         </Card>
-        <Card className="bg-white kpi-purple p-5">
+        <Card className="bg-white kpi-orange p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Entries</p>
           <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
         </Card>
@@ -157,14 +159,14 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search income…" value={search}
+          <Input placeholder="Search expenses…" value={search}
             onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {incomeCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
         {accounts.length > 0 && (
@@ -182,9 +184,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
-              <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-20" />
-              <p className="font-medium">No income entries found</p>
-              <p className="text-sm mt-1">Add your first income to get started</p>
+              <TrendingDown className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <p className="font-medium">No expenses found</p>
+              <p className="text-sm mt-1">Add your first expense to get started</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -194,47 +196,51 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                     <th className="text-left px-6 py-3 font-medium text-muted-foreground">Title</th>
                     <th className="text-left px-6 py-3 font-medium text-muted-foreground">Category</th>
                     <th className="text-left px-6 py-3 font-medium text-muted-foreground">Account</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Payment</th>
                     <th className="text-left px-6 py-3 font-medium text-muted-foreground">Date</th>
                     <th className="text-right px-6 py-3 font-medium text-muted-foreground">Amount</th>
                     <th className="text-right px-6 py-3 font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((income, idx) => (
-                    <tr key={income.id}
+                  {filtered.map((expense, i) => (
+                    <tr key={expense.id}
                       className={`border-b border-border last:border-0 hover:bg-muted/20 transition-colors ${
-                        idx % 2 === 1 ? 'bg-muted/10' : ''
+                        i % 2 === 1 ? 'bg-muted/10' : ''
                       }`}>
                       <td className="px-6 py-4">
-                        <p className="font-medium">{income.title}</p>
-                        {income.notes && (
-                          <p className="text-xs text-muted-foreground truncate max-w-xs">{income.notes}</p>
+                        <p className="font-medium">{expense.title}</p>
+                        {expense.notes && (
+                          <p className="text-xs text-muted-foreground truncate max-w-xs">{expense.notes}</p>
                         )}
                       </td>
                       <td className="px-6 py-4">
                         <Badge style={{
-                          background: `${CATEGORY_COLORS[income.category] || '#94a3b8'}20`,
-                          color: CATEGORY_COLORS[income.category] || '#94a3b8',
+                          background: `${CATEGORY_COLORS[expense.category] || '#94a3b8'}20`,
+                          color: CATEGORY_COLORS[expense.category] || '#94a3b8',
                         }}>
-                          {income.category}
+                          {expense.category}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground text-xs">
-                        {getAccountName(income.account_id)}
+                        {getAccountName(expense.account_id)}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">{formatDate(income.date)}</td>
-                      <td className="px-6 py-4 text-right font-semibold text-success tabular-nums">
-                        +{formatCurrency(income.amount)}
+                      <td className="px-6 py-4 text-muted-foreground capitalize">
+                        {expense.payment_method?.replace('_', ' ')}
+                      </td>
+                      <td className="px-6 py-4 text-muted-foreground">{formatDate(expense.date)}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-destructive tabular-nums">
+                        -{formatCurrency(expense.amount)}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-1">
                           <Button size="icon" variant="ghost" className="w-8 h-8"
-                            onClick={() => openEdit(income)}>
+                            onClick={() => openEdit(expense)}>
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
                           <Button size="icon" variant="ghost"
                             className="w-8 h-8 text-destructive hover:text-destructive"
-                            onClick={() => handleDelete(income.id)}>
+                            onClick={() => handleDelete(expense.id)}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -251,22 +257,20 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Income' : 'Add Income'}</DialogTitle>
+            <DialogTitle>{editing ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
 
             <div className="space-y-1.5">
               <Label>Title</Label>
-              <Input placeholder="e.g. Monthly Salary" {...register('title')}
-                className={errors.title ? 'border-destructive' : ''} />
+              <Input placeholder="e.g. Groceries" {...register('title')} />
               {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Amount (GHS)</Label>
-                <Input type="number" step="0.01" placeholder="0.00" {...register('amount')}
-                  className={errors.amount ? 'border-destructive' : ''} />
+                <Input type="number" step="0.01" placeholder="0.00" {...register('amount')} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -280,26 +284,38 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                 <Label>Category</Label>
                 <Select onValueChange={v => setValue('category', v)}
                   defaultValue={editing?.category}>
-                  <SelectTrigger className={errors.category ? 'border-destructive' : ''}>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
                   <SelectContent>
-                    {incomeCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label>Account <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Select onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
-                  defaultValue={editing?.account_id || 'none'}>
-                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                <Label>Payment Method</Label>
+                <Select onValueChange={v => setValue('payment_method', v)}
+                  defaultValue={editing?.payment_method}>
+                  <SelectTrigger><SelectValue placeholder="Method" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No account</SelectItem>
-                    {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {PAYMENT_METHODS.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                {errors.payment_method && <p className="text-xs text-destructive">{errors.payment_method.message}</p>}
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Account <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Select onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
+                defaultValue={editing?.account_id || 'none'}>
+                <SelectTrigger><SelectValue placeholder="Which account?" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1.5">
@@ -311,7 +327,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={loading}>
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : editing ? 'Save Changes' : 'Add Income'}
+                  : editing ? 'Save Changes' : 'Add Expense'}
               </Button>
             </div>
           </form>
@@ -320,4 +336,3 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     </div>
   )
 }
-

@@ -7,6 +7,7 @@ import {
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
   Settings, Shield, Users, ChevronLeft, ChevronRight,
   Wallet, RefreshCcw, Tag, BookMarked, CreditCard,
+  Sparkles, HeartPulse,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
@@ -14,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { APP_CONFIG } from '@/lib/config'
 
 const navItems = [
-  { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'         },
+  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'         },
   { href: '/transactions', icon: ArrowUpDown,     label: 'Transactions'      },
   { href: '/income',       icon: TrendingUp,      label: 'Income'            },
   { href: '/expenses',     icon: TrendingDown,    label: 'Expenses'          },
@@ -25,7 +26,9 @@ const navItems = [
   { href: '/reports',      icon: BarChart3,       label: 'Reports'           },
   { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics'         },
   { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
-  { href: '/user-accounts', icon: CreditCard,     label: 'My Accounts'       },
+  { href: '/user-accounts',icon: CreditCard,      label: 'My Accounts'       },
+  { href: '/health-score', icon: HeartPulse,      label: 'Health Score'      },
+  { href: '/ai-advisor',   icon: Sparkles,        label: 'AI Advisor'        },
 ]
 
 const bottomItems = [
@@ -41,7 +44,7 @@ const adminItems = [
 ]
 
 function NavLink({
-  href, icon: Icon, label, active, sidebar, sidebarOpen,
+  href, icon: Icon, label, active, sidebar, sidebarOpen, highlight,
 }: {
   href: string
   icon: any
@@ -49,6 +52,7 @@ function NavLink({
   active: boolean
   sidebar: any
   sidebarOpen: boolean
+  highlight?: boolean
 }) {
   return (
     <Link
@@ -59,9 +63,13 @@ function NavLink({
         sidebarOpen ? 'px-3 py-2' : 'justify-center w-10 h-10 mx-auto',
       )}
       style={{
-        background: active ? sidebar.activeBackground : 'transparent',
-        color:      active ? sidebar.activeText       : sidebar.textMuted,
-        boxShadow:  active && sidebarOpen
+        background: active
+          ? sidebar.activeBackground
+          : highlight && !active
+          ? 'rgba(255,255,255,0.06)'
+          : 'transparent',
+        color:     active ? sidebar.activeText : sidebar.textMuted,
+        boxShadow: active && sidebarOpen
           ? `inset 3px 0 0 ${sidebar.activeText}`
           : 'none',
       }}
@@ -75,32 +83,37 @@ function NavLink({
       onMouseLeave={e => {
         if (!active) {
           const el = e.currentTarget as HTMLElement
-          el.style.background = 'transparent'
+          el.style.background = highlight ? 'rgba(255,255,255,0.06)' : 'transparent'
           el.style.color      = sidebar.textMuted
         }
       }}
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
-      {sidebarOpen && <span>{label}</span>}
+      {sidebarOpen && (
+        <span className="flex-1">{label}</span>
+      )}
+      {sidebarOpen && highlight && !active && (
+        <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
+          style={{ background: sidebar.activeText + '25', color: sidebar.activeText }}>
+          AI
+        </span>
+      )}
     </Link>
   )
 }
 
-// Height of the logo image itself inside the circle
 const LOGO_IMG_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-8',
   md: 'h-12',
   lg: 'h-20',
 }
 
-// Size of the white circle container
 const LOGO_CIRCLE: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'w-12 h-12',
   md: 'w-16 h-16',
   lg: 'w-24 h-24',
 }
 
-// Height of the logo area at the top of the sidebar
 const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-16',
   md: 'h-20',
@@ -137,7 +150,6 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         )}
       >
         {appLogo ? (
-          /* White circle with logo inside */
           <div className={cn(
             'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300 p-1.5',
             !sidebarOpen ? 'w-10 h-10' : LOGO_CIRCLE[size]
@@ -152,7 +164,6 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             />
           </div>
         ) : (
-          /* Default placeholder — white dashed circle */
           <div
             className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center shadow-sm"
             style={{
@@ -194,7 +205,43 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             Admin Panel
           </p>
         )}
-        {items.map(({ href, icon, label }) => (
+
+        {/* Regular nav items */}
+        {items
+          .filter(i => i.href !== '/health-score' && i.href !== '/ai-advisor')
+          .map(({ href, icon, label }) => (
+            <NavLink
+              key={href}
+              href={href}
+              icon={icon}
+              label={label}
+              active={pathname === href || pathname.startsWith(href + '/')}
+              sidebar={sidebar}
+              sidebarOpen={sidebarOpen}
+            />
+          ))}
+
+        {/* AI section divider */}
+        {!isAdmin && sidebarOpen && (
+          <div className="pt-2 pb-1 px-3">
+            <div className="border-t"
+              style={{ borderColor: sidebar.borderColor }} />
+            <p className="text-xs font-semibold uppercase tracking-wider mt-2"
+              style={{ color: sidebar.activeText }}>
+              ✦ AI Features
+            </p>
+          </div>
+        )}
+        {!isAdmin && !sidebarOpen && (
+          <div className="my-1 mx-auto w-6 border-t"
+            style={{ borderColor: sidebar.borderColor }} />
+        )}
+
+        {/* AI nav items */}
+        {!isAdmin && [
+          { href: '/health-score', icon: HeartPulse, label: 'Health Score' },
+          { href: '/ai-advisor',   icon: Sparkles,   label: 'AI Advisor'   },
+        ].map(({ href, icon, label }) => (
           <NavLink
             key={href}
             href={href}
@@ -203,6 +250,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             active={pathname === href || pathname.startsWith(href + '/')}
             sidebar={sidebar}
             sidebarOpen={sidebarOpen}
+            highlight
           />
         ))}
       </nav>
