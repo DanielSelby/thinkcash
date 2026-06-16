@@ -12,12 +12,8 @@ export interface Profile {
 }
 
 export type IncomeCategory =
-  | 'salary'
-  | 'freelance'
-  | 'business'
-  | 'investment'
-  | 'rental'
-  | 'other'
+  | 'salary' | 'freelance' | 'business'
+  | 'investment' | 'rental' | 'other'
 
 export interface Income {
   id: string
@@ -27,30 +23,19 @@ export interface Income {
   category: IncomeCategory
   notes: string | null
   date: string
+  account_id?: string | null
   created_at: string
   updated_at: string
 }
 
 export type ExpenseCategory =
-  | 'food'
-  | 'transportation'
-  | 'housing'
-  | 'utilities'
-  | 'entertainment'
-  | 'healthcare'
-  | 'shopping'
-  | 'education'
-  | 'travel'
-  | 'insurance'
-  | 'investments'
-  | 'other'
+  | 'food' | 'transportation' | 'housing' | 'utilities'
+  | 'entertainment' | 'healthcare' | 'shopping' | 'education'
+  | 'travel' | 'insurance' | 'investments' | 'other'
 
 export type PaymentMethod =
-  | 'cash'
-  | 'mobile_money'
-  | 'debit_card'
-  | 'credit_card'
-  | 'bank_transfer'
+  | 'cash' | 'mobile_money' | 'debit_card'
+  | 'credit_card' | 'bank_transfer'
 
 export interface Expense {
   id: string
@@ -61,8 +46,28 @@ export interface Expense {
   payment_method: PaymentMethod
   notes: string | null
   date: string
+  account_id?: string | null
   created_at: string
   updated_at: string
+}
+
+export type AccountType = 'bank' | 'mobile_money' | 'cash' | 'investment'
+
+export interface UserAccount {
+  id: string
+  user_id: string
+  name: string
+  type: AccountType
+  institution?: string | null
+  opening_balance: number
+  currency: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  // computed
+  total_income?: number
+  total_expenses?: number
+  balance?: number
 }
 
 export interface Budget {
@@ -75,7 +80,6 @@ export interface Budget {
   budget_year?: number
   created_at: string
   updated_at: string
-  // computed
   spent?: number
   remaining?: number
   percentage?: number
@@ -91,7 +95,6 @@ export interface SavingsGoal {
   notes: string | null
   created_at: string
   updated_at: string
-  // computed
   percentage?: number
   days_remaining?: number
 }

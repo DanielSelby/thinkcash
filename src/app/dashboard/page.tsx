@@ -14,24 +14,21 @@ export default async function DashboardPage() {
   const { data: profile } = await supabase
     .from('profiles').select('*').eq('id', user.id).single()
 
-  // Fetch ALL transactions — no date filter
-  // Dashboard shows full overview; user filters client-side when needed
   const [
     { data: incomes },
     { data: expenses },
     { data: budgets },
     { data: goals },
+    { data: accounts },
   ] = await Promise.all([
     supabase.from('incomes').select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false }),
+      .eq('user_id', user.id).order('date', { ascending: false }),
     supabase.from('expenses').select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false }),
-    supabase.from('budgets').select('*')
-      .eq('user_id', user.id),
-    supabase.from('savings_goals').select('*')
-      .eq('user_id', user.id),
+      .eq('user_id', user.id).order('date', { ascending: false }),
+    supabase.from('budgets').select('*').eq('user_id', user.id),
+    supabase.from('savings_goals').select('*').eq('user_id', user.id),
+    supabase.from('user_accounts').select('*')
+      .eq('user_id', user.id).eq('is_active', true),
   ])
 
   return (
@@ -42,6 +39,7 @@ export default async function DashboardPage() {
         budgets={budgets   ?? []}
         goals={goals       ?? []}
         profile={profile}
+        accounts={accounts ?? []}
       />
     </AppShell>
   )

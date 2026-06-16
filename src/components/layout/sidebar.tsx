@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ArrowUpDown, TrendingUp, TrendingDown,
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
   Settings, Shield, Users, ChevronLeft, ChevronRight,
-  Wallet, RefreshCcw, Tag, BookMarked,
+  Wallet, RefreshCcw, Tag, BookMarked, CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { APP_CONFIG } from '@/lib/config'
 
 const navItems = [
-  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'         },
+  { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'         },
   { href: '/transactions', icon: ArrowUpDown,     label: 'Transactions'      },
   { href: '/income',       icon: TrendingUp,      label: 'Income'            },
   { href: '/expenses',     icon: TrendingDown,    label: 'Expenses'          },
@@ -25,6 +25,7 @@ const navItems = [
   { href: '/reports',      icon: BarChart3,       label: 'Reports'           },
   { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics'         },
   { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
+  { href: '/user-accounts', icon: CreditCard,     label: 'My Accounts'       },
 ]
 
 const bottomItems = [

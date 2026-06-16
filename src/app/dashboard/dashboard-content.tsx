@@ -14,6 +14,7 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 
 interface Props {
+  accounts: any[]
   incomes: any[]
   expenses: any[]
   budgets: any[]
@@ -57,7 +58,7 @@ function KPI({ label, value, sub, colorClass, icon: Icon }: {
   )
 }
 
-export function DashboardContent({ incomes, expenses, budgets, goals, profile }: Props) {
+export function DashboardContent({ accounts, incomes, expenses, budgets, goals, profile }: Props) {
   const { setProfile, activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -72,6 +73,22 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
   const [incomeCat,   setIncomeCat]   = useState('All')
   const [expenseCat,  setExpenseCat]  = useState('All')
   const [isFiltered,  setIsFiltered]  = useState(false)
+
+  // ── Account Slicer State & Computations ──
+  const [accountTypeFilter, setAccountTypeFilter] = useState('all')
+  const ACCOUNT_TYPE_COLORS: Record<string, string> = {
+    bank:         '#2563eb',
+    mobile_money: '#f59e0b',
+    cash:         '#16a34a',
+    investment:   '#7c3aed',
+  }
+
+  const accountsWithBalance = useMemo(() =>
+    accounts.map(acc => {
+      const totalIncome  = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      return { ...acc, total_income: totalIncome, total_expenses: totalExpense, balance: acc.opening_balance + totalIncome - totalExpense }
+    }), [accounts, incomes, expenses])
 
   // Any change triggers filter immediately — no Apply button needed
   const setFrom  = (v: string) => { setLocalFrom(v);  setIsFiltered(true) }
@@ -301,6 +318,69 @@ export function DashboardContent({ incomes, expenses, budgets, goals, profile }:
         <KPI label="Savings Rate"   value={`${savingsRate}%`}
           sub="Of income saved"                           colorClass="kpi-purple" icon={Target}        />
       </div>
+
+      {/* ── Account Slicer ── */}
+      {accounts.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Account Balances</p>
+            <div className="flex gap-2 flex-wrap">
+              {['all', 'bank', 'mobile_money', 'cash', 'investment'].map(type => (
+                <button
+                  key={type}
+                  onClick={() => setAccountTypeFilter(type)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition-colors border ${
+                    accountTypeFilter === type
+                      ? 'text-white border-transparent'
+                      : 'border-border bg-white text-muted-foreground hover:border-primary/50'
+                  }`}
+                  style={accountTypeFilter === type ? { background: theme.colors.primary } : {}}
+                >
+                  {type === 'mobile_money' ? 'Mobile Money' : type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {accountsWithBalance
+              .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
+              .map(acc => {
+                const color = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+                return (
+                  <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
+                    <div className="h-1" style={{ background: color }} />
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground truncate">{acc.name}</p>
+                      <p className="text-lg font-bold tabular-nums mt-1" style={{ color }}>
+                        {fmt(acc.balance ?? 0)}
+                      </p>
+                      <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                        <span className="text-green-600">+{fmt(acc.total_income ?? 0)}</span>
+                        <span className="text-red-500">-{fmt(acc.total_expenses ?? 0)}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+          </div>
+          {/* Total across filtered accounts */}
+          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
+            <p className="text-sm font-semibold">
+              Total Balance
+              {accountTypeFilter !== 'all' && (
+                <span className="text-muted-foreground font-normal ml-1 capitalize">
+                  ({accountTypeFilter === 'mobile_money' ? 'Mobile Money' : accountTypeFilter})
+                </span>
+              )}
+            </p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
+              {fmt(accountsWithBalance
+                .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
+                .reduce((s, a) => s + (a.balance ?? 0), 0))}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
