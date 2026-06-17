@@ -8,7 +8,10 @@ import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 export function AppShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
-  const { profile, setAppLogo, setLogoSize, viewMode } = useAppStore()
+  const {
+    profile, setAppLogo, setLogoSize,
+    viewMode, sidebarOpen, setSidebarOpen,
+  } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
 
   useEffect(() => {
@@ -33,6 +36,14 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     loadSettings()
   }, [])
 
+  // Auto-collapse sidebar when switching to mobile view — a full 256px
+  // sidebar inside a 480px frame leaves no room for content
+  useEffect(() => {
+    if (viewMode === 'mobile' && sidebarOpen) {
+      setSidebarOpen(false)
+    }
+  }, [viewMode])
+
   const isMobile = viewMode === 'mobile'
 
   return (
@@ -44,8 +55,8 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
         <Sidebar isAdmin={adminMode} />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <TopNav />
-          <main className="flex-1 overflow-y-auto">
-            <div className={cn('p-6', isMobile ? '' : 'max-w-7xl mx-auto')}>
+          <main className="flex-1 overflow-y-auto overflow-x-hidden">
+            <div className={cn(isMobile ? 'p-3' : 'p-6 max-w-7xl mx-auto')}>
               {children}
             </div>
           </main>

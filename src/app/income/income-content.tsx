@@ -135,7 +135,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
   return (
     <div className="space-y-5 animate-fade-in">
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-bold">Income</h1>
           <p className="text-muted-foreground text-sm">Track all your income sources</p>
@@ -145,7 +145,8 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      {/* KPI cards — stack on narrow screens instead of crushing into 3 columns */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-white kpi-green p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Income</p>
           <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
@@ -166,13 +167,13 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search income…" value={search}
             onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {incomeCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -180,7 +181,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Select>
         {accounts.length > 0 && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Accounts</SelectItem>
               {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -202,12 +203,12 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20">
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Title</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Category</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Account</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Date</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Amount</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Actions</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Title</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Category</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Account</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Amount</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -216,13 +217,13 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                       className={`border-b border-border last:border-0 hover:bg-muted/20 transition-colors ${
                         idx % 2 === 1 ? 'bg-muted/10' : ''
                       }`}>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <p className="font-medium">{income.title}</p>
                         {income.notes && (
                           <p className="text-xs text-muted-foreground truncate max-w-xs">{income.notes}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <Badge style={{
                           background: `${CATEGORY_COLORS[income.category] || '#94a3b8'}20`,
                           color: CATEGORY_COLORS[income.category] || '#94a3b8',
@@ -230,14 +231,14 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                           {income.category}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground text-xs">
+                      <td className="px-6 py-4 text-muted-foreground text-xs whitespace-nowrap">
                         {getAccountName(income.account_id)}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">{formatDate(income.date)}</td>
-                      <td className="px-6 py-4 text-right font-semibold text-success tabular-nums">
+                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{formatDate(income.date)}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-success tabular-nums whitespace-nowrap">
                         +{formatCurrency(income.amount, getAccountCurrency(income.account_id))}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex justify-end gap-1">
                           <Button size="icon" variant="ghost" className="w-8 h-8"
                             onClick={() => openEdit(income)}>

@@ -122,7 +122,7 @@ const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
 
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname()
-  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize } = useAppStore()
+  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize, viewMode } = useAppStore()
   const theme       = getTheme()
   const { sidebar } = theme
   const items       = isAdmin ? adminItems : navItems
@@ -136,7 +136,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
     <aside
       style={{ background: sidebar.background, borderColor: sidebar.borderColor }}
       className={cn(
-        'relative flex flex-col h-full border-r transition-all duration-300 ease-in-out',
+        'relative flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0',
         sidebarOpen ? 'w-64' : 'w-16'
       )}
     >
@@ -273,22 +273,24 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         ))}
       </div>
 
-      {/* ── Collapse toggle ── */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-        style={{
-          background:  sidebar.background,
-          borderColor: sidebar.borderColor,
-          color:       sidebar.text,
-        }}
-        className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
-      >
-        {sidebarOpen
-          ? <ChevronLeft  className="w-3 h-3" />
-          : <ChevronRight className="w-3 h-3" />}
-      </Button>
+      {/* ── Collapse toggle — hidden in mobile view since sidebar auto-collapses there ── */}
+      {viewMode !== 'mobile' && (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          style={{
+            background:  sidebar.background,
+            borderColor: sidebar.borderColor,
+            color:       sidebar.text,
+          }}
+          className="absolute -right-3 top-20 w-6 h-6 rounded-full border shadow-sm"
+        >
+          {sidebarOpen
+            ? <ChevronLeft  className="w-3 h-3" />
+            : <ChevronRight className="w-3 h-3" />}
+        </Button>
+      )}
     </aside>
   )
 }
