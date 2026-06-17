@@ -39,82 +39,100 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   bank: '#2563eb', mobile_money: '#f59e0b', cash: '#16a34a', investment: '#7c3aed',
 }
 
-function KPI({ label, value, sub, colorClass, icon: Icon, compact, tooltip }: {
-  label: string; value: string; sub?: string; colorClass: string; icon: any; compact?: boolean; tooltip?: string
+const DONUT_COLORS = ['#16a34a','#2563eb','#7c3aed','#f59e0b','#dc2626','#0d9488','#db2777','#65a30d']
+
+// ── Reusable KPI Card ─────────────────────────────────────────────────
+export function KPICard({ label, value, sub, colorClass, icon: Icon, tooltip }: {
+  label: string; value: string; sub?: string
+  colorClass: string; icon: any; tooltip?: string
 }) {
   const [hovered, setHovered] = useState(false)
   return (
     <Card
-      className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-visible relative transition-transform ${
-        tooltip ? 'cursor-default hover:-translate-y-0.5 hover:shadow-md' : ''
-      }`}
+      className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-visible relative`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <CardContent className={compact ? 'pt-3 pb-3 px-3 overflow-hidden' : 'pt-4 pb-4 px-5 overflow-hidden'}>
+      <CardContent className="pt-4 pb-4 px-5 overflow-hidden">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className={`font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate">
               {label}
             </p>
-            <p className={`kpi-value font-bold tabular-nums leading-tight truncate ${compact ? 'text-base' : 'text-2xl'}`}>
+            <p className="kpi-value text-2xl font-bold tabular-nums leading-tight truncate">
               {value}
             </p>
-            {sub && <p className={`text-muted-foreground mt-1 truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>{sub}</p>}
+            {sub && <p className="text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          <div className={`rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 ${compact ? 'w-7 h-7' : 'w-9 h-9'}`}>
-            <Icon className={compact ? 'w-3.5 h-3.5 text-muted-foreground' : 'w-4 h-4 text-muted-foreground'} />
+          <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
+            <Icon className="w-4 h-4 text-muted-foreground" />
           </div>
         </div>
       </CardContent>
-
-      {/* Hover tooltip */}
       {tooltip && hovered && (
-        <div className="absolute left-1/2 -translate-x-1/2 -top-2 -translate-y-full z-20 w-56 pointer-events-none">
-          <div className="bg-foreground text-background text-xs rounded-lg px-3 py-2 shadow-lg leading-relaxed">
+        <div className="absolute left-1/2 -translate-x-1/2 -top-2 -translate-y-full z-50 w-60 pointer-events-none">
+          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-relaxed">
             {tooltip}
           </div>
-          <div className="w-2 h-2 bg-foreground rotate-45 mx-auto -mt-1" />
+          <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
         </div>
       )}
     </Card>
   )
 }
 
-export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile }: Props) {
-  const { setProfile, activeTheme, currency, viewMode } = useAppStore()
-  const theme = THEMES[activeTheme] ?? THEMES['green']
-  const isMobile = viewMode === 'mobile'
+// ── Donut custom label ────────────────────────────────────────────────
+const DonutLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+  if (percent < 0.05) return null
+  const RADIAN = Math.PI / 180
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.5
+  const x = cx + radius * Math.cos(-midAngle * RADIAN)
+  const y = cy + radius * Math.sin(-midAngle * RADIAN)
+  return (
+    <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central"
+      fontSize={11} fontWeight={600}>
+      {`${(percent * 100).toFixed(0)}%`}
+    </text>
+  )
+}
 
-  const fmt = (n: number) => formatCurrency(n, currency)
+export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile }: Props) {
+  const { setProfile, activeTheme, currency } = useAppStore()
+  const theme = THEMES[activeTheme] ?? THEMES['green']
+
+  const fmt = useMemo(() => (n: number) => formatCurrency(n, currency), [currency])
+  const shortFmt = (v: number) => {
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+    if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
+    return String(Math.round(v))
+  }
 
   useEffect(() => { if (profile) setProfile(profile) }, [profile])
 
-  const [showFilter,   setShowFilter]   = useState(false)
-  const [localFrom,    setLocalFrom]    = useState('')
-  const [localTo,      setLocalTo]      = useState('')
-  const [selMonth,     setSelMonth]     = useState('')
-  const [selYear,      setSelYear]      = useState('')
-  const [incomeCat,    setIncomeCat]    = useState('All')
-  const [expenseCat,   setExpenseCat]   = useState('All')
-  const [isFiltered,   setIsFiltered]   = useState(false)
+  const [showFilter,        setShowFilter]        = useState(false)
+  const [localFrom,         setLocalFrom]         = useState('')
+  const [localTo,           setLocalTo]           = useState('')
+  const [selMonth,          setSelMonth]          = useState('')
+  const [selYear,           setSelYear]           = useState('')
+  const [incomeCat,         setIncomeCat]         = useState('All')
+  const [expenseCat,        setExpenseCat]        = useState('All')
+  const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
-  const [activeDonutIndex, setActiveDonutIndex] = useState<number | null>(null)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
-      const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
-      const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
-      const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const balance       = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
+      const totalIncome  = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const transfersOut = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const transfersIn  = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const balance      = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
       return { ...acc, total_income: totalIncome, total_expenses: totalExpense, transfers_in: transfersIn, transfers_out: transfersOut, balance }
     }), [accounts, incomes, expenses, transfers])
 
-  const setFrom   = (v: string) => { setLocalFrom(v);   setIsFiltered(true) }
-  const setTo     = (v: string) => { setLocalTo(v);     setIsFiltered(true) }
-  const setIncCat = (v: string) => { setIncomeCat(v);   setIsFiltered(true) }
-  const setExpCat = (v: string) => { setExpenseCat(v);  setIsFiltered(true) }
+  const setFrom   = (v: string) => { setLocalFrom(v);  setIsFiltered(true) }
+  const setTo     = (v: string) => { setLocalTo(v);    setIsFiltered(true) }
+  const setIncCat = (v: string) => { setIncomeCat(v);  setIsFiltered(true) }
+  const setExpCat = (v: string) => { setExpenseCat(v); setIsFiltered(true) }
 
   const handleMonthChange = (m: string) => {
     setSelMonth(m)
@@ -173,7 +191,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const net          = totalIncome - totalExpense
   const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
-  // Income breakdown by category — for donut chart
   const incomeByCategory = useMemo(() => {
     const map: Record<string, number> = {}
     filteredIncomes.forEach(r => {
@@ -185,17 +202,18 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       .sort((a, b) => b.value - a.value)
   }, [filteredIncomes])
 
-  const DONUT_COLORS = ['#16a34a', '#2563eb', '#7c3aed', '#f59e0b', '#dc2626', '#0d9488', '#db2777', '#65a30d']
-
+  // ── Chart data: group by month ──
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
     filteredIncomes.forEach(r => {
-      const d = r.date?.slice(0, 7) ?? ''
+      const d = (r.date ?? '').slice(0, 7)
+      if (!d) return
       if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
       map[d].income += Number(r.amount)
     })
     filteredExpenses.forEach(r => {
-      const d = r.date?.slice(0, 7) ?? ''
+      const d = (r.date ?? '').slice(0, 7)
+      if (!d) return
       if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
       map[d].expense += Number(r.amount)
     })
@@ -209,7 +227,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
-      const spent = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
+      const spent = filteredExpenses
+        .filter(e => e.category === b.category)
+        .reduce((s, e) => s + Number(e.amount), 0)
       return { name: b.category, budget: Number(b.amount), spent }
     }), [budgets, filteredExpenses])
 
@@ -308,37 +328,49 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </Card>
       )}
 
-      {/* KPI Cards — original 4-column desktop layout, compact 2-column on mobile */}
-      <div className={isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-4'}>
-        <KPI compact={isMobile} label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}
-          tooltip={`Exact: ${fmt(totalIncome)} across ${filteredIncomes.length} transaction(s)${incomeByCategory[0] ? ` · Top category: ${incomeByCategory[0].name} (${fmt(incomeByCategory[0].value)})` : ''}`} />
-        <KPI compact={isMobile} label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown}
-          tooltip={`Exact: ${fmt(totalExpense)} across ${filteredExpenses.length} transaction(s)`} />
-        <KPI compact={isMobile} label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}
-          tooltip={`Income ${fmt(totalIncome)} minus Expenses ${fmt(totalExpense)} = ${fmt(net)}`} />
-        <KPI compact={isMobile} label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"                          colorClass="kpi-purple" icon={Target}
-          tooltip={`${savingsRate}% of income was saved (Net ${fmt(net)} ÷ Income ${fmt(totalIncome)})`} />
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Total Income"   value={fmt(totalIncome)}
+          sub={`${filteredIncomes.length} transactions`}
+          colorClass="kpi-green"  icon={TrendingUp}
+          tooltip={`Exact: ${fmt(totalIncome)} · ${filteredIncomes.length} transaction(s)${incomeByCategory[0] ? ` · Top: ${incomeByCategory[0].name}` : ''}`}
+        />
+        <KPICard label="Total Expenses" value={fmt(totalExpense)}
+          sub={`${filteredExpenses.length} transactions`}
+          colorClass="kpi-red"    icon={TrendingDown}
+          tooltip={`Exact: ${fmt(totalExpense)} · ${filteredExpenses.length} transaction(s)`}
+        />
+        <KPICard label="Net Balance"    value={fmt(net)}
+          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}
+          colorClass="kpi-blue"   icon={Wallet}
+          tooltip={`${fmt(totalIncome)} income − ${fmt(totalExpense)} expenses = ${fmt(net)}`}
+        />
+        <KPICard label="Savings Rate"   value={`${savingsRate}%`}
+          sub="Of income saved"
+          colorClass="kpi-purple" icon={Target}
+          tooltip={`${savingsRate}% of income saved · Net ${fmt(net)} ÷ Income ${fmt(totalIncome)}`}
+        />
       </div>
 
       {/* Account Slicer */}
       {accounts.length > 0 && (
         <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm font-semibold">Account Balances</p>
             <div className="flex gap-1.5 flex-wrap">
               {['all', 'bank', 'mobile_money', 'cash', 'investment'].map(type => (
                 <button key={type} onClick={() => setAccountTypeFilter(type)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-medium capitalize transition-colors border whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-colors border ${
                     accountTypeFilter === type ? 'text-white border-transparent' : 'border-border bg-white text-muted-foreground hover:border-primary/50'
                   }`}
                   style={accountTypeFilter === type ? { background: theme.colors.primary } : {}}>
-                  {type === 'mobile_money' ? 'Mobile Money' : type === 'all' ? 'All Types' : type.charAt(0).toUpperCase() + type.slice(1)}
+                  {type === 'mobile_money' ? 'Mobile Money' : type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className={isMobile ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3'}>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {accountsWithBalance
               .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
               .map(acc => {
@@ -346,25 +378,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 return (
                   <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                     <div className="h-1" style={{ background: color }} />
-                    <CardContent className={isMobile ? 'p-3 overflow-hidden' : 'p-4'}>
-                      <p className={isMobile ? 'text-[10px] text-muted-foreground truncate' : 'text-xs text-muted-foreground truncate'}>
-                        {acc.name}
-                      </p>
-                      <p className={`font-bold tabular-nums mt-1 truncate ${isMobile ? 'text-sm' : 'text-lg'}`} style={{ color }}>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground truncate">{acc.name}</p>
+                      <p className="text-lg font-bold tabular-nums mt-1 truncate" style={{ color }}>
                         {formatCurrency(acc.balance ?? 0, acc.currency)}
                       </p>
-                      <div className={`flex justify-between mt-2 gap-1 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
-                        <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
-                        <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
+                      <div className="flex justify-between text-xs mt-2">
+                        <span className="text-green-600">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+                        <span className="text-red-500">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
                       </div>
                       {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
-                        <div className={`flex justify-between mt-1 gap-1 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
-                          {(acc.transfers_in ?? 0) > 0 && (
-                            <span className="text-blue-500 truncate">↙ {formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
-                          )}
-                          {(acc.transfers_out ?? 0) > 0 && (
-                            <span className="text-orange-500 truncate">↗ {formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>
-                          )}
+                        <div className="flex justify-between text-xs mt-1">
+                          {(acc.transfers_in  ?? 0) > 0 && <span className="text-blue-500">↙ {formatCurrency(acc.transfers_in  ?? 0, acc.currency)}</span>}
+                          {(acc.transfers_out ?? 0) > 0 && <span className="text-orange-500">↗ {formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>}
                         </div>
                       )}
                     </CardContent>
@@ -373,23 +399,16 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               })}
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm gap-2">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">
-                Total Balance
-                {accountTypeFilter !== 'all' && (
-                  <span className="text-muted-foreground font-normal ml-1 capitalize">
-                    ({accountTypeFilter === 'mobile_money' ? 'Mobile Money' : accountTypeFilter})
-                  </span>
-                )}
-              </p>
-              {accountsWithBalance.some(a => a.currency !== currency) && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Converted at face value, mixed currencies
-                </p>
+          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
+            <p className="text-sm font-semibold">
+              Total Balance
+              {accountTypeFilter !== 'all' && (
+                <span className="text-muted-foreground font-normal ml-1 capitalize">
+                  ({accountTypeFilter === 'mobile_money' ? 'Mobile Money' : accountTypeFilter})
+                </span>
               )}
-            </div>
-            <p className="text-base sm:text-lg font-bold tabular-nums flex-shrink-0" style={{ color: theme.colors.primary }}>
+            </p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
               {fmt(accountsWithBalance
                 .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
                 .reduce((s, a) => s + (a.balance ?? 0), 0))}
@@ -398,49 +417,52 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="rounded-xl shadow-sm bg-white lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Income vs Expenses by Month</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {chartData.length === 0 ? 'No transactions yet' : `${chartData.length} month(s) of data`}
-            </p>
-          </CardHeader>
-          <CardContent>
-            {chartData.length === 0 ? (
-              <div className="h-52 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <TrendingUp className="w-8 h-8 opacity-20" />
-                <p className="text-sm">Add income or expenses to see your chart</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={isMobile ? 200 : 210}>
-                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: isMobile ? -16 : 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0}    />
-                    </linearGradient>
-                    <linearGradient id="gExp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0}    />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="label" tick={{ fontSize: isMobile ? 10 : 11 }} />
-                  <YAxis
-                    tick={{ fontSize: isMobile ? 10 : 11 }}
-                    width={isMobile ? 48 : undefined}
-                    tickFormatter={v => isMobile ? `₵${(v/1000).toFixed(0)}k` : fmt(v)}
-                  />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                  <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  />
-                  <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+      {/* ── Charts Row 1: Area chart full width ── */}
+      <Card className="rounded-xl shadow-sm bg-white">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Income vs Expenses by Month</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {chartData.length === 0 ? 'No transactions yet' : `${chartData.length} month(s) of data`}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {chartData.length === 0 ? (
+            <div className="h-52 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <TrendingUp className="w-8 h-8 opacity-20" />
+              <p className="text-sm">Add income or expenses to see your chart</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0}    />
+                  </linearGradient>
+                  <linearGradient id="gExp" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#dc2626" stopOpacity={0}    />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis
+                  tick={{ fontSize: 11 }}
+                  width={52}
+                  tickFormatter={shortFmt}
+                />
+                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  />
+                <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
+      {/* ── Charts Row 2: Budget bar + Income donut side by side ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Budget Usage */}
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Budget Usage</CardTitle>
@@ -455,14 +477,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Create a budget to track spending</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={isMobile ? 200 : 210}>
-                <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: isMobile ? 10 : 11 }}
-                    tickFormatter={v => isMobile ? `₵${(v/1000).toFixed(0)}k` : fmt(v)}
-                  />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: isMobile ? 10 : 11 }} width={isMobile ? 70 : 90} />
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} width={52} tickFormatter={shortFmt} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
                   <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0,4,4,0]} />
                   <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0,4,4,0]} />
@@ -472,7 +490,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           </CardContent>
         </Card>
 
-        {/* Income by Category — Donut */}
+        {/* Income by Category — Donut with % labels */}
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Income by Category</CardTitle>
@@ -487,7 +505,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Add income to see the breakdown</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={isMobile ? 220 : 260}>
+              <ResponsiveContainer width="100%" height={220}>
                 <PieChart>
                   <Pie
                     data={incomeByCategory}
@@ -495,39 +513,24 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    innerRadius={isMobile ? 45 : 60}
-                    outerRadius={isMobile ? 70 : 90}
+                    innerRadius={55}
+                    outerRadius={85}
                     paddingAngle={2}
-                    isAnimationActive
+                    labelLine={false}
+                    label={DonutLabel}
                     animationDuration={500}
-                    onClick={(_, index) => setActiveDonutIndex(prev => prev === index ? null : index)}
                   >
                     {incomeByCategory.map((_, i) => (
-                      <Cell
-                        key={i}
-                        fill={DONUT_COLORS[i % DONUT_COLORS.length]}
-                        stroke="#fff"
-                        strokeWidth={2}
-                        style={{
-                          cursor: 'pointer',
-                          transition: 'transform 0.25s ease',
-                          transform: activeDonutIndex === i ? 'scale(1.08)' : 'scale(1)',
-                          transformOrigin: 'center',
-                          filter: activeDonutIndex !== null && activeDonutIndex !== i ? 'opacity(0.5)' : 'none',
-                        }}
-                      />
+                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} stroke="#fff" strokeWidth={2} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    formatter={(value: any, name: any) => [fmt(Number(value)), name]}
-                    wrapperStyle={{ zIndex: 50 }}
-                  />
+                  <Tooltip formatter={(v: any, name: any) => [fmt(Number(v)), name]} />
                   <Legend
-                    layout={isMobile ? 'horizontal' : 'vertical'}
-                    align={isMobile ? 'center' : 'right'}
-                    verticalAlign={isMobile ? 'bottom' : 'middle'}
+                    layout="vertical"
+                    align="right"
+                    verticalAlign="middle"
                     iconSize={8}
-                    wrapperStyle={{ fontSize: isMobile ? 10 : 11 }}
+                    wrapperStyle={{ fontSize: 11 }}
                   />
                 </PieChart>
               </ResponsiveContainer>
