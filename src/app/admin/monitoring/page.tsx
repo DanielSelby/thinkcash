@@ -7,6 +7,7 @@ import { Shield, CheckCircle, AlertTriangle } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
 export const metadata = { title: 'Admin — Monitoring' }
+export const dynamic  = 'force-dynamic'
 
 export default async function AdminMonitoringPage() {
   const supabase = await createClient()
@@ -93,3 +94,4 @@ export default async function AdminMonitoringPage() {
     </AppShell>
   )
 }
+

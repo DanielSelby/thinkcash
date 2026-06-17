@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { RecurringContent } from './recurring-content'
 
 export const metadata = { title: 'Recurring Transactions' }
+export const dynamic  = 'force-dynamic'
 
 export default async function RecurringPage() {
   const supabase = await createClient()
@@ -22,3 +23,4 @@ export default async function RecurringPage() {
     </AppShell>
   )
 }
+

@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { NotificationsContent } from './notifications-content'
 
 export const metadata = { title: 'Notifications' }
+export const dynamic  = 'force-dynamic'
 
 export default async function NotificationsPage() {
   const supabase = await createClient()
@@ -22,3 +23,4 @@ export default async function NotificationsPage() {
     </AppShell>
   )
 }
+

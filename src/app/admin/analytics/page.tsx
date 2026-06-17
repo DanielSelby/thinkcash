@@ -6,6 +6,7 @@ import { Users, TrendingUp, Activity, Database } from 'lucide-react'
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 
 export const metadata = { title: 'Admin — Analytics' }
+export const dynamic  = 'force-dynamic'
 
 export default async function AdminAnalyticsPage() {
   const supabase = await createClient()
@@ -90,3 +91,4 @@ export default async function AdminAnalyticsPage() {
     </AppShell>
   )
 }
+

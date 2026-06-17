@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AnalyticsContent } from './analytics-content'
 
 export const metadata = { title: 'Analytics' }
+export const dynamic  = 'force-dynamic'
 
 export default async function AnalyticsPage() {
   const supabase = await createClient()
@@ -24,3 +25,4 @@ export default async function AnalyticsPage() {
     </AppShell>
   )
 }
+

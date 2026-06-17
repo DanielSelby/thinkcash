@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { SavingsContent } from './savings-content'
 
 export const metadata = { title: 'Savings Goals' }
+export const dynamic  = 'force-dynamic'
 
 export default async function SavingsPage() {
   const supabase = await createClient()
@@ -22,3 +23,4 @@ export default async function SavingsPage() {
     </AppShell>
   )
 }
+

@@ -52,6 +52,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     defaultValues: { date: new Date().toISOString().split('T')[0] },
   })
 
+  const getAccountCurrency = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.currency
+
   const openCreate = () => {
     setEditing(null)
     reset({ date: new Date().toISOString().split('T')[0] })
@@ -127,7 +130,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   return (
     <div className="space-y-5 animate-fade-in">
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-bold">Expenses</h1>
           <p className="text-muted-foreground text-sm">Monitor and manage your spending</p>
@@ -137,33 +140,33 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white kpi-red p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Expenses</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Expenses</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
             {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
           </p>
         </Card>
-        <Card className="bg-white kpi-blue p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">This View</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
+        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">This View</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
             {formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}
           </p>
         </Card>
-        <Card className="bg-white kpi-orange p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Entries</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
+        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Entries</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{filtered.length}</p>
         </Card>
       </div>
 
       <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-48">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search expenses…" value={search}
             onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -171,7 +174,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         </Select>
         {accounts.length > 0 && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Accounts</SelectItem>
               {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -193,13 +196,13 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20">
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Title</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Category</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Account</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Payment</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Date</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Amount</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Actions</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Title</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Category</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Account</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Payment</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Amount</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -208,13 +211,13 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                       className={`border-b border-border last:border-0 hover:bg-muted/20 transition-colors ${
                         i % 2 === 1 ? 'bg-muted/10' : ''
                       }`}>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <p className="font-medium">{expense.title}</p>
                         {expense.notes && (
                           <p className="text-xs text-muted-foreground truncate max-w-xs">{expense.notes}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <Badge style={{
                           background: `${CATEGORY_COLORS[expense.category] || '#94a3b8'}20`,
                           color: CATEGORY_COLORS[expense.category] || '#94a3b8',
@@ -222,17 +225,17 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                           {expense.category}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground text-xs">
+                      <td className="px-6 py-4 text-muted-foreground text-xs whitespace-nowrap">
                         {getAccountName(expense.account_id)}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground capitalize">
+                      <td className="px-6 py-4 text-muted-foreground capitalize whitespace-nowrap">
                         {expense.payment_method?.replace('_', ' ')}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">{formatDate(expense.date)}</td>
-                      <td className="px-6 py-4 text-right font-semibold text-destructive tabular-nums">
-                        -{formatCurrency(expense.amount)}
+                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{formatDate(expense.date)}</td>
+                      <td className="px-6 py-4 text-right font-semibold text-destructive tabular-nums whitespace-nowrap">
+                        -{formatCurrency(expense.amount, getAccountCurrency(expense.account_id))}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex justify-end gap-1">
                           <Button size="icon" variant="ghost" className="w-8 h-8"
                             onClick={() => openEdit(expense)}>
@@ -269,7 +272,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Amount (GHS)</Label>
+                <Label>Amount</Label>
                 <Input type="number" step="0.01" placeholder="0.00" {...register('amount')} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
               </div>
@@ -313,7 +316,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                 <SelectTrigger><SelectValue placeholder="Which account?" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">No account</SelectItem>
-                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  {accounts.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

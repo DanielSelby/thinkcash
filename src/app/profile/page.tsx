@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { ProfileContent } from './profile-content'
 
 export const metadata = { title: 'Profile' }
+export const dynamic  = 'force-dynamic'
 
 export default async function ProfilePage() {
   const supabase = await createClient()

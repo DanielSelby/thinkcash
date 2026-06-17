@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/utils'
 import Link from 'next/link'
 
 export const metadata = { title: 'Admin Dashboard' }
+export const dynamic  = 'force-dynamic'
 
 export default async function AdminDashboardPage() {
   const supabase = await createClient()
@@ -115,3 +116,4 @@ export default async function AdminDashboardPage() {
     </AppShell>
   )
 }
+

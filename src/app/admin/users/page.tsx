@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell'
 import { AdminUsersContent } from './admin-users-content'
 
 export const metadata = { title: 'Admin — Users' }
+export const dynamic  = 'force-dynamic'
 
 export default async function AdminUsersPage() {
   const supabase = await createClient()
@@ -24,3 +25,4 @@ export default async function AdminUsersPage() {
     </AppShell>
   )
 }
+

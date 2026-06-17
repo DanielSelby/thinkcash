@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 'use client'
 
 import { AppShell } from '@/components/layout/app-shell'

@@ -115,27 +115,27 @@ export function TransactionsContent({ transactions, accounts }: Props) {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white kpi-green p-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-success" />
-            <p className="text-sm text-muted-foreground">Income</p>
+            <TrendingUp className="w-4 h-4 text-success flex-shrink-0" />
+            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Income</p>
           </div>
-          <p className="kpi-value text-xl font-bold tabular-nums">{formatCurrency(totals.income)}</p>
+          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{formatCurrency(totals.income)}</p>
         </Card>
-        <Card className="bg-white kpi-red p-5">
+        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
           <div className="flex items-center gap-2 mb-1">
-            <TrendingDown className="w-4 h-4 text-destructive" />
-            <p className="text-sm text-muted-foreground">Expenses</p>
+            <TrendingDown className="w-4 h-4 text-destructive flex-shrink-0" />
+            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Expenses</p>
           </div>
-          <p className="kpi-value text-xl font-bold tabular-nums">{formatCurrency(totals.expenses)}</p>
+          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{formatCurrency(totals.expenses)}</p>
         </Card>
-        <Card className="bg-white kpi-blue p-5">
+        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
           <div className="flex items-center gap-2 mb-1">
-            <ArrowUpDown className="w-4 h-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Net</p>
+            <ArrowUpDown className="w-4 h-4 text-primary flex-shrink-0" />
+            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Net</p>
           </div>
-          <p className={`kpi-value text-xl font-bold tabular-nums ${
+          <p className={`kpi-value text-base sm:text-xl font-bold tabular-nums truncate ${
             totals.income - totals.expenses >= 0 ? 'text-success' : 'text-destructive'
           }`}>
             {formatCurrency(totals.income - totals.expenses)}
@@ -151,7 +151,7 @@ export function TransactionsContent({ transactions, accounts }: Props) {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-52">
+        <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search transactions…"
@@ -161,7 +161,7 @@ export function TransactionsContent({ transactions, accounts }: Props) {
           />
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-36 bg-white"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-36 bg-white"><SelectValue placeholder="Type" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="income">Income</SelectItem>
@@ -169,7 +169,7 @@ export function TransactionsContent({ transactions, accounts }: Props) {
           </SelectContent>
         </Select>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {allCategories.map(c => (
@@ -177,8 +177,8 @@ export function TransactionsContent({ transactions, accounts }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40 bg-white" />
-        <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="w-40 bg-white" />
+        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full sm:w-40 bg-white" />
+        <Input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   className="w-full sm:w-40 bg-white" />
         {(search || typeFilter !== 'all' || categoryFilter !== 'all' || dateFrom || dateTo) && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             Clear filters
@@ -200,12 +200,12 @@ export function TransactionsContent({ transactions, accounts }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20">
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Date</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Description</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Category</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Type</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Payment</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Amount</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Description</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Category</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Type</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Payment</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Amount</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -215,13 +215,13 @@ export function TransactionsContent({ transactions, accounts }: Props) {
                       <td className="px-6 py-3.5 text-muted-foreground whitespace-nowrap">
                         {formatDate(t.date, 'MMM d, yyyy')}
                       </td>
-                      <td className="px-6 py-3.5">
+                      <td className="px-6 py-3.5 whitespace-nowrap">
                         <p className="font-medium">{t.title}</p>
                         {t.notes && (
                           <p className="text-xs text-muted-foreground truncate max-w-[200px]">{t.notes}</p>
                         )}
                       </td>
-                      <td className="px-6 py-3.5">
+                      <td className="px-6 py-3.5 whitespace-nowrap">
                         <Badge style={{
                           background: `${CATEGORY_COLORS[t.category] || '#94a3b8'}20`,
                           color: CATEGORY_COLORS[t.category] || '#94a3b8',
@@ -229,7 +229,7 @@ export function TransactionsContent({ transactions, accounts }: Props) {
                           {t.category}
                         </Badge>
                       </td>
-                      <td className="px-6 py-3.5">
+                      <td className="px-6 py-3.5 whitespace-nowrap">
                         <Badge variant={t.type === 'income' ? 'success' : 'destructive'}>
                           {t.type === 'income'
                             ? <TrendingUp   className="w-3 h-3 mr-1 inline" />
@@ -237,10 +237,10 @@ export function TransactionsContent({ transactions, accounts }: Props) {
                           {t.type}
                         </Badge>
                       </td>
-                      <td className="px-6 py-3.5 text-muted-foreground capitalize text-xs">
+                      <td className="px-6 py-3.5 text-muted-foreground capitalize text-xs whitespace-nowrap">
                         {t.payment_method?.replace('_', ' ') || '—'}
                       </td>
-                      <td className={`px-6 py-3.5 text-right font-semibold tabular-nums ${
+                      <td className={`px-6 py-3.5 text-right font-semibold tabular-nums whitespace-nowrap ${
                         t.type === 'income' ? 'text-success' : 'text-destructive'
                       }`}>
                         {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount, getAccountCurrency(t.account_id))}

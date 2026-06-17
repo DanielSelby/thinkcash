@@ -46,18 +46,18 @@ interface Props {
 
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme } = useAppStore()
-const { expenseCategories } = useCategories()
+  const { expenseCategories } = useCategories()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const now = new Date()
-  const [budgets,      setBudgets]      = useState(initialBudgets)
-  const [open,         setOpen]         = useState(false)
-  const [editing,      setEditing]      = useState<Budget | null>(null)
-  const [loading,      setLoading]      = useState(false)
-  const [viewMonth,    setViewMonth]    = useState(now.getMonth() + 1)   // 1-12
-  const [viewYear,     setViewYear]     = useState(now.getFullYear())
+  const [budgets,   setBudgets]   = useState(initialBudgets)
+  const [open,      setOpen]      = useState(false)
+  const [editing,   setEditing]   = useState<Budget | null>(null)
+  const [loading,   setLoading]   = useState(false)
+  const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
+  const [viewYear,  setViewYear]  = useState(now.getFullYear())
 
-  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       budget_month: now.getMonth() + 1,
@@ -65,14 +65,12 @@ const { expenseCategories } = useCategories()
     },
   })
 
-  // Filter budgets for the selected month/year
   const monthBudgets = useMemo(() =>
     budgets.filter(b =>
       (b.budget_month ?? now.getMonth() + 1) === viewMonth &&
       (b.budget_year  ?? now.getFullYear())  === viewYear
     ), [budgets, viewMonth, viewYear])
 
-  // Filter expenses for the selected month/year
   const monthExpenses = useMemo(() => {
     const pad = (n: number) => String(n).padStart(2, '0')
     const prefix = `${viewYear}-${pad(viewMonth)}`
@@ -191,17 +189,17 @@ const { expenseCategories } = useCategories()
         </Button>
       </div>
 
-      {/* ── Month Navigator ── */}
+      {/* Month Navigator */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-3 px-4">
           <div className="flex items-center justify-between">
             <button onClick={prevMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors">
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <div className="text-center">
-              <p className="font-bold text-base" style={{ color: theme.colors.primary }}>
+            <div className="text-center min-w-0">
+              <p className="font-bold text-sm sm:text-base truncate" style={{ color: theme.colors.primary }}>
                 {MONTH_NAMES[viewMonth - 1]} {viewYear}
               </p>
               {isCurrentMonth && (
@@ -213,7 +211,7 @@ const { expenseCategories } = useCategories()
             </div>
 
             <button onClick={nextMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors">
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -221,34 +219,34 @@ const { expenseCategories } = useCategories()
       </Card>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-white kpi-blue p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Budgeted</p>
-          <p className="kpi-value text-xl font-bold tabular-nums mt-1">{formatCurrency(summary.totalBudgeted)}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{monthBudgets.length} budget(s)</p>
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="bg-white kpi-blue p-3 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Budgeted</p>
+          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums mt-1 truncate">{formatCurrency(summary.totalBudgeted)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">{monthBudgets.length} budget(s)</p>
         </Card>
-        <Card className="bg-white kpi-red p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Spent</p>
-          <p className="kpi-value text-xl font-bold tabular-nums mt-1">{formatCurrency(summary.totalSpent)}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
+        <Card className="bg-white kpi-red p-3 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Spent</p>
+          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums mt-1 truncate">{formatCurrency(summary.totalSpent)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">
             {summary.totalBudgeted > 0
               ? `${Math.round((summary.totalSpent / summary.totalBudgeted) * 100)}% of budget`
               : 'No budget set'}
           </p>
         </Card>
-        <Card className="bg-white kpi-green p-5">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-success" />
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">On Track</p>
+        <Card className="bg-white kpi-green p-3 sm:p-5 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-success flex-shrink-0" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">On Track</p>
           </div>
-          <p className="kpi-value text-xl font-bold mt-1" style={{ color: '#16a34a' }}>{summary.safe}</p>
+          <p className="kpi-value text-base sm:text-xl font-bold mt-1" style={{ color: '#16a34a' }}>{summary.safe}</p>
         </Card>
-        <Card className="bg-white kpi-red p-5">
-          <div className="flex items-center gap-2">
-            <XCircle className="w-4 h-4 text-destructive" />
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Exceeded</p>
+        <Card className="bg-white kpi-red p-3 sm:p-5 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-destructive flex-shrink-0" />
+            <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Exceeded</p>
           </div>
-          <p className="kpi-value text-xl font-bold mt-1" style={{ color: '#dc2626' }}>{summary.exceeded}</p>
+          <p className="kpi-value text-base sm:text-xl font-bold mt-1" style={{ color: '#dc2626' }}>{summary.exceeded}</p>
         </Card>
       </div>
 
@@ -270,27 +268,27 @@ const { expenseCategories } = useCategories()
             const pct    = b.percentage || 0
             const status = getBudgetStatus(pct)
             return (
-              <Card key={b.id} className={`bg-white p-5 space-y-4 rounded-xl shadow-sm ${
+              <Card key={b.id} className={`bg-white p-4 sm:p-5 space-y-4 rounded-xl shadow-sm overflow-hidden ${
                 status === 'exceeded' ? 'border-destructive/40 kpi-red'
                 : status === 'warning'  ? 'border-warning/40 kpi-orange'
                 : 'kpi-green'
               }`}>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                       style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
                       <span className="w-3 h-3 rounded-full"
                         style={{ background: CATEGORY_COLORS[b.category] || '#94a3b8' }} />
                     </div>
-                    <div>
-                      <p className="font-semibold text-sm">{b.budget_name}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate">{b.budget_name}</p>
+                      <p className="text-xs text-muted-foreground capitalize truncate">
                         {b.category}
                         {' · '}{MONTH_NAMES[(b.budget_month ?? 1) - 1]} {b.budget_year ?? viewYear}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 flex-shrink-0">
                     {statusIcon(pct)}
                     <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => openEdit(b)}>
                       <Edit2 className="w-3 h-3" />
@@ -302,14 +300,14 @@ const { expenseCategories } = useCategories()
                 </div>
 
                 <div className="space-y-1.5">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Spent</span>
-                    <span className="font-medium tabular-nums">
+                  <div className="flex justify-between text-sm gap-2">
+                    <span className="text-muted-foreground flex-shrink-0">Spent</span>
+                    <span className="font-medium tabular-nums truncate text-right">
                       {formatCurrency(b.spent || 0)} / {formatCurrency(b.monthly_limit)}
                     </span>
                   </div>
                   <Progress value={Math.min(pct, 100)} className={`h-2 ${progressClass(pct)}`} />
-                  <div className="flex justify-between text-xs">
+                  <div className="flex justify-between text-xs gap-2">
                     <span className={
                       status === 'exceeded' ? 'text-destructive font-medium'
                       : status === 'warning' ? 'text-warning font-medium'
@@ -317,7 +315,7 @@ const { expenseCategories } = useCategories()
                     }>
                       {pct.toFixed(0)}% used
                     </span>
-                    <span className={`font-medium tabular-nums ${(b.remaining || 0) < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    <span className={`font-medium tabular-nums truncate ${(b.remaining || 0) < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                       {(b.remaining || 0) < 0
                         ? `${formatCurrency(Math.abs(b.remaining || 0))} over`
                         : `${formatCurrency(b.remaining || 0)} left`}
@@ -343,7 +341,7 @@ const { expenseCategories } = useCategories()
         </div>
       )}
 
-      {/* ── Create / Edit Dialog ── */}
+      {/* Create / Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -375,7 +373,6 @@ const { expenseCategories } = useCategories()
               {errors.monthly_limit && <p className="text-xs text-destructive">{errors.monthly_limit.message}</p>}
             </div>
 
-            {/* Month + Year row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Month</Label>
@@ -425,4 +422,3 @@ const { expenseCategories } = useCategories()
     </div>
   )
 }
-

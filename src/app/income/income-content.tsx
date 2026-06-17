@@ -145,24 +145,24 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Button>
       </div>
 
-      {/* KPI cards — stack on narrow screens instead of crushing into 3 columns */}
+      {/* KPI cards — compact on mobile (480px frame, below sm: breakpoint), full size on desktop */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white kpi-green p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Income</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
+        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Income</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
             {formatCurrency(incomes.reduce((s, i) => s + i.amount, 0))}
           </p>
           {hasMixedCurrencies && (
-            <p className="text-xs text-muted-foreground mt-1">Sum shown at face value, mixed currencies</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Sum at face value, mixed currencies</p>
           )}
         </Card>
-        <Card className="bg-white kpi-blue p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">This View</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{formatCurrency(totalFiltered)}</p>
+        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">This View</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{formatCurrency(totalFiltered)}</p>
         </Card>
-        <Card className="bg-white kpi-purple p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Entries</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
+        <Card className="bg-white kpi-purple p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Entries</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{filtered.length}</p>
         </Card>
       </div>
 

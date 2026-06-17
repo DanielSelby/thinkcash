@@ -8,6 +8,7 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, BarChart, Bar,
+  PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAppStore } from '@/store'
@@ -38,12 +39,19 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   bank: '#2563eb', mobile_money: '#f59e0b', cash: '#16a34a', investment: '#7c3aed',
 }
 
-function KPI({ label, value, sub, colorClass, icon: Icon, compact }: {
-  label: string; value: string; sub?: string; colorClass: string; icon: any; compact?: boolean
+function KPI({ label, value, sub, colorClass, icon: Icon, compact, tooltip }: {
+  label: string; value: string; sub?: string; colorClass: string; icon: any; compact?: boolean; tooltip?: string
 }) {
+  const [hovered, setHovered] = useState(false)
   return (
-    <Card className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-hidden`}>
-      <CardContent className={compact ? 'pt-3 pb-3 px-3' : 'pt-4 pb-4 px-5'}>
+    <Card
+      className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-visible relative transition-transform ${
+        tooltip ? 'cursor-default hover:-translate-y-0.5 hover:shadow-md' : ''
+      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <CardContent className={compact ? 'pt-3 pb-3 px-3 overflow-hidden' : 'pt-4 pb-4 px-5 overflow-hidden'}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className={`font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>
@@ -59,6 +67,16 @@ function KPI({ label, value, sub, colorClass, icon: Icon, compact }: {
           </div>
         </div>
       </CardContent>
+
+      {/* Hover tooltip */}
+      {tooltip && hovered && (
+        <div className="absolute left-1/2 -translate-x-1/2 -top-2 -translate-y-full z-20 w-56 pointer-events-none">
+          <div className="bg-foreground text-background text-xs rounded-lg px-3 py-2 shadow-lg leading-relaxed">
+            {tooltip}
+          </div>
+          <div className="w-2 h-2 bg-foreground rotate-45 mx-auto -mt-1" />
+        </div>
+      )}
     </Card>
   )
 }
@@ -81,6 +99,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [expenseCat,   setExpenseCat]   = useState('All')
   const [isFiltered,   setIsFiltered]   = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
+  const [activeDonutIndex, setActiveDonutIndex] = useState<number | null>(null)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -153,6 +172,20 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const totalExpense = useMemo(() => filteredExpenses.reduce((s, r) => s + Number(r.amount), 0), [filteredExpenses])
   const net          = totalIncome - totalExpense
   const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
+
+  // Income breakdown by category — for donut chart
+  const incomeByCategory = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredIncomes.forEach(r => {
+      const cat = r.category || 'Other'
+      map[cat] = (map[cat] || 0) + Number(r.amount)
+    })
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [filteredIncomes])
+
+  const DONUT_COLORS = ['#16a34a', '#2563eb', '#7c3aed', '#f59e0b', '#dc2626', '#0d9488', '#db2777', '#65a30d']
 
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
@@ -277,10 +310,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
       {/* KPI Cards — original 4-column desktop layout, compact 2-column on mobile */}
       <div className={isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-4'}>
-        <KPI compact={isMobile} label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}  />
-        <KPI compact={isMobile} label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown} />
-        <KPI compact={isMobile} label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}       />
-        <KPI compact={isMobile} label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"                          colorClass="kpi-purple" icon={Target}       />
+        <KPI compact={isMobile} label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}
+          tooltip={`Exact: ${fmt(totalIncome)} across ${filteredIncomes.length} transaction(s)${incomeByCategory[0] ? ` · Top category: ${incomeByCategory[0].name} (${fmt(incomeByCategory[0].value)})` : ''}`} />
+        <KPI compact={isMobile} label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown}
+          tooltip={`Exact: ${fmt(totalExpense)} across ${filteredExpenses.length} transaction(s)`} />
+        <KPI compact={isMobile} label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}
+          tooltip={`Income ${fmt(totalIncome)} minus Expenses ${fmt(totalExpense)} = ${fmt(net)}`} />
+        <KPI compact={isMobile} label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"                          colorClass="kpi-purple" icon={Target}
+          tooltip={`${savingsRate}% of income was saved (Net ${fmt(net)} ÷ Income ${fmt(totalIncome)})`} />
       </div>
 
       {/* Account Slicer */}
@@ -362,8 +399,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       )}
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="rounded-xl shadow-sm bg-white">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="rounded-xl shadow-sm bg-white lg:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Income vs Expenses by Month</CardTitle>
             <p className="text-xs text-muted-foreground">
@@ -430,6 +467,69 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0,4,4,0]} />
                   <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0,4,4,0]} />
                 </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Income by Category — Donut */}
+        <Card className="rounded-xl shadow-sm bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Income by Category</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {incomeByCategory.length === 0 ? 'No income yet' : `${incomeByCategory.length} categor${incomeByCategory.length === 1 ? 'y' : 'ies'}`}
+            </p>
+          </CardHeader>
+          <CardContent>
+            {incomeByCategory.length === 0 ? (
+              <div className="h-52 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <TrendingUp className="w-8 h-8 opacity-20" />
+                <p className="text-sm">Add income to see the breakdown</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={isMobile ? 220 : 260}>
+                <PieChart>
+                  <Pie
+                    data={incomeByCategory}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={isMobile ? 45 : 60}
+                    outerRadius={isMobile ? 70 : 90}
+                    paddingAngle={2}
+                    isAnimationActive
+                    animationDuration={500}
+                    onClick={(_, index) => setActiveDonutIndex(prev => prev === index ? null : index)}
+                  >
+                    {incomeByCategory.map((_, i) => (
+                      <Cell
+                        key={i}
+                        fill={DONUT_COLORS[i % DONUT_COLORS.length]}
+                        stroke="#fff"
+                        strokeWidth={2}
+                        style={{
+                          cursor: 'pointer',
+                          transition: 'transform 0.25s ease',
+                          transform: activeDonutIndex === i ? 'scale(1.08)' : 'scale(1)',
+                          transformOrigin: 'center',
+                          filter: activeDonutIndex !== null && activeDonutIndex !== i ? 'opacity(0.5)' : 'none',
+                        }}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any, name: any) => [fmt(Number(value)), name]}
+                    wrapperStyle={{ zIndex: 50 }}
+                  />
+                  <Legend
+                    layout={isMobile ? 'horizontal' : 'vertical'}
+                    align={isMobile ? 'center' : 'right'}
+                    verticalAlign={isMobile ? 'bottom' : 'middle'}
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: isMobile ? 10 : 11 }}
+                  />
+                </PieChart>
               </ResponsiveContainer>
             )}
           </CardContent>

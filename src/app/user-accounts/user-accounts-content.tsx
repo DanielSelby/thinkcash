@@ -123,10 +123,8 @@ export function UserAccountsContent({
   const { activeTheme, currency: appCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
-  // Use app currency for formatting
   const fmt = (n: number) => formatCurrency(n, appCurrency)
 
-  // Merge built-in + custom currencies from localStorage
   const allCurrencies = useMemo(() => {
     try {
       const custom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]') as { value: string; label: string }[]
@@ -310,19 +308,19 @@ export function UserAccountsContent({
       </div>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white kpi-green p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Balance</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalBalance)}</p>
-          <p className="text-xs text-muted-foreground mt-1">{accounts.length} account(s)</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Balance</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalBalance)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{accounts.length} account(s)</p>
         </Card>
-        <Card className="bg-white kpi-blue p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Received</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalIncome)}</p>
+        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Received</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalIncome)}</p>
         </Card>
-        <Card className="bg-white kpi-red p-5">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Spent</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalExpenses)}</p>
+        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Spent</p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalExpenses)}</p>
         </Card>
       </div>
 
@@ -347,23 +345,23 @@ export function UserAccountsContent({
               <div>
                 {transfers.map(t => (
                   <div key={t.id}
-                    className="flex items-center justify-between py-3 border-b border-border last:border-0 group">
-                    <div className="flex items-center gap-3">
+                    className="flex items-center justify-between py-3 border-b border-border last:border-0 group gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
                         <ArrowLeftRight className="w-4 h-4 text-blue-500" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-1.5 text-sm font-medium flex-wrap">
-                          <span>{getAccountName(t.from_account_id)}</span>
+                          <span className="truncate">{getAccountName(t.from_account_id)}</span>
                           <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span>{getAccountName(t.to_account_id)}</span>
+                          <span className="truncate">{getAccountName(t.to_account_id)}</span>
                         </div>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground truncate">
                           {formatDate(t.date)}{t.note ? ` · ${t.note}` : ''}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-shrink-0">
                       <span className="text-sm font-semibold tabular-nums text-blue-600">
                         {fmt(Number(t.amount))}
                       </span>
@@ -402,16 +400,16 @@ export function UserAccountsContent({
             return (
               <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                 <div className="h-1.5" style={{ background: color }} />
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex items-start justify-between mb-4 gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: color + '18' }}>
                         <Icon className="w-5 h-5" style={{ color }} />
                       </div>
-                      <div>
-                        <p className="font-semibold text-sm">{acc.name}</p>
-                        <p className="text-xs text-muted-foreground">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm truncate">{acc.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
                           {typeLabel}{acc.institution ? ` · ${acc.institution}` : ''}
                           {acc.currency !== 'GHS' && (
                             <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs">{acc.currency}</span>
@@ -419,7 +417,7 @@ export function UserAccountsContent({
                         </p>
                       </div>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 flex-shrink-0">
                       <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => openEdit(acc)}>
                         <Edit2 className="w-3 h-3" />
                       </Button>
@@ -431,54 +429,54 @@ export function UserAccountsContent({
                     </div>
                   </div>
 
-                  <div className="mb-4">
+                  <div className="mb-4 overflow-hidden">
                     <p className="text-xs text-muted-foreground mb-0.5">Current Balance</p>
-                    <p className="text-2xl font-bold tabular-nums" style={{ color }}>
+                    <p className="text-lg sm:text-2xl font-bold tabular-nums truncate" style={{ color }}>
                       {formatCurrency(acc.balance ?? 0, acc.currency)}
                     </p>
                     {acc.opening_balance > 0 && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         Opening: {formatCurrency(acc.opening_balance, acc.currency)}
                       </p>
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <ArrowUpRight className="w-4 h-4 text-green-600 flex-shrink-0" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-xs text-muted-foreground">Received</p>
-                        <p className="text-sm font-semibold text-green-600 tabular-nums">
+                        <p className="text-sm font-semibold text-green-600 tabular-nums truncate">
                           {formatCurrency(acc.total_income ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <ArrowDownRight className="w-4 h-4 text-red-500 flex-shrink-0" />
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-xs text-muted-foreground">Spent</p>
-                        <p className="text-sm font-semibold text-red-500 tabular-nums">
+                        <p className="text-sm font-semibold text-red-500 tabular-nums truncate">
                           {formatCurrency(acc.total_expenses ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
                     {(acc.transfers_in ?? 0) > 0 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <ArrowLeftRight className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-xs text-muted-foreground">Transferred In</p>
-                          <p className="text-sm font-semibold text-blue-500 tabular-nums">
+                          <p className="text-sm font-semibold text-blue-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_in ?? 0, acc.currency)}
                           </p>
                         </div>
                       </div>
                     )}
                     {(acc.transfers_out ?? 0) > 0 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <ArrowLeftRight className="w-4 h-4 text-orange-500 flex-shrink-0" />
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-xs text-muted-foreground">Transferred Out</p>
-                          <p className="text-sm font-semibold text-orange-500 tabular-nums">
+                          <p className="text-sm font-semibold text-orange-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_out ?? 0, acc.currency)}
                           </p>
                         </div>
@@ -518,7 +516,7 @@ export function UserAccountsContent({
         </Card>
       )}
 
-      {/* ── Add / Edit Account Dialog ── */}
+      {/* Add / Edit Account Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -591,7 +589,7 @@ export function UserAccountsContent({
         </DialogContent>
       </Dialog>
 
-      {/* ── Transfer Dialog ── */}
+      {/* Transfer Dialog */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent>
           <DialogHeader>
