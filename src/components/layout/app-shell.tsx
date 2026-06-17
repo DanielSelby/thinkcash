@@ -36,13 +36,14 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     loadSettings()
   }, [])
 
-  // Auto-collapse sidebar when switching to mobile view — a full 256px
-  // sidebar inside a 480px frame leaves no room for content
+  // Auto-collapse sidebar whenever mobile view is active — including on
+  // initial mount/refresh, not just on a live toggle change
   useEffect(() => {
     if (viewMode === 'mobile' && sidebarOpen) {
       setSidebarOpen(false)
     }
-  }, [viewMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, sidebarOpen])
 
   const isMobile = viewMode === 'mobile'
 

@@ -42,16 +42,20 @@ function KPI({ label, value, sub, colorClass, icon: Icon }: {
   label: string; value: string; sub?: string; colorClass: string; icon: any
 }) {
   return (
-    <Card className={`${colorClass} rounded-xl shadow-sm border border-border bg-white`}>
-      <CardContent className="pt-4 pb-4 px-5">
+    <Card className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-hidden`}>
+      <CardContent className="pt-3 pb-3 px-3 sm:pt-4 sm:pb-4 sm:px-5">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
-            <p className="kpi-value text-2xl font-bold tabular-nums leading-tight">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate">
+              {label}
+            </p>
+            <p className="kpi-value text-base sm:text-2xl font-bold tabular-nums leading-tight truncate">
+              {value}
+            </p>
+            {sub && <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          <div className="w-9 h-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
-            <Icon className="w-4 h-4 text-muted-foreground" />
+          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
+            <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
           </div>
         </div>
       </CardContent>
@@ -63,7 +67,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
-  // Use selected currency for formatting global aggregates
   const fmt = (n: number) => formatCurrency(n, currency)
 
   useEffect(() => { if (profile) setProfile(profile) }, [profile])
@@ -78,7 +81,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,   setIsFiltered]   = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
 
-  // Account balances INCLUDING transfers
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
       const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
@@ -272,8 +274,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </Card>
       )}
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* KPI Cards — 2 columns always, compact on mobile */}
+      <div className="grid grid-cols-2 gap-3">
         <KPI label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}  />
         <KPI label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown} />
         <KPI label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}       />
@@ -283,12 +285,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {/* Account Slicer */}
       {accounts.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <p className="text-sm font-semibold">Account Balances</p>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-1.5 flex-wrap">
               {['all', 'bank', 'mobile_money', 'cash', 'investment'].map(type => (
                 <button key={type} onClick={() => setAccountTypeFilter(type)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium capitalize transition-colors border ${
+                  className={`px-2 py-1 rounded-lg text-[11px] font-medium capitalize transition-colors border whitespace-nowrap ${
                     accountTypeFilter === type ? 'text-white border-transparent' : 'border-border bg-white text-muted-foreground hover:border-primary/50'
                   }`}
                   style={accountTypeFilter === type ? { background: theme.colors.primary } : {}}>
@@ -298,7 +300,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-2">
             {accountsWithBalance
               .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
               .map(acc => {
@@ -306,22 +308,22 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 return (
                   <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                     <div className="h-1" style={{ background: color }} />
-                    <CardContent className="p-4">
-                      <p className="text-xs text-muted-foreground truncate">{acc.name}</p>
-                      <p className="text-lg font-bold tabular-nums mt-1" style={{ color }}>
+                    <CardContent className="p-3 overflow-hidden">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
+                      <p className="text-sm sm:text-lg font-bold tabular-nums mt-1 truncate" style={{ color }}>
                         {formatCurrency(acc.balance ?? 0, acc.currency)}
                       </p>
-                      <div className="flex justify-between text-xs mt-2">
-                        <span className="text-green-600">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
-                        <span className="text-red-500">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
+                      <div className="flex justify-between text-[10px] sm:text-xs mt-2 gap-1">
+                        <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+                        <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
                       </div>
                       {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
-                        <div className="flex justify-between text-xs mt-1">
+                        <div className="flex justify-between text-[10px] sm:text-xs mt-1 gap-1">
                           {(acc.transfers_in ?? 0) > 0 && (
-                            <span className="text-blue-500">↙ {formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
+                            <span className="text-blue-500 truncate">↙ {formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
                           )}
                           {(acc.transfers_out ?? 0) > 0 && (
-                            <span className="text-orange-500">↗ {formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>
+                            <span className="text-orange-500 truncate">↗ {formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>
                           )}
                         </div>
                       )}
@@ -331,9 +333,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               })}
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
-            <div>
-              <p className="text-sm font-semibold">
+          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">
                 Total Balance
                 {accountTypeFilter !== 'all' && (
                   <span className="text-muted-foreground font-normal ml-1 capitalize">
@@ -343,11 +345,11 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </p>
               {accountsWithBalance.some(a => a.currency !== currency) && (
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Converted at face value — accounts use different currencies
+                  Converted at face value, mixed currencies
                 </p>
               )}
             </div>
-            <p className="text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
+            <p className="text-base sm:text-lg font-bold tabular-nums flex-shrink-0" style={{ color: theme.colors.primary }}>
               {fmt(accountsWithBalance
                 .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
                 .reduce((s, a) => s + (a.balance ?? 0), 0))}
@@ -372,8 +374,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Add income or expenses to see your chart</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={210}>
-                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
@@ -384,8 +386,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       <stop offset="95%" stopColor="#dc2626" stopOpacity={0}    />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} tickFormatter={v => fmt(v)} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} width={48} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
                   <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  />
                   <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" />
@@ -409,10 +411,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Create a budget to track spending</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={210}>
+              <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => fmt(v)} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
+                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={70} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
                   <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0,4,4,0]} />
                   <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0,4,4,0]} />
@@ -442,8 +444,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
               .slice(0, 10)
               .map((r, i) => (
-                <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
-                  <div className="flex items-center gap-3">
+                <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       r._type === 'income' ? 'bg-green-50' : 'bg-red-50'
                     }`}>
@@ -455,13 +457,13 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       <p className="text-sm font-medium truncate">
                         {r.description || r.title || r.category || '—'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground truncate">
                         {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
                         {r.category ? ` · ${r.category}` : ''}
                       </p>
                     </div>
                   </div>
-                  <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ml-3 ${
+                  <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ${
                     r._type === 'income' ? 'text-green-600' : 'text-red-500'
                   }`}>
                     {r._type === 'income' ? '+' : '−'}{fmt(Number(r.amount))}
@@ -484,9 +486,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 ? Math.round((Number(g.current_amount) / Number(g.target_amount)) * 100) : 0)
               return (
                 <div key={i}>
-                  <div className="flex justify-between text-sm mb-1.5">
-                    <span className="font-medium">{g.name}</span>
-                    <span className="text-muted-foreground tabular-nums">
+                  <div className="flex justify-between text-sm mb-1.5 gap-2">
+                    <span className="font-medium truncate">{g.name}</span>
+                    <span className="text-muted-foreground tabular-nums flex-shrink-0">
                       {pct}% · {fmt(Number(g.current_amount))} / {fmt(Number(g.target_amount))}
                     </span>
                   </div>
