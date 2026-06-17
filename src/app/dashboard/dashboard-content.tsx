@@ -38,24 +38,24 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   bank: '#2563eb', mobile_money: '#f59e0b', cash: '#16a34a', investment: '#7c3aed',
 }
 
-function KPI({ label, value, sub, colorClass, icon: Icon }: {
-  label: string; value: string; sub?: string; colorClass: string; icon: any
+function KPI({ label, value, sub, colorClass, icon: Icon, compact }: {
+  label: string; value: string; sub?: string; colorClass: string; icon: any; compact?: boolean
 }) {
   return (
     <Card className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-hidden`}>
-      <CardContent className="pt-3 pb-3 px-3 sm:pt-4 sm:pb-4 sm:px-5">
+      <CardContent className={compact ? 'pt-3 pb-3 px-3' : 'pt-4 pb-4 px-5'}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate">
+            <p className={`font-semibold text-muted-foreground uppercase tracking-wide mb-1 truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>
               {label}
             </p>
-            <p className="kpi-value text-base sm:text-2xl font-bold tabular-nums leading-tight truncate">
+            <p className={`kpi-value font-bold tabular-nums leading-tight truncate ${compact ? 'text-base' : 'text-2xl'}`}>
               {value}
             </p>
-            {sub && <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
+            {sub && <p className={`text-muted-foreground mt-1 truncate ${compact ? 'text-[10px]' : 'text-xs'}`}>{sub}</p>}
           </div>
-          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0">
-            <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-muted-foreground" />
+          <div className={`rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 ${compact ? 'w-7 h-7' : 'w-9 h-9'}`}>
+            <Icon className={compact ? 'w-3.5 h-3.5 text-muted-foreground' : 'w-4 h-4 text-muted-foreground'} />
           </div>
         </div>
       </CardContent>
@@ -64,8 +64,9 @@ function KPI({ label, value, sub, colorClass, icon: Icon }: {
 }
 
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile }: Props) {
-  const { setProfile, activeTheme, currency } = useAppStore()
+  const { setProfile, activeTheme, currency, viewMode } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
+  const isMobile = viewMode === 'mobile'
 
   const fmt = (n: number) => formatCurrency(n, currency)
 
@@ -274,12 +275,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </Card>
       )}
 
-      {/* KPI Cards — 2 columns always, compact on mobile */}
-      <div className="grid grid-cols-2 gap-3">
-        <KPI label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}  />
-        <KPI label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown} />
-        <KPI label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}       />
-        <KPI label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"                          colorClass="kpi-purple" icon={Target}       />
+      {/* KPI Cards — original 4-column desktop layout, compact 2-column on mobile */}
+      <div className={isMobile ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-2 lg:grid-cols-4 gap-4'}>
+        <KPI compact={isMobile} label="Total Income"   value={fmt(totalIncome)}  sub={`${filteredIncomes.length} transactions`}  colorClass="kpi-green"  icon={TrendingUp}  />
+        <KPI compact={isMobile} label="Total Expenses" value={fmt(totalExpense)} sub={`${filteredExpenses.length} transactions`} colorClass="kpi-red"    icon={TrendingDown} />
+        <KPI compact={isMobile} label="Net Balance"    value={fmt(net)}          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}     colorClass="kpi-blue"   icon={Wallet}       />
+        <KPI compact={isMobile} label="Savings Rate"   value={`${savingsRate}%`} sub="Of income saved"                          colorClass="kpi-purple" icon={Target}       />
       </div>
 
       {/* Account Slicer */}
@@ -300,7 +301,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className={isMobile ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3'}>
             {accountsWithBalance
               .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
               .map(acc => {
@@ -308,17 +309,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 return (
                   <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                     <div className="h-1" style={{ background: color }} />
-                    <CardContent className="p-3 overflow-hidden">
-                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
-                      <p className="text-sm sm:text-lg font-bold tabular-nums mt-1 truncate" style={{ color }}>
+                    <CardContent className={isMobile ? 'p-3 overflow-hidden' : 'p-4'}>
+                      <p className={isMobile ? 'text-[10px] text-muted-foreground truncate' : 'text-xs text-muted-foreground truncate'}>
+                        {acc.name}
+                      </p>
+                      <p className={`font-bold tabular-nums mt-1 truncate ${isMobile ? 'text-sm' : 'text-lg'}`} style={{ color }}>
                         {formatCurrency(acc.balance ?? 0, acc.currency)}
                       </p>
-                      <div className="flex justify-between text-[10px] sm:text-xs mt-2 gap-1">
+                      <div className={`flex justify-between mt-2 gap-1 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
                         <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
                         <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
                       </div>
                       {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
-                        <div className="flex justify-between text-[10px] sm:text-xs mt-1 gap-1">
+                        <div className={`flex justify-between mt-1 gap-1 ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
                           {(acc.transfers_in ?? 0) > 0 && (
                             <span className="text-blue-500 truncate">↙ {formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
                           )}
@@ -374,8 +377,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Add income or expenses to see your chart</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 210}>
+                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: isMobile ? -16 : 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.25} />
@@ -386,8 +389,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       <stop offset="95%" stopColor="#dc2626" stopOpacity={0}    />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} width={48} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
+                  <XAxis dataKey="label" tick={{ fontSize: isMobile ? 10 : 11 }} />
+                  <YAxis
+                    tick={{ fontSize: isMobile ? 10 : 11 }}
+                    width={isMobile ? 48 : undefined}
+                    tickFormatter={v => isMobile ? `₵${(v/1000).toFixed(0)}k` : fmt(v)}
+                  />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
                   <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  />
                   <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" />
@@ -411,10 +418,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <p className="text-sm">Create a budget to track spending</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={200}>
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 210}>
                 <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `₵${(v/1000).toFixed(0)}k`} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 10 }} width={70} />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: isMobile ? 10 : 11 }}
+                    tickFormatter={v => isMobile ? `₵${(v/1000).toFixed(0)}k` : fmt(v)}
+                  />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: isMobile ? 10 : 11 }} width={isMobile ? 70 : 90} />
                   <Tooltip formatter={(v: any) => fmt(Number(v))} />
                   <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0,4,4,0]} />
                   <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0,4,4,0]} />
