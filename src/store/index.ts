@@ -11,6 +11,7 @@ interface AppState {
   activeTheme: ThemeKey
   appLogo: string | null
   logoSize: 'sm' | 'md' | 'lg'
+  viewMode: 'desktop' | 'mobile'
   setProfile: (profile: Profile | null) => void
   setStats: (stats: DashboardStats) => void
   setSidebarOpen: (open: boolean) => void
@@ -18,6 +19,7 @@ interface AppState {
   setThemeKey: (theme: ThemeKey) => void
   setAppLogo: (url: string | null) => void
   setLogoSize: (size: 'sm' | 'md' | 'lg') => void
+  setViewMode: (mode: 'desktop' | 'mobile') => void
   getTheme: () => typeof THEMES[ThemeKey]
 }
 
@@ -31,6 +33,7 @@ export const useAppStore = create<AppState>()(
       activeTheme: APP_CONFIG.defaultTheme,
       appLogo:     null,
       logoSize:    'md',
+      viewMode:    'desktop',
       setProfile:     (profile)     => set({ profile }),
       setStats:       (stats)       => set({ stats }),
       setSidebarOpen: (open)        => set({ sidebarOpen: open }),
@@ -38,6 +41,7 @@ export const useAppStore = create<AppState>()(
       setThemeKey:    (activeTheme) => set({ activeTheme }),
       setAppLogo:     (appLogo)     => set({ appLogo }),
       setLogoSize:    (logoSize)    => set({ logoSize }),
+      setViewMode:    (viewMode)    => set({ viewMode }),
       getTheme: () => THEMES[get().activeTheme],
     }),
     {
@@ -48,6 +52,7 @@ export const useAppStore = create<AppState>()(
         activeTheme: state.activeTheme,
         appLogo:     state.appLogo,
         logoSize:    state.logoSize,
+        viewMode:    state.viewMode,
       }),
     }
   )

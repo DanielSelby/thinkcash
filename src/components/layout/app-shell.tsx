@@ -5,9 +5,10 @@ import { Sidebar } from './sidebar'
 import { TopNav } from './top-nav'
 import { useAppStore } from '@/store'
 import { createClient } from '@/lib/supabase/client'
+import { cn } from '@/lib/utils'
 
 export function AppShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
-  const { profile, setAppLogo, setLogoSize } = useAppStore()
+  const { profile, setAppLogo, setLogoSize, viewMode } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
 
   useEffect(() => {
@@ -32,16 +33,23 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     loadSettings()
   }, [])
 
+  const isMobile = viewMode === 'mobile'
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar isAdmin={adminMode} />
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <TopNav />
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-6 max-w-7xl mx-auto">
-            {children}
-          </div>
-        </main>
+    <div className="flex h-screen overflow-hidden bg-background justify-center">
+      <div className={cn(
+        'flex',
+        isMobile ? 'w-full max-w-[480px] border-x border-border shadow-xl' : 'w-full'
+      )}>
+        <Sidebar isAdmin={adminMode} />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <TopNav />
+          <main className="flex-1 overflow-y-auto">
+            <div className={cn('p-6', isMobile ? '' : 'max-w-7xl mx-auto')}>
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
     </div>
   )

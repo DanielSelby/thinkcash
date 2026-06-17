@@ -1,8 +1,12 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, Sun, Moon, Monitor, LogOut, User, Settings, ChevronDown, Shield, Palette } from 'lucide-react'
+import {
+  Bell, Search, Sun, Moon, Monitor, LogOut, User, Settings,
+  ChevronDown, Shield, Palette, Smartphone, Laptop, X,
+} from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
 import { useAppStore } from '@/store'
@@ -15,16 +19,30 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
 import { APP_CONFIG, THEMES, type ThemeKey } from '@/lib/config'
 
 export function TopNav() {
-  const { profile, getTheme, setThemeKey, activeTheme } = useAppStore()
+  const { profile, getTheme, setThemeKey, activeTheme, viewMode, setViewMode } = useAppStore()
   const { theme, setTheme } = useTheme()
   const router = useRouter()
   const currentTheme = getTheme()
   const { topbar } = currentTheme
 
+  const [searchValue, setSearchValue] = useState('')
+
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/auth/login')
+  }
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!searchValue.trim()) return
+    router.push(`/transactions?search=${encodeURIComponent(searchValue.trim())}`)
+  }
+
+  const clearSearch = () => setSearchValue('')
+
+  const toggleViewMode = () => {
+    setViewMode(viewMode === 'desktop' ? 'mobile' : 'desktop')
   }
 
   const initials = profile?.full_name
@@ -39,18 +57,43 @@ export function TopNav() {
       style={{ background: topbar.background, borderColor: 'rgba(255,255,255,0.12)' }}
       className="h-16 border-b flex items-center gap-4 px-6 sticky top-0 z-40"
     >
-      {/* Search */}
-      <div className="flex-1 max-w-xs">
+      {/* Search — now functional, navigates to Transactions with search query */}
+      <form onSubmit={handleSearch} className="flex-1 max-w-xs">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />
           <input
-            placeholder="Search transactions..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg text-sm bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
+            value={searchValue}
+            onChange={e => setSearchValue(e.target.value)}
+            placeholder="Search transactions…"
+            className="w-full h-9 pl-9 pr-8 rounded-lg text-sm bg-white/10 border border-white/20 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
           />
+          {searchValue && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-      </div>
+      </form>
 
       <div className="ml-auto flex items-center gap-2">
+
+        {/* Desktop / Mobile view toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleViewMode}
+          className="w-9 h-9 text-white hover:bg-white/10"
+          title={viewMode === 'desktop' ? 'Switch to Mobile View' : 'Switch to Desktop View'}
+        >
+          {viewMode === 'desktop'
+            ? <Smartphone className="w-4 h-4" />
+            : <Laptop     className="w-4 h-4" />}
+        </Button>
+
         {/* Theme Color Toggle */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
