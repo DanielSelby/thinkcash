@@ -37,6 +37,47 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   investment:   '#7c3aed',
 }
 
+const ALL_CURRENCIES = [
+  { value: 'GHS', label: '🇬🇭 GHS — Cedi'        },
+  { value: 'USD', label: '🇺🇸 USD — Dollar'       },
+  { value: 'EUR', label: '🇪🇺 EUR — Euro'         },
+  { value: 'GBP', label: '🇬🇧 GBP — Pound'       },
+  { value: 'NGN', label: '🇳🇬 NGN — Naira'       },
+  { value: 'KES', label: '🇰🇪 KES — Shilling'    },
+  { value: 'ZAR', label: '🇿🇦 ZAR — Rand'        },
+  { value: 'EGP', label: '🇪🇬 EGP — Pound'       },
+  { value: 'TZS', label: '🇹🇿 TZS — Shilling'   },
+  { value: 'UGX', label: '🇺🇬 UGX — Shilling'   },
+  { value: 'XOF', label: '🌍 XOF — CFA BCEAO'   },
+  { value: 'XAF', label: '🌍 XAF — CFA BEAC'    },
+  { value: 'MAD', label: '🇲🇦 MAD — Dirham'      },
+  { value: 'ETB', label: '🇪🇹 ETB — Birr'        },
+  { value: 'RWF', label: '🇷🇼 RWF — Franc'       },
+  { value: 'ZMW', label: '🇿🇲 ZMW — Kwacha'      },
+  { value: 'JPY', label: '🇯🇵 JPY — Yen'         },
+  { value: 'CNY', label: '🇨🇳 CNY — Yuan'        },
+  { value: 'INR', label: '🇮🇳 INR — Rupee'       },
+  { value: 'CAD', label: '🇨🇦 CAD — Dollar'      },
+  { value: 'AUD', label: '🇦🇺 AUD — Dollar'      },
+  { value: 'CHF', label: '🇨🇭 CHF — Franc'       },
+  { value: 'SGD', label: '🇸🇬 SGD — Dollar'      },
+  { value: 'AED', label: '🇦🇪 AED — Dirham'      },
+  { value: 'SAR', label: '🇸🇦 SAR — Riyal'       },
+  { value: 'BRL', label: '🇧🇷 BRL — Real'        },
+  { value: 'MXN', label: '🇲🇽 MXN — Peso'        },
+  { value: 'SEK', label: '🇸🇪 SEK — Krona'       },
+  { value: 'NOK', label: '🇳🇴 NOK — Krone'       },
+  { value: 'NZD', label: '🇳🇿 NZD — Dollar'      },
+  { value: 'HKD', label: '🇭🇰 HKD — Dollar'      },
+  { value: 'KRW', label: '🇰🇷 KRW — Won'         },
+  { value: 'TRY', label: '🇹🇷 TRY — Lira'        },
+  { value: 'THB', label: '🇹🇭 THB — Baht'        },
+  { value: 'MYR', label: '🇲🇾 MYR — Ringgit'     },
+  { value: 'PHP', label: '🇵🇭 PHP — Peso'        },
+]
+
+const CUSTOM_KEY = 'ts_custom_currencies'
+
 const accountSchema = z.object({
   name:            z.string().min(1, 'Account name is required'),
   type:            z.string().min(1, 'Account type is required'),
@@ -61,11 +102,11 @@ type TransferFormData = z.infer<typeof transferSchema>
 interface Transfer {
   id: string
   from_account_id: string
-  to_account_id: string
-  amount: number
-  note?: string | null
-  date: string
-  created_at: string
+  to_account_id:   string
+  amount:          number
+  note?:           string | null
+  date:            string
+  created_at:      string
 }
 
 interface Props {
@@ -79,8 +120,20 @@ interface Props {
 export function UserAccountsContent({
   initialAccounts, incomes, expenses, initialTransfers, userId,
 }: Props) {
-  const { activeTheme } = useAppStore()
+  const { activeTheme, currency: appCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
+
+  // Use app currency for formatting
+  const fmt = (n: number) => formatCurrency(n, appCurrency)
+
+  // Merge built-in + custom currencies from localStorage
+  const allCurrencies = useMemo(() => {
+    try {
+      const custom = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]') as { value: string; label: string }[]
+      const customMapped = custom.map(c => ({ value: c.value, label: `${c.value} — ${c.label}` }))
+      return [...ALL_CURRENCIES, ...customMapped]
+    } catch { return ALL_CURRENCIES }
+  }, [])
 
   const [accounts,  setAccounts]  = useState(initialAccounts)
   const [transfers, setTransfers] = useState(initialTransfers)
@@ -88,31 +141,27 @@ export function UserAccountsContent({
   const [editing,   setEditing]   = useState<UserAccount | null>(null)
   const [loading,   setLoading]   = useState(false)
 
-  // Transfer dialog state
   const [transferOpen,    setTransferOpen]    = useState(false)
   const [transferLoading, setTransferLoading] = useState(false)
   const [showHistory,     setShowHistory]     = useState(false)
 
-  // Account form
   const accountForm = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
     defaultValues: { opening_balance: 0, currency: 'GHS' },
   })
 
-  // Transfer form
   const transferForm = useForm<TransferFormData>({
     resolver: zodResolver(transferSchema),
     defaultValues: { date: new Date().toISOString().split('T')[0] },
   })
 
-  // Compute balance per account (including transfers)
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
-      const totalIncome    = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
-      const totalExpense   = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
-      const transfersOut   = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const transfersIn    = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
+      const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const balance       = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
       return { ...acc, total_income: totalIncome, total_expenses: totalExpense, transfers_in: transfersIn, transfers_out: transfersOut, balance }
     }), [accounts, incomes, expenses, transfers])
 
@@ -120,10 +169,9 @@ export function UserAccountsContent({
   const totalIncome   = accountsWithBalance.reduce((s, a) => s + (a.total_income ?? 0), 0)
   const totalExpenses = accountsWithBalance.reduce((s, a) => s + (a.total_expenses ?? 0), 0)
 
-  // Account CRUD
   const openCreate = () => {
     setEditing(null)
-    accountForm.reset({ opening_balance: 0, currency: 'GHS' })
+    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS' })
     setOpen(true)
   }
 
@@ -179,7 +227,6 @@ export function UserAccountsContent({
     }
   }
 
-  // Transfer
   const onTransferSubmit = async (data: TransferFormData) => {
     setTransferLoading(true)
     const supabase = createClient()
@@ -199,7 +246,7 @@ export function UserAccountsContent({
       toast({ title: 'Transfer failed', description: error.message, variant: 'destructive' })
     } else {
       setTransfers(prev => [created, ...prev])
-      toast({ title: `${formatCurrency(data.amount)} transferred successfully`, variant: 'success' })
+      toast({ title: `${fmt(data.amount)} transferred successfully`, variant: 'success' })
       transferForm.reset({ date: new Date().toISOString().split('T')[0] })
       setTransferOpen(false)
     }
@@ -246,7 +293,11 @@ export function UserAccountsContent({
                   </span>
                 )}
               </Button>
-              <Button variant="outline" onClick={() => { transferForm.reset({ date: new Date().toISOString().split('T')[0] }); setTransferOpen(true) }}
+              <Button variant="outline"
+                onClick={() => {
+                  transferForm.reset({ date: new Date().toISOString().split('T')[0] })
+                  setTransferOpen(true)
+                }}
                 className="flex items-center gap-2">
                 <ArrowLeftRight className="w-4 h-4" /> Transfer
               </Button>
@@ -262,16 +313,16 @@ export function UserAccountsContent({
       <div className="grid grid-cols-3 gap-4">
         <Card className="bg-white kpi-green p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Balance</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{formatCurrency(totalBalance)}</p>
+          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalBalance)}</p>
           <p className="text-xs text-muted-foreground mt-1">{accounts.length} account(s)</p>
         </Card>
         <Card className="bg-white kpi-blue p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Received</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{formatCurrency(totalIncome)}</p>
+          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalIncome)}</p>
         </Card>
         <Card className="bg-white kpi-red p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Spent</p>
-          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{formatCurrency(totalExpenses)}</p>
+          <p className="kpi-value text-2xl font-bold tabular-nums mt-1">{fmt(totalExpenses)}</p>
         </Card>
       </div>
 
@@ -283,7 +334,8 @@ export function UserAccountsContent({
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <ArrowLeftRight className="w-4 h-4" /> Transfer History
               </CardTitle>
-              <button onClick={() => setShowHistory(false)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setShowHistory(false)}
+                className="text-muted-foreground hover:text-foreground">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -292,7 +344,7 @@ export function UserAccountsContent({
             {transfers.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">No transfers yet</p>
             ) : (
-              <div className="space-y-0">
+              <div>
                 {transfers.map(t => (
                   <div key={t.id}
                     className="flex items-center justify-between py-3 border-b border-border last:border-0 group">
@@ -301,9 +353,9 @@ export function UserAccountsContent({
                         <ArrowLeftRight className="w-4 h-4 text-blue-500" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 text-sm font-medium">
+                        <div className="flex items-center gap-1.5 text-sm font-medium flex-wrap">
                           <span>{getAccountName(t.from_account_id)}</span>
-                          <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground" />
+                          <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                           <span>{getAccountName(t.to_account_id)}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">
@@ -313,12 +365,11 @@ export function UserAccountsContent({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold tabular-nums text-blue-600">
-                        {formatCurrency(Number(t.amount))}
+                        {fmt(Number(t.amount))}
                       </span>
                       <button
                         onClick={() => handleDeleteTransfer(t.id)}
-                        className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity"
-                      >
+                        className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -362,6 +413,9 @@ export function UserAccountsContent({
                         <p className="font-semibold text-sm">{acc.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {typeLabel}{acc.institution ? ` · ${acc.institution}` : ''}
+                          {acc.currency !== 'GHS' && (
+                            <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs">{acc.currency}</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -377,27 +431,25 @@ export function UserAccountsContent({
                     </div>
                   </div>
 
-                  {/* Balance */}
                   <div className="mb-4">
                     <p className="text-xs text-muted-foreground mb-0.5">Current Balance</p>
                     <p className="text-2xl font-bold tabular-nums" style={{ color }}>
-                      {formatCurrency(acc.balance ?? 0)}
+                      {formatCurrency(acc.balance ?? 0, acc.currency)}
                     </p>
                     {acc.opening_balance > 0 && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Opening: {formatCurrency(acc.opening_balance)}
+                        Opening: {formatCurrency(acc.opening_balance, acc.currency)}
                       </p>
                     )}
                   </div>
 
-                  {/* Stats grid */}
                   <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
                     <div className="flex items-center gap-2">
                       <ArrowUpRight className="w-4 h-4 text-green-600 flex-shrink-0" />
                       <div>
                         <p className="text-xs text-muted-foreground">Received</p>
                         <p className="text-sm font-semibold text-green-600 tabular-nums">
-                          {formatCurrency(acc.total_income ?? 0)}
+                          {formatCurrency(acc.total_income ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
@@ -406,7 +458,7 @@ export function UserAccountsContent({
                       <div>
                         <p className="text-xs text-muted-foreground">Spent</p>
                         <p className="text-sm font-semibold text-red-500 tabular-nums">
-                          {formatCurrency(acc.total_expenses ?? 0)}
+                          {formatCurrency(acc.total_expenses ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
@@ -416,7 +468,7 @@ export function UserAccountsContent({
                         <div>
                           <p className="text-xs text-muted-foreground">Transferred In</p>
                           <p className="text-sm font-semibold text-blue-500 tabular-nums">
-                            {formatCurrency(acc.transfers_in ?? 0)}
+                            {formatCurrency(acc.transfers_in ?? 0, acc.currency)}
                           </p>
                         </div>
                       </div>
@@ -427,14 +479,13 @@ export function UserAccountsContent({
                         <div>
                           <p className="text-xs text-muted-foreground">Transferred Out</p>
                           <p className="text-sm font-semibold text-orange-500 tabular-nums">
-                            {formatCurrency(acc.transfers_out ?? 0)}
+                            {formatCurrency(acc.transfers_out ?? 0, acc.currency)}
                           </p>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Quick transfer button */}
                   {accounts.length >= 2 && (
                     <button
                       onClick={() => {
@@ -485,10 +536,13 @@ export function UserAccountsContent({
 
             <div className="space-y-1.5">
               <Label>Account Type</Label>
-              <Select onValueChange={v => accountForm.setValue('type', v)} defaultValue={editing?.type}>
+              <Select onValueChange={v => accountForm.setValue('type', v)}
+                defaultValue={editing?.type}>
                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  {ACCOUNT_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  {ACCOUNT_TYPES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {accountForm.formState.errors.type && (
@@ -498,26 +552,28 @@ export function UserAccountsContent({
 
             <div className="space-y-1.5">
               <Label>Institution / Provider <span className="text-muted-foreground">(optional)</span></Label>
-              <Input placeholder="e.g. GCB Bank, MTN, Ecobank" {...accountForm.register('institution')} />
+              <Input placeholder="e.g. GCB Bank, MTN, Ecobank"
+                {...accountForm.register('institution')} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Opening Balance (GHS)</Label>
+                <Label>Opening Balance</Label>
                 <Input type="number" step="0.01" placeholder="0.00"
                   {...accountForm.register('opening_balance')} />
                 <p className="text-xs text-muted-foreground">Balance before using this app</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Currency</Label>
-                <Select onValueChange={v => accountForm.setValue('currency', v)}
-                  defaultValue={editing?.currency ?? 'GHS'}>
+                <Select
+                  onValueChange={v => accountForm.setValue('currency', v)}
+                  defaultValue={editing?.currency ?? appCurrency ?? 'GHS'}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GHS">GHS — Cedi</SelectItem>
-                    <SelectItem value="USD">USD — Dollar</SelectItem>
-                    <SelectItem value="EUR">EUR — Euro</SelectItem>
-                    <SelectItem value="GBP">GBP — Pound</SelectItem>
+                  <SelectContent className="max-h-64 overflow-y-auto">
+                    {allCurrencies.map(c => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -555,10 +611,7 @@ export function UserAccountsContent({
                 <SelectContent>
                   {accountsWithBalance.map(a => (
                     <SelectItem key={a.id} value={a.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{a.name}</span>
-                        <span className="text-muted-foreground text-xs">({formatCurrency(a.balance ?? 0)})</span>
-                      </div>
+                      {a.name} ({fmt(a.balance ?? 0)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -583,10 +636,7 @@ export function UserAccountsContent({
                 <SelectContent>
                   {accountsWithBalance.map(a => (
                     <SelectItem key={a.id} value={a.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{a.name}</span>
-                        <span className="text-muted-foreground text-xs">({formatCurrency(a.balance ?? 0)})</span>
-                      </div>
+                      {a.name} ({fmt(a.balance ?? 0)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -598,7 +648,7 @@ export function UserAccountsContent({
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Amount (GHS)</Label>
+                <Label>Amount</Label>
                 <Input type="number" step="0.01" placeholder="0.00"
                   {...transferForm.register('amount')} />
                 {transferForm.formState.errors.amount && (
@@ -616,13 +666,14 @@ export function UserAccountsContent({
               <Input placeholder="e.g. Moving savings to bank" {...transferForm.register('note')} />
             </div>
 
-            {/* Preview */}
-            {transferForm.watch('from_account_id') && transferForm.watch('to_account_id') && transferForm.watch('amount') > 0 && (
+            {transferForm.watch('from_account_id') &&
+             transferForm.watch('to_account_id') &&
+             Number(transferForm.watch('amount')) > 0 && (
               <div className="p-3 rounded-xl text-sm"
                 style={{ background: theme.colors.primaryPale }}>
                 <p className="font-medium" style={{ color: theme.colors.primary }}>Transfer Summary</p>
                 <p className="text-muted-foreground mt-1">
-                  {formatCurrency(Number(transferForm.watch('amount')))} from{' '}
+                  {fmt(Number(transferForm.watch('amount')))} from{' '}
                   <strong>{getAccountName(transferForm.watch('from_account_id'))}</strong> to{' '}
                   <strong>{getAccountName(transferForm.watch('to_account_id'))}</strong>
                 </p>
