@@ -63,19 +63,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
-  // Use selected currency for formatting
+  // Use selected currency for formatting global aggregates
   const fmt = (n: number) => formatCurrency(n, currency)
 
   useEffect(() => { if (profile) setProfile(profile) }, [profile])
 
-  const [showFilter,  setShowFilter]  = useState(false)
-  const [localFrom,   setLocalFrom]   = useState('')
-  const [localTo,     setLocalTo]     = useState('')
-  const [selMonth,    setSelMonth]    = useState('')
-  const [selYear,     setSelYear]     = useState('')
-  const [incomeCat,   setIncomeCat]   = useState('All')
-  const [expenseCat,  setExpenseCat]  = useState('All')
-  const [isFiltered,  setIsFiltered]  = useState(false)
+  const [showFilter,   setShowFilter]   = useState(false)
+  const [localFrom,    setLocalFrom]    = useState('')
+  const [localTo,      setLocalTo]      = useState('')
+  const [selMonth,     setSelMonth]     = useState('')
+  const [selYear,      setSelYear]      = useState('')
+  const [incomeCat,    setIncomeCat]    = useState('All')
+  const [expenseCat,   setExpenseCat]   = useState('All')
+  const [isFiltered,   setIsFiltered]   = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
 
   // Account balances INCLUDING transfers
@@ -309,19 +309,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     <CardContent className="p-4">
                       <p className="text-xs text-muted-foreground truncate">{acc.name}</p>
                       <p className="text-lg font-bold tabular-nums mt-1" style={{ color }}>
-                        {fmt(acc.balance ?? 0)}
+                        {formatCurrency(acc.balance ?? 0, acc.currency)}
                       </p>
                       <div className="flex justify-between text-xs mt-2">
-                        <span className="text-green-600">+{fmt(acc.total_income ?? 0)}</span>
-                        <span className="text-red-500">-{fmt(acc.total_expenses ?? 0)}</span>
+                        <span className="text-green-600">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+                        <span className="text-red-500">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
                       </div>
                       {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
                         <div className="flex justify-between text-xs mt-1">
                           {(acc.transfers_in ?? 0) > 0 && (
-                            <span className="text-blue-500">↙ {fmt(acc.transfers_in ?? 0)}</span>
+                            <span className="text-blue-500">↙ {formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
                           )}
                           {(acc.transfers_out ?? 0) > 0 && (
-                            <span className="text-orange-500">↗ {fmt(acc.transfers_out ?? 0)}</span>
+                            <span className="text-orange-500">↗ {formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>
                           )}
                         </div>
                       )}
@@ -332,14 +332,21 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           </div>
 
           <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
-            <p className="text-sm font-semibold">
-              Total Balance
-              {accountTypeFilter !== 'all' && (
-                <span className="text-muted-foreground font-normal ml-1 capitalize">
-                  ({accountTypeFilter === 'mobile_money' ? 'Mobile Money' : accountTypeFilter})
-                </span>
+            <div>
+              <p className="text-sm font-semibold">
+                Total Balance
+                {accountTypeFilter !== 'all' && (
+                  <span className="text-muted-foreground font-normal ml-1 capitalize">
+                    ({accountTypeFilter === 'mobile_money' ? 'Mobile Money' : accountTypeFilter})
+                  </span>
+                )}
+              </p>
+              {accountsWithBalance.some(a => a.currency !== currency) && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Converted at face value — accounts use different currencies
+                </p>
               )}
-            </p>
+            </div>
             <p className="text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
               {fmt(accountsWithBalance
                 .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
