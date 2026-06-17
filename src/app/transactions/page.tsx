@@ -4,15 +4,17 @@ import { AppShell } from '@/components/layout/app-shell'
 import { TransactionsContent } from './transactions-content'
 
 export const metadata = { title: 'Transactions' }
+export const dynamic  = 'force-dynamic'
 
 export default async function TransactionsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const [{ data: incomes }, { data: expenses }] = await Promise.all([
+  const [{ data: incomes }, { data: expenses }, { data: accounts }] = await Promise.all([
     supabase.from('incomes').select('*').eq('user_id', user.id).order('date', { ascending: false }),
     supabase.from('expenses').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+    supabase.from('user_accounts').select('id, name, currency').eq('user_id', user.id),
   ])
 
   const transactions = [
@@ -22,7 +24,7 @@ export default async function TransactionsPage() {
 
   return (
     <AppShell>
-      <TransactionsContent transactions={transactions} />
+      <TransactionsContent transactions={transactions} accounts={accounts ?? []} />
     </AppShell>
   )
 }

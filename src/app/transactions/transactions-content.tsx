@@ -21,13 +21,17 @@ type Transaction = {
   date: string
   payment_method?: string
   notes?: string | null
+  account_id?: string | null
 }
+
+type AccountLite = { id: string; name: string; currency: string }
 
 interface Props {
   transactions: Transaction[]
+  accounts: AccountLite[]
 }
 
-export function TransactionsContent({ transactions }: Props) {
+export function TransactionsContent({ transactions, accounts }: Props) {
   const searchParams = useSearchParams()
   const { incomeCategories, expenseCategories } = useCategories()
 
@@ -37,11 +41,18 @@ export function TransactionsContent({ transactions }: Props) {
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
 
-  // Read ?search= from URL (set by the top nav search bar) on first load
   useEffect(() => {
     const q = searchParams.get('search')
     if (q) setSearch(q)
   }, [searchParams])
+
+  const getAccountCurrency = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.currency
+
+  const hasMixedCurrencies = useMemo(() => {
+    const currencies = new Set(accounts.map(a => a.currency || 'GHS'))
+    return currencies.size > 1
+  }, [accounts])
 
   const allCategories = useMemo(() =>
     Array.from(new Set([...incomeCategories, ...expenseCategories])),
@@ -66,10 +77,11 @@ export function TransactionsContent({ transactions }: Props) {
 
   const handleExportCSV = () => {
     const rows = [
-      ['Date', 'Title', 'Category', 'Type', 'Amount', 'Payment Method', 'Notes'],
+      ['Date', 'Title', 'Category', 'Type', 'Amount', 'Currency', 'Payment Method', 'Notes'],
       ...filtered.map(t => [
         t.date, t.title, t.category, t.type,
-        t.amount.toFixed(2), t.payment_method || '', t.notes || '',
+        t.amount.toFixed(2), getAccountCurrency(t.account_id) || 'GHS',
+        t.payment_method || '', t.notes || '',
       ]),
     ]
     const csv  = rows.map(r => r.join(',')).join('\n')
@@ -130,6 +142,12 @@ export function TransactionsContent({ transactions }: Props) {
           </p>
         </Card>
       </div>
+
+      {hasMixedCurrencies && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          Totals above are summed at face value across accounts with different currencies. Row amounts below show each transaction's actual account currency.
+        </p>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
@@ -225,7 +243,7 @@ export function TransactionsContent({ transactions }: Props) {
                       <td className={`px-6 py-3.5 text-right font-semibold tabular-nums ${
                         t.type === 'income' ? 'text-success' : 'text-destructive'
                       }`}>
-                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
+                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount, getAccountCurrency(t.account_id))}
                       </td>
                     </tr>
                   ))}

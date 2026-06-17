@@ -51,6 +51,14 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
     defaultValues: { date: new Date().toISOString().split('T')[0] },
   })
 
+  const getAccountCurrency = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.currency
+
+  const hasMixedCurrencies = useMemo(() => {
+    const currencies = new Set(accounts.map(a => a.currency || 'GHS'))
+    return currencies.size > 1
+  }, [accounts])
+
   const openCreate = () => {
     setEditing(null)
     reset({ date: new Date().toISOString().split('T')[0] })
@@ -143,6 +151,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
           <p className="kpi-value text-2xl font-bold tabular-nums mt-1">
             {formatCurrency(incomes.reduce((s, i) => s + i.amount, 0))}
           </p>
+          {hasMixedCurrencies && (
+            <p className="text-xs text-muted-foreground mt-1">Sum shown at face value, mixed currencies</p>
+          )}
         </Card>
         <Card className="bg-white kpi-blue p-5">
           <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">This View</p>
@@ -224,7 +235,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">{formatDate(income.date)}</td>
                       <td className="px-6 py-4 text-right font-semibold text-success tabular-nums">
-                        +{formatCurrency(income.amount)}
+                        +{formatCurrency(income.amount, getAccountCurrency(income.account_id))}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex justify-end gap-1">
@@ -264,10 +275,11 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Amount (GHS)</Label>
+                <Label>Amount</Label>
                 <Input type="number" step="0.01" placeholder="0.00" {...register('amount')}
                   className={errors.amount ? 'border-destructive' : ''} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+                <p className="text-xs text-muted-foreground">Recorded in the selected account's currency</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
@@ -296,7 +308,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                   <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No account</SelectItem>
-                    {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                    {accounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
