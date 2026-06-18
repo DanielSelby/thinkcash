@@ -297,19 +297,19 @@ export function ReportsOverview({ incomes, expenses }: Props) {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {[
           { label: 'Total Income',   value: totalIncome,   icon: TrendingUp,   colorClass: 'kpi-green',  custom: null },
           { label: 'Total Expenses', value: totalExpenses, icon: TrendingDown, colorClass: 'kpi-red',    custom: null },
           { label: 'Net Savings',    value: netSavings,    icon: PiggyBank,    colorClass: 'kpi-blue',   custom: null },
           { label: 'Savings Rate',   value: 0,             icon: BarChart3,    colorClass: 'kpi-purple', custom: `${savingsRate.toFixed(1)}%` },
         ].map(({ label, value, icon: Icon, colorClass, custom }) => (
-          <Card key={label} className={`${colorClass} bg-white p-5`}>
-            <div className="flex items-center gap-2 mb-2">
-              <Icon className="w-4 h-4 text-muted-foreground" />
-              <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">{label}</p>
+          <Card key={label} className={`${colorClass} bg-white p-3 sm:p-5 overflow-hidden`}>
+            <div className="flex items-center gap-2 mb-2 min-w-0">
+              <Icon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">{label}</p>
             </div>
-            <p className="kpi-value font-display text-xl font-bold tabular-nums">
+            <p className="kpi-value font-display text-sm sm:text-xl font-bold tabular-nums truncate">
               {custom || formatCurrency(value)}
             </p>
           </Card>
@@ -328,13 +328,13 @@ export function ReportsOverview({ incomes, expenses }: Props) {
             {incomeByCategory.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-4">No income for this period</p>
             ) : incomeByCategory.map(([cat, amt]) => (
-              <div key={cat} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div key={cat} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: CATEGORY_COLORS[cat] || '#94a3b8' }} />
-                  <span className="text-sm">{cat}</span>
+                  <span className="text-sm truncate">{cat}</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="text-xs text-muted-foreground">
                     {totalIncome > 0 ? ((amt / totalIncome) * 100).toFixed(0) : 0}%
                   </span>
@@ -357,13 +357,13 @@ export function ReportsOverview({ incomes, expenses }: Props) {
             {expenseByCategory.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-4">No expenses for this period</p>
             ) : expenseByCategory.map(([cat, amt]) => (
-              <div key={cat} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div key={cat} className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: CATEGORY_COLORS[cat] || '#94a3b8' }} />
-                  <span className="text-sm">{cat}</span>
+                  <span className="text-sm truncate">{cat}</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-shrink-0">
                   <span className="text-xs text-muted-foreground">
                     {totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(0) : 0}%
                   </span>

@@ -124,24 +124,24 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white p-5">
-          <p className="text-sm text-muted-foreground">Total Active</p>
-          <p className="font-display text-2xl font-bold mt-1">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <Card className="bg-white p-3 sm:p-5 overflow-hidden">
+          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Total Active</p>
+          <p className="font-display text-lg sm:text-2xl font-bold mt-1 truncate">
             {items.filter(i => i.is_active).length}
           </p>
         </Card>
-        <Card className="bg-white p-5 kpi-green">
-          <p className="text-sm text-muted-foreground">Monthly Income</p>
-          <p className="kpi-value text-xl font-bold tabular-nums mt-1">
+        <Card className="bg-white p-3 sm:p-5 kpi-green overflow-hidden">
+          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Monthly Income</p>
+          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums mt-1 truncate">
             {formatCurrency(items
               .filter(i => i.is_active && i.type === 'income' && i.frequency === 'monthly')
               .reduce((s, i) => s + i.amount, 0))}
           </p>
         </Card>
-        <Card className="bg-white p-5 kpi-red">
-          <p className="text-sm text-muted-foreground">Monthly Expenses</p>
-          <p className="kpi-value text-xl font-bold tabular-nums mt-1">
+        <Card className="bg-white p-3 sm:p-5 kpi-red overflow-hidden">
+          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Monthly Expenses</p>
+          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums mt-1 truncate">
             {formatCurrency(items
               .filter(i => i.is_active && i.type === 'expense' && i.frequency === 'monthly')
               .reduce((s, i) => s + i.amount, 0))}
