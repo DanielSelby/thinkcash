@@ -392,30 +392,30 @@ export function PLContent({ incomes, expenses }: Props) {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="bg-white kpi-green p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-3.5 h-3.5 text-green-600" />
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Income</p>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <Card className="bg-white kpi-green p-3 sm:p-4 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+            <TrendingUp className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Income</p>
           </div>
-          <p className="kpi-value text-xl font-bold tabular-nums">{formatCurrency(totalIncome)}</p>
+          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums break-all">{formatCurrency(totalIncome)}</p>
         </Card>
-        <Card className="bg-white kpi-red p-4">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingDown className="w-3.5 h-3.5 text-red-500" />
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Expenses</p>
+        <Card className="bg-white kpi-red p-3 sm:p-4 overflow-hidden">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+            <TrendingDown className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Expenses</p>
           </div>
-          <p className="kpi-value text-xl font-bold tabular-nums">{formatCurrency(totalExpenses)}</p>
+          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums break-all">{formatCurrency(totalExpenses)}</p>
         </Card>
-        <Card className={`bg-white p-4 ${netSurplus >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
-          <div className="flex items-center gap-2 mb-1">
-            <Minus className="w-3.5 h-3.5" />
-            <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wide">Net Surplus</p>
+        <Card className={`bg-white p-3 sm:p-4 overflow-hidden ${netSurplus >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+            <Minus className="w-3.5 h-3.5 flex-shrink-0" />
+            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Net Surplus</p>
           </div>
-          <p className={`kpi-value text-xl font-bold tabular-nums ${netSurplus < 0 ? 'text-red-500' : ''}`}>
+          <p className={`kpi-value text-sm sm:text-xl font-bold tabular-nums break-all ${netSurplus < 0 ? 'text-red-500' : ''}`}>
             {formatCurrency(netSurplus)}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">Savings rate: {savingsRate}%</p>
+          <p className="text-[9px] sm:text-xs text-muted-foreground mt-0.5 truncate">Savings rate: {savingsRate}%</p>
         </Card>
       </div>
 
