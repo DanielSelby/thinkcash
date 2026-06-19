@@ -93,13 +93,13 @@ const CategoryOuterLabel = (props: any) => {
   const { cx, cy, midAngle, outerRadius, percent } = props
   if (percent < 0.04) return null
   const RAD = Math.PI / 180
-  const r = outerRadius + 14
+  const r = outerRadius + 16
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
   const small = typeof window !== 'undefined' && window.innerWidth < 640
   return (
     <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
-      fontSize={small ? 9 : 11} fontWeight={600} fill="#374151">
+      fontSize={small ? 10 : 12} fontWeight={600} fill="#374151">
       {`${(percent * 100).toFixed(0)}%`}
     </text>
   )
@@ -116,7 +116,7 @@ const CurrencyInnerLabel = (props: any) => {
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
   return (
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={small ? 8 : 9.5} fontWeight={600} fill="#1f2937">
+    <text x={x} y={y} textAnchor="middle" dominantBaseline="central" fontSize={small ? 8.5 : 10} fontWeight={600} fill="#1f2937">
       <tspan x={x} dy="-0.3em">{currencySymbol(name)} {name}</tspan>
       <tspan x={x} dy="1.1em">{Math.round(value).toLocaleString()}</tspan>
     </text>
@@ -274,9 +274,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     return map
   }, [filteredIncomes, accounts, currency])
 
-  // Centre label shows the PRIMARY app-currency total only (never a blended cross-currency sum)
-  const primaryCurrencyIncomeTotal = incomeByCurrency[currency] ?? 0
-  // Raw sum across all currencies — used only for matrix-table percentage math, never displayed as one figure
+  // Raw sum across ALL currencies — the same figure shown in the matrix "Total" row/column.
+  // This is NOT a currency amount, just a combined count, so it's never passed through formatCurrency.
   const grandTotalIncomeRaw = useMemo(() =>
     incomeByCategory.reduce((s, c) => s + c.value, 0), [incomeByCategory])
 
@@ -616,17 +615,17 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
 
               {/* Nested donut: outer ring = category (% only), inner ring = currency. Category names live in the legend below. */}
-              <div className="relative mx-auto w-full max-w-[340px] sm:max-w-[400px]">
-                <ResponsiveContainer width="100%" height={340}>
-                  <PieChart margin={{ top: 20, right: 30, bottom: 10, left: 30 }}>
+              <div className="relative mx-auto w-full max-w-[420px] sm:max-w-[480px]">
+                <ResponsiveContainer width="100%" height={400}>
+                  <PieChart margin={{ top: 24, right: 36, bottom: 8, left: 36 }}>
                     <Pie
                       data={incomeByCategory}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius="66%"
-                      outerRadius="86%"
+                      innerRadius="64%"
+                      outerRadius="84%"
                       paddingAngle={1}
                       labelLine={false}
                       label={CategoryOuterLabel}
@@ -648,8 +647,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius="34%"
-                      outerRadius="58%"
+                      innerRadius="30%"
+                      outerRadius="54%"
                       paddingAngle={1}
                       labelLine={false}
                       label={CurrencyInnerLabel}
@@ -663,7 +662,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     <Tooltip formatter={(v: any, name: any) => [Math.round(Number(v)).toLocaleString(), name]} />
                     <Legend
                       layout="horizontal" align="center" verticalAlign="bottom" iconSize={8}
-                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                      wrapperStyle={{ fontSize: 11, paddingTop: 10 }}
                       payload={incomeByCategory.map((c, i) => ({
                         value: `${c.name} (${grandTotalIncomeRaw > 0 ? Math.round((c.value / grandTotalIncomeRaw) * 100) : 0}%)`,
                         type: 'square',
@@ -673,20 +672,20 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Center label — primary currency total only, dynamic with filters/clicks */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-12 -translate-y-4">
+                {/* Center label — combined raw figure (no currency symbol, since it spans currencies), dynamic on slice click */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-14 -translate-y-5">
                   <div className="text-center leading-tight">
                     <p className="text-[8px] sm:text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
                       {activeDonutIndex !== null ? incomeByCategory[activeDonutIndex]?.name : 'Total Income'}
                     </p>
-                    {currencyBreakdown.length > 1 && (
-                      <p className="text-[7px] sm:text-[9px] text-muted-foreground">{currency} shown</p>
-                    )}
-                    <p className="text-sm sm:text-xl font-bold tabular-nums mt-0.5" style={{ color: theme.colors.primary }}>
+                    <p className="text-base sm:text-2xl font-bold tabular-nums mt-0.5" style={{ color: theme.colors.primary }}>
                       {activeDonutIndex !== null
-                        ? formatCurrency(incomeByCategory[activeDonutIndex]?.value ?? 0, currency)
-                        : formatCurrency(primaryCurrencyIncomeTotal, currency)}
+                        ? Math.round(incomeByCategory[activeDonutIndex]?.value ?? 0).toLocaleString()
+                        : Math.round(grandTotalIncomeRaw).toLocaleString()}
                     </p>
+                    {currencyBreakdown.length > 1 && (
+                      <p className="text-[7px] sm:text-[9px] text-muted-foreground mt-0.5">Combined, all currencies</p>
+                    )}
                   </div>
                 </div>
               </div>
