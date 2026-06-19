@@ -103,10 +103,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [localFrom,         setLocalFrom]         = useState('')
   const [localTo,           setLocalTo]           = useState('')
   const [selMonth,          setSelMonth]          = useState('')
-  const [selYear,           setSelYear]           = useState('')
-  const [incomeCat,         setIncomeCat]         = useState('All')
-  const [expenseCat,        setExpenseCat]        = useState('All')
-  const [isFiltered,        setIsFiltered]        = useState(false)
+  const [selYear,           setSelYear]          = useState('')
+  const [incomeCat,         setIncomeCat]        = useState('All')
+  const [expenseCat,        setExpenseCat]       = useState('All')
+  const [isFiltered,        setIsFiltered]       = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
 
@@ -182,14 +182,33 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const net          = totalIncome - totalExpense
   const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
+  // Income by category — tracks per-currency breakdown so mixed-currency totals stay accurate
   const incomeByCategory = useMemo(() => {
-    const map: Record<string, number> = {}
+    const map: Record<string, { value: number; currencies: Record<string, number> }> = {}
     filteredIncomes.forEach(r => {
       const cat = r.category || 'Other'
-      map[cat] = (map[cat] || 0) + Number(r.amount)
+      const cur = accounts.find(a => a.id === r.account_id)?.currency || currency
+      if (!map[cat]) map[cat] = { value: 0, currencies: {} }
+      map[cat].value += Number(r.amount)
+      map[cat].currencies[cur] = (map[cat].currencies[cur] || 0) + Number(r.amount)
     })
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [filteredIncomes])
+    return Object.entries(map)
+      .map(([name, data]) => ({ name, value: data.value, currencies: data.currencies }))
+      .sort((a, b) => b.value - a.value)
+  }, [filteredIncomes, accounts, currency])
+
+  const incomeHasMixedCurrencies = useMemo(() =>
+    new Set(filteredIncomes.map(r => accounts.find(a => a.id === r.account_id)?.currency || currency)).size > 1,
+    [filteredIncomes, accounts, currency])
+
+  const incomeTotalByCurrency = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredIncomes.forEach(r => {
+      const cur = accounts.find(a => a.id === r.account_id)?.currency || currency
+      map[cur] = (map[cur] || 0) + Number(r.amount)
+    })
+    return map
+  }, [filteredIncomes, accounts, currency])
 
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
@@ -235,6 +254,15 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const donutCentreLabel = activeDonutIndex !== null
     ? (incomeByCategory[activeDonutIndex]?.name ?? '')
     : 'Total Income'
+
+  // Account Balances "Total Balance" — grouped strictly by currency, never summed across currencies
+  const visibleAccountsForTotal = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
+  const balanceByCurrency: Record<string, number> = {}
+  visibleAccountsForTotal.forEach(a => {
+    const cur = a.currency || 'GHS'
+    balanceByCurrency[cur] = (balanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
+  })
+  const balanceCurrencies = Object.keys(balanceByCurrency)
 
   return (
     <div className="space-y-5">
@@ -389,8 +417,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               })}
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-border shadow-sm gap-2">
-            <div className="min-w-0">
+          {/* Total Balance — one figure per currency, never blended together */}
+          <div className="px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-sm font-semibold truncate">
                 Total Balance
                 {accountTypeFilter !== 'all' && (
@@ -399,15 +428,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   </span>
                 )}
               </p>
-              {accountsWithBalance.some(a => a.currency !== currency) && (
-                <p className="text-xs text-muted-foreground mt-0.5">Converted at face value, mixed currencies</p>
+              {balanceCurrencies.length === 1 ? (
+                <p className="text-base sm:text-lg font-bold tabular-nums flex-shrink-0" style={{ color: theme.colors.primary }}>
+                  {formatCurrency(balanceByCurrency[balanceCurrencies[0]], balanceCurrencies[0])}
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 justify-end">
+                  {balanceCurrencies.map(cur => (
+                    <span key={cur} className="text-sm sm:text-base font-bold tabular-nums" style={{ color: theme.colors.primary }}>
+                      {formatCurrency(balanceByCurrency[cur], cur)}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
-            <p className="text-base sm:text-lg font-bold tabular-nums flex-shrink-0" style={{ color: theme.colors.primary }}>
-              {fmt(accountsWithBalance
-                .filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
-                .reduce((s, a) => s + (a.balance ?? 0), 0))}
-            </p>
+            {balanceCurrencies.length > 1 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Shown separately per currency — amounts are not combined
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -488,7 +527,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           </CardContent>
         </Card>
 
-        {/* Donut — Income by Category with centre total */}
+        {/* Donut — Income by Category, enlarged, centred total, % labels, multi-currency aware */}
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Income by Category</CardTitle>
@@ -505,7 +544,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </div>
             ) : (
               <div className="relative">
-                <ResponsiveContainer width="100%" height={isMobile ? 220 : 240}>
+                <ResponsiveContainer width="100%" height={isMobile ? 280 : 320}>
                   <PieChart>
                     <Pie
                       data={incomeByCategory}
@@ -513,14 +552,16 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={isMobile ? 48 : 62}
-                      outerRadius={isMobile ? 74 : 92}
+                      innerRadius={isMobile ? 70 : 95}
+                      outerRadius={isMobile ? 110 : 145}
                       paddingAngle={2}
                       isAnimationActive
                       animationDuration={500}
                       onClick={(_, index) =>
                         setActiveDonutIndex(prev => prev === index ? null : index)
                       }
+                      label={({ percent }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                      labelLine={false}
                     >
                       {incomeByCategory.map((_, i) => (
                         <Cell
@@ -531,7 +572,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                           style={{
                             cursor: 'pointer',
                             transition: 'transform 0.25s ease, filter 0.25s ease',
-                            transform: activeDonutIndex === i ? 'scale(1.08)' : 'scale(1)',
+                            transform: activeDonutIndex === i ? 'scale(1.06)' : 'scale(1)',
                             transformOrigin: 'center',
                             filter: activeDonutIndex !== null && activeDonutIndex !== i
                               ? 'opacity(0.4)' : 'none',
@@ -539,33 +580,58 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                         />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: any, name: any) => [fmt(Number(v)), name]} />
+                    <Tooltip
+                      formatter={(v: any, name: any, entry: any) => {
+                        const cats = entry?.payload?.currencies as Record<string, number> | undefined
+                        if (cats && Object.keys(cats).length > 1) {
+                          const breakdown = Object.entries(cats)
+                            .map(([cur, amt]) => formatCurrency(Number(amt), cur))
+                            .join(' + ')
+                          return [breakdown, name]
+                        }
+                        return [fmt(Number(v)), name]
+                      }}
+                    />
                     <Legend
-                      layout="vertical"
-                      align="right"
-                      verticalAlign="middle"
+                      layout="horizontal"
+                      align="center"
+                      verticalAlign="bottom"
                       iconSize={8}
-                      wrapperStyle={{ fontSize: isMobile ? 10 : 11 }}
+                      wrapperStyle={{ fontSize: isMobile ? 10 : 11, paddingTop: 12 }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Centre label — sits inside donut hole, offset left to clear legend */}
+                {/* Centre label — perfectly centred since legend now sits below, not beside */}
                 <div
-                  className="absolute inset-0 pointer-events-none flex items-center justify-center"
-                  style={{ paddingRight: '30%' }}
+                  className="absolute pointer-events-none flex items-center justify-center"
+                  style={{ top: 0, left: 0, right: 0, height: isMobile ? 280 : 320 }}
                 >
-                  <div className="flex flex-col items-center justify-center text-center"
-                    style={{ width: isMobile ? 90 : 120, height: isMobile ? 90 : 120 }}>
+                  <div className="flex flex-col items-center justify-center text-center px-2"
+                    style={{ width: isMobile ? 120 : 160 }}>
                     <p
-                      className={`font-bold tabular-nums leading-tight ${isMobile ? 'text-[11px]' : 'text-sm'}`}
+                      className={`font-bold tabular-nums leading-tight ${isMobile ? 'text-sm' : 'text-lg'}`}
                       style={{ color: theme.colors.primary }}
                     >
                       {donutCentreValue}
                     </p>
-                    <p className={`text-muted-foreground mt-0.5 leading-tight ${isMobile ? 'text-[9px]' : 'text-[10px]'}`}>
+                    <p className={`text-muted-foreground mt-0.5 leading-tight ${isMobile ? 'text-[10px]' : 'text-xs'}`}>
                       {donutCentreLabel}
                     </p>
+                    {activeDonutIndex === null && incomeHasMixedCurrencies && (
+                      <p className={`text-muted-foreground/70 mt-1 leading-tight ${isMobile ? 'text-[8px]' : 'text-[9px]'}`}>
+                        {Object.entries(incomeTotalByCurrency)
+                          .map(([cur, amt]) => formatCurrency(amt, cur))
+                          .join(' + ')}
+                      </p>
+                    )}
+                    {activeDonutIndex !== null && incomeByCategory[activeDonutIndex] && Object.keys(incomeByCategory[activeDonutIndex].currencies).length > 1 && (
+                      <p className={`text-muted-foreground/70 mt-1 leading-tight ${isMobile ? 'text-[8px]' : 'text-[9px]'}`}>
+                        {Object.entries(incomeByCategory[activeDonutIndex].currencies)
+                          .map(([cur, amt]) => formatCurrency(Number(amt), cur))
+                          .join(' + ')}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
