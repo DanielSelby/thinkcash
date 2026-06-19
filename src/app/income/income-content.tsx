@@ -35,6 +35,41 @@ interface Props {
   userId: string
 }
 
+// Group amounts by currency — never sum across currencies
+function groupByCurrency(items: any[], accounts: UserAccount[]) {
+  const map: Record<string, number> = {}
+  items.forEach(i => {
+    const cur = accounts.find(a => a.id === i.account_id)?.currency || 'GHS'
+    map[cur] = (map[cur] || 0) + Number(i.amount)
+  })
+  return map
+}
+
+function CurrencyTotal({ byCurrency, className }: {
+  byCurrency: Record<string, number>; className?: string
+}) {
+  const entries = Object.entries(byCurrency)
+  if (entries.length === 0) return (
+    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${className}`}>
+      {formatCurrency(0)}
+    </p>
+  )
+  if (entries.length === 1) return (
+    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${className}`}>
+      {formatCurrency(entries[0][1], entries[0][0])}
+    </p>
+  )
+  return (
+    <div className="mt-1 space-y-0.5">
+      {entries.map(([cur, amt]) => (
+        <p key={cur} className={`kpi-value text-sm sm:text-lg font-bold tabular-nums truncate ${className}`}>
+          {formatCurrency(amt, cur)}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
   const { incomeCategories } = useCategories()
 
@@ -53,11 +88,6 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
 
   const getAccountCurrency = (id?: string | null) =>
     accounts.find(a => a.id === id)?.currency
-
-  const hasMixedCurrencies = useMemo(() => {
-    const currencies = new Set(accounts.map(a => a.currency || 'GHS'))
-    return currencies.size > 1
-  }, [accounts])
 
   const openCreate = () => {
     setEditing(null)
@@ -127,7 +157,8 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
       return matchSearch && matchCat && matchAccount
     }), [incomes, search, categoryFilter, accountFilter])
 
-  const totalFiltered = filtered.reduce((s, i) => s + i.amount, 0)
+  const totalByCurrency    = useMemo(() => groupByCurrency(incomes,  accounts), [incomes,  accounts])
+  const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
 
   const getAccountName = (id?: string | null) =>
     accounts.find(a => a.id === id)?.name ?? '—'
@@ -145,24 +176,28 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Button>
       </div>
 
-      {/* KPI cards — compact on mobile (480px frame, below sm: breakpoint), full size on desktop */}
+      {/* KPI cards — currency-aware, never sum across currencies */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Income</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
-            {formatCurrency(incomes.reduce((s, i) => s + i.amount, 0))}
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Total Income
           </p>
-          {hasMixedCurrencies && (
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Sum at face value, mixed currencies</p>
+          <CurrencyTotal byCurrency={totalByCurrency} />
+          {Object.keys(totalByCurrency).length > 1 && (
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Shown per currency</p>
           )}
         </Card>
         <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">This View</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{formatCurrency(totalFiltered)}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            This View
+          </p>
+          <CurrencyTotal byCurrency={filteredByCurrency} />
         </Card>
         <Card className="bg-white kpi-purple p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Entries</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{filtered.length}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Entries
+          </p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
         </Card>
       </div>
 
@@ -234,7 +269,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                       <td className="px-6 py-4 text-muted-foreground text-xs whitespace-nowrap">
                         {getAccountName(income.account_id)}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{formatDate(income.date)}</td>
+                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
+                        {formatDate(income.date)}
+                      </td>
                       <td className="px-6 py-4 text-right font-semibold text-success tabular-nums whitespace-nowrap">
                         +{formatCurrency(income.amount, getAccountCurrency(income.account_id))}
                       </td>
@@ -280,7 +317,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                 <Input type="number" step="0.01" placeholder="0.00" {...register('amount')}
                   className={errors.amount ? 'border-destructive' : ''} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
-                <p className="text-xs text-muted-foreground">Recorded in the selected account's currency</p>
+                <p className="text-xs text-muted-foreground">In selected account's currency</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>

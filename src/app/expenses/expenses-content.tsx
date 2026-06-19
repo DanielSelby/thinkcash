@@ -36,6 +36,40 @@ interface Props {
   userId: string
 }
 
+function groupByCurrency(items: any[], accounts: UserAccount[]) {
+  const map: Record<string, number> = {}
+  items.forEach(e => {
+    const cur = accounts.find(a => a.id === e.account_id)?.currency || 'GHS'
+    map[cur] = (map[cur] || 0) + Number(e.amount)
+  })
+  return map
+}
+
+function CurrencyTotal({ byCurrency, colorClass }: {
+  byCurrency: Record<string, number>; colorClass?: string
+}) {
+  const entries = Object.entries(byCurrency)
+  if (entries.length === 0) return (
+    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${colorClass}`}>
+      {formatCurrency(0)}
+    </p>
+  )
+  if (entries.length === 1) return (
+    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${colorClass}`}>
+      {formatCurrency(entries[0][1], entries[0][0])}
+    </p>
+  )
+  return (
+    <div className="mt-1 space-y-0.5">
+      {entries.map(([cur, amt]) => (
+        <p key={cur} className={`kpi-value text-sm sm:text-lg font-bold tabular-nums truncate ${colorClass}`}>
+          {formatCurrency(amt, cur)}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const { expenseCategories } = useCategories()
 
@@ -124,6 +158,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
       return matchSearch && matchCat && matchAccount
     }), [expenses, search, categoryFilter, accountFilter])
 
+  const totalByCurrency    = useMemo(() => groupByCurrency(expenses, accounts), [expenses, accounts])
+  const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
+
   const getAccountName = (id?: string | null) =>
     accounts.find(a => a.id === id)?.name ?? '—'
 
@@ -140,22 +177,28 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         </Button>
       </div>
 
+      {/* KPI cards — currency-aware, never sum across currencies */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Expenses</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
-            {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Total Expenses
           </p>
+          <CurrencyTotal byCurrency={totalByCurrency} />
+          {Object.keys(totalByCurrency).length > 1 && (
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Shown per currency</p>
+          )}
         </Card>
         <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">This View</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">
-            {formatCurrency(filtered.reduce((s, e) => s + e.amount, 0))}
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            This View
           </p>
+          <CurrencyTotal byCurrency={filteredByCurrency} />
         </Card>
         <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Entries</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{filtered.length}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Entries
+          </p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
         </Card>
       </div>
 
@@ -231,7 +274,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                       <td className="px-6 py-4 text-muted-foreground capitalize whitespace-nowrap">
                         {expense.payment_method?.replace('_', ' ')}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">{formatDate(expense.date)}</td>
+                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
+                        {formatDate(expense.date)}
+                      </td>
                       <td className="px-6 py-4 text-right font-semibold text-destructive tabular-nums whitespace-nowrap">
                         -{formatCurrency(expense.amount, getAccountCurrency(expense.account_id))}
                       </td>
@@ -263,25 +308,23 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
             <DialogTitle>{editing ? 'Edit Expense' : 'Add Expense'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
             <div className="space-y-1.5">
               <Label>Title</Label>
               <Input placeholder="e.g. Groceries" {...register('title')} />
               {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Amount</Label>
                 <Input type="number" step="0.01" placeholder="0.00" {...register('amount')} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+                <p className="text-xs text-muted-foreground">In selected account's currency</p>
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
                 <Input type="date" {...register('date')} />
               </div>
             </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Category</Label>
@@ -308,7 +351,6 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                 {errors.payment_method && <p className="text-xs text-destructive">{errors.payment_method.message}</p>}
               </div>
             </div>
-
             <div className="space-y-1.5">
               <Label>Account <span className="text-muted-foreground text-xs">(optional)</span></Label>
               <Select onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
@@ -322,12 +364,10 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-1.5">
               <Label>Notes (optional)</Label>
               <Textarea placeholder="Any additional notes…" {...register('notes')} />
             </div>
-
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={loading}>
