@@ -11,13 +11,15 @@ export default async function ReportsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
-  const [{ data: incomes }, { data: expenses }] = await Promise.all([
+  const [{ data: incomes }, { data: expenses }, { data: accounts }] = await Promise.all([
     supabase.from('incomes').select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: true }),
     supabase.from('expenses').select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: true }),
+    supabase.from('accounts').select('*')
+      .eq('user_id', user.id),
   ])
 
   return (
@@ -25,6 +27,7 @@ export default async function ReportsPage() {
       <ReportsContent
         incomes={incomes   ?? []}
         expenses={expenses ?? []}
+        accounts={accounts ?? []}
       />
     </AppShell>
   )
