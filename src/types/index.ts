@@ -161,3 +161,60 @@ export interface CategorySpending {
   percentage: number
   color: string
 }
+
+export interface Asset {
+  id: string
+  user_id: string
+  name: string
+  asset_type: 'property' | 'vehicle' | 'electronics' | 'jewelry' | 'other'
+  current_value: number
+  purchase_value: number
+  purchase_date: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Investment {
+  id: string
+  user_id: string
+  name: string
+  investment_type: 'stocks' | 'crypto' | 'mutual_funds' | 'bonds' | 'fixed_deposit' | 'real_estate' | 'other'
+  invested_amount: number
+  current_value: number
+  institution: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Debt {
+  id: string
+  user_id: string
+  name: string
+  debt_type: 'credit_card' | 'overdraft' | 'buy_now_pay_later' | 'other'
+  total_amount: number
+  remaining: number
+  interest_rate: number
+  due_date: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Loan {
+  id: string
+  user_id: string
+  name: string
+  loan_type: 'mortgage' | 'personal' | 'car' | 'student' | 'business' | 'other'
+  principal: number
+  remaining: number
+  interest_rate: number
+  monthly_payment: number
+  start_date: string | null
+  end_date: string | null
+  institution: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}

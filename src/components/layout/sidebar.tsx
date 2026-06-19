@@ -7,7 +7,7 @@ import {
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
   Settings, Shield, Users, ChevronLeft, ChevronRight,
   Wallet, RefreshCcw, Tag, BookMarked, CreditCard,
-  Sparkles, HeartPulse,
+  Sparkles, HeartPulse, Landmark,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
@@ -27,6 +27,7 @@ const navItems = [
   { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics'         },
   { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
   { href: '/user-accounts',icon: CreditCard,      label: 'My Accounts'       },
+  { href: '/wealth',       icon: Landmark,        label: 'Net Worth'         },
   { href: '/health-score', icon: HeartPulse,      label: 'Health Score'      },
   { href: '/ai-advisor',   icon: Sparkles,        label: 'AI Advisor'        },
 ]

@@ -40,7 +40,11 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
 
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { type: 'expense', next_date: new Date().toISOString().split('T')[0] },
+    defaultValues: {
+      type:      'expense',
+      frequency: 'monthly',
+      next_date: new Date().toISOString().split('T')[0],
+    },
   })
 
   const watchType  = watch('type', 'expense')
@@ -48,7 +52,14 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
 
   const openCreate = () => {
     setEditing(null)
-    reset({ type: 'expense', next_date: new Date().toISOString().split('T')[0] })
+    reset({
+      type:      'expense',
+      frequency: 'monthly',
+      next_date: new Date().toISOString().split('T')[0],
+      title:     '',
+      amount:    undefined as any,
+      category:  '',
+    })
     setOpen(true)
   }
 
@@ -68,30 +79,44 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
-    if (editing) {
-      const { data: updated, error } = await supabase
-        .from('recurring_transactions')
-        .update({ ...data, updated_at: new Date().toISOString() })
-        .eq('id', editing.id).select().single()
-      if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
-      else {
-        setItems(prev => prev.map(i => i.id === editing.id ? updated : i))
-        toast({ title: 'Updated', variant: 'success' })
-        setOpen(false)
+    try {
+      if (editing) {
+        const { data: updated, error } = await supabase
+          .from('recurring_transactions')
+          .update({ ...data, updated_at: new Date().toISOString() })
+          .eq('id', editing.id).select().single()
+        if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
+        else {
+          setItems(prev => prev.map(i => i.id === editing.id ? updated : i))
+          toast({ title: 'Updated', variant: 'success' })
+          setOpen(false)
+        }
+      } else {
+        const { data: created, error } = await supabase
+          .from('recurring_transactions')
+          .insert({ ...data, user_id: userId, is_active: true })
+          .select().single()
+        if (error) toast({ title: 'Failed to create', description: error.message, variant: 'destructive' })
+        else {
+          setItems(prev => [...prev, created])
+          toast({ title: 'Recurring transaction created', variant: 'success' })
+          setOpen(false)
+        }
       }
-    } else {
-      const { data: created, error } = await supabase
-        .from('recurring_transactions')
-        .insert({ ...data, user_id: userId, is_active: true })
-        .select().single()
-      if (error) toast({ title: 'Failed to create', description: error.message, variant: 'destructive' })
-      else {
-        setItems(prev => [...prev, created])
-        toast({ title: 'Recurring transaction created', variant: 'success' })
-        setOpen(false)
-      }
+    } catch (e: any) {
+      toast({ title: 'Unexpected error', description: e?.message, variant: 'destructive' })
     }
     setLoading(false)
+  }
+
+  // Surface silent validation errors so user knows what's wrong
+  const onInvalid = (errs: any) => {
+    const first = Object.values(errs)[0] as any
+    toast({
+      title: 'Please fix form errors',
+      description: first?.message || 'Some fields are invalid',
+      variant: 'destructive',
+    })
   }
 
   const toggleActive = async (id: string, current: boolean) => {
@@ -165,22 +190,22 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Title</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Type</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Frequency</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Next Date</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Status</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Amount</th>
-                    <th className="text-right px-6 py-3 font-medium text-muted-foreground">Actions</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Title</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Type</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Frequency</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Next Date</th>
+                    <th className="text-left px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Status</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Amount</th>
+                    <th className="text-right px-6 py-3 font-medium text-muted-foreground whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map(item => (
                     <tr key={item.id}
                       className={`border-b border-border last:border-0 hover:bg-muted/20 transition-colors ${!item.is_active ? 'opacity-50' : ''}`}>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                             style={{ background: `${CATEGORY_COLORS[item.category] || '#94a3b8'}20` }}>
                             <RefreshCcw className="w-3.5 h-3.5"
                               style={{ color: CATEGORY_COLORS[item.category] || '#94a3b8' }} />
@@ -191,28 +216,28 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <Badge variant={item.type === 'income' ? 'success' : 'destructive'}>
                           {item.type}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 capitalize text-muted-foreground">
+                      <td className="px-6 py-4 capitalize text-muted-foreground whitespace-nowrap">
                         {freqLabel(item.frequency)}
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">
+                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
                         {formatDate(item.next_date)}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <Badge variant={item.is_active ? 'success' : 'secondary'}>
                           {item.is_active ? 'Active' : 'Paused'}
                         </Badge>
                       </td>
-                      <td className={`px-6 py-4 text-right font-semibold tabular-nums ${
+                      <td className={`px-6 py-4 text-right font-semibold tabular-nums whitespace-nowrap ${
                         item.type === 'income' ? 'text-success' : 'text-destructive'
                       }`}>
                         {formatCurrency(item.amount)}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex justify-end gap-1">
                           <Button size="icon" variant="ghost" className="w-8 h-8"
                             onClick={() => toggleActive(item.id, item.is_active)}
@@ -246,7 +271,7 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Recurring' : 'Add Recurring Transaction'}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
 
             <div className="space-y-1.5">
               <Label>Title</Label>
@@ -258,8 +283,9 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
               <div className="space-y-1.5">
                 <Label>Type</Label>
                 <Select
-                  onValueChange={v => setValue('type', v as 'income' | 'expense')}
+                  onValueChange={v => setValue('type', v as 'income' | 'expense', { shouldValidate: true })}
                   defaultValue={editing?.type || 'expense'}
+                  value={watchType}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -267,12 +293,14 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
                     <SelectItem value="expense">Expense</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.type && <p className="text-xs text-destructive">{errors.type.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Frequency</Label>
                 <Select
-                  onValueChange={v => setValue('frequency', v as any)}
+                  onValueChange={v => setValue('frequency', v as any, { shouldValidate: true })}
                   defaultValue={editing?.frequency || 'monthly'}
+                  value={watch('frequency') || 'monthly'}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -281,28 +309,33 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.frequency && <p className="text-xs text-destructive">{errors.frequency.message}</p>}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>Amount (GHS)</Label>
+                <Label>Amount</Label>
                 <Input type="number" step="0.01" placeholder="0.00" {...register('amount')} />
                 {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label>Next Date</Label>
                 <Input type="date" {...register('next_date')} />
+                {errors.next_date && <p className="text-xs text-destructive">{errors.next_date.message}</p>}
               </div>
             </div>
 
             <div className="space-y-1.5">
               <Label>Category</Label>
               <Select
-                onValueChange={v => setValue('category', v)}
+                onValueChange={v => setValue('category', v, { shouldValidate: true })}
                 defaultValue={editing?.category}
+                value={watch('category') || ''}
               >
-                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectTrigger className={errors.category ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
                 <SelectContent>
                   {categories.map(c => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
