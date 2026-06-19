@@ -88,19 +88,19 @@ export function KPICard({ label, value, sub, colorClass, icon: Icon, tooltip }: 
   )
 }
 
-// Outer ring label — category name + share. Falls back to percent-only on narrow screens.
+// Outer ring label — percentage ONLY, no category name (legend below carries the name)
 const CategoryOuterLabel = (props: any) => {
-  const { cx, cy, midAngle, outerRadius, percent, name } = props
+  const { cx, cy, midAngle, outerRadius, percent } = props
   if (percent < 0.04) return null
   const RAD = Math.PI / 180
-  const r = outerRadius + 16
+  const r = outerRadius + 14
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
   const small = typeof window !== 'undefined' && window.innerWidth < 640
   return (
     <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
       fontSize={small ? 9 : 11} fontWeight={600} fill="#374151">
-      {small ? `${(percent * 100).toFixed(0)}%` : `${name} (${(percent * 100).toFixed(0)}%)`}
+      {`${(percent * 100).toFixed(0)}%`}
     </text>
   )
 }
@@ -140,10 +140,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [localFrom,         setLocalFrom]         = useState('')
   const [localTo,           setLocalTo]           = useState('')
   const [selMonth,          setSelMonth]          = useState('')
-  const [selYear,           setSelYear]           = useState('')
-  const [incomeCat,         setIncomeCat]         = useState('All')
-  const [expenseCat,        setExpenseCat]        = useState('All')
-  const [isFiltered,        setIsFiltered]        = useState(false)
+  const [selYear,           setSelYear]          = useState('')
+  const [incomeCat,         setIncomeCat]        = useState('All')
+  const [expenseCat,        setExpenseCat]       = useState('All')
+  const [isFiltered,        setIsFiltered]       = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
 
@@ -216,8 +216,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   }, [expenses, isFiltered, localFrom, localTo, expenseCat])
 
   // ── Currency-aware totals ─────────────────────────────────────────
-  // Only sum transactions in the app's selected currency
-  // Show mixed-currency note when accounts differ
   const getTransactionCurrency = (r: any) =>
     accounts.find(a => a.id === r.account_id)?.currency || currency
 
@@ -276,7 +274,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     return map
   }, [filteredIncomes, accounts, currency])
 
-  // Raw sum across all currencies — for display only, not a real conversion
+  // Centre label shows the PRIMARY app-currency total only (never a blended cross-currency sum)
+  const primaryCurrencyIncomeTotal = incomeByCurrency[currency] ?? 0
+  // Raw sum across all currencies — used only for matrix-table percentage math, never displayed as one figure
   const grandTotalIncomeRaw = useMemo(() =>
     incomeByCategory.reduce((s, c) => s + c.value, 0), [incomeByCategory])
 
@@ -603,7 +603,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           <p className="text-xs text-muted-foreground">
             {incomeByCategory.length === 0
               ? 'No income yet'
-              : `${incomeByCategory.length} categor${incomeByCategory.length === 1 ? 'y' : 'ies'} · ${currencyBreakdown.length} currenc${currencyBreakdown.length === 1 ? 'y' : 'ies'}`}
+              : `${incomeByCategory.length} categor${incomeByCategory.length === 1 ? 'y' : 'ies'} · ${currencyBreakdown.length} currenc${currencyBreakdown.length === 1 ? 'y' : 'ies'} · click a slice to zoom`}
           </p>
         </CardHeader>
         <CardContent>
@@ -615,18 +615,18 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
 
-              {/* Nested donut: outer ring = category, inner ring = currency */}
-              <div className="relative mx-auto w-full max-w-[320px] sm:max-w-[380px]">
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
+              {/* Nested donut: outer ring = category (% only), inner ring = currency. Category names live in the legend below. */}
+              <div className="relative mx-auto w-full max-w-[340px] sm:max-w-[400px]">
+                <ResponsiveContainer width="100%" height={340}>
+                  <PieChart margin={{ top: 20, right: 30, bottom: 10, left: 30 }}>
                     <Pie
                       data={incomeByCategory}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius="70%"
-                      outerRadius="95%"
+                      innerRadius="66%"
+                      outerRadius="86%"
                       paddingAngle={1}
                       labelLine={false}
                       label={CategoryOuterLabel}
@@ -648,8 +648,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius="38%"
-                      outerRadius="62%"
+                      innerRadius="34%"
+                      outerRadius="58%"
                       paddingAngle={1}
                       labelLine={false}
                       label={CurrencyInnerLabel}
@@ -663,7 +663,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     <Tooltip formatter={(v: any, name: any) => [Math.round(Number(v)).toLocaleString(), name]} />
                     <Legend
                       layout="horizontal" align="center" verticalAlign="bottom" iconSize={8}
-                      wrapperStyle={{ fontSize: 11 }}
+                      wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
                       payload={incomeByCategory.map((c, i) => ({
                         value: `${c.name} (${grandTotalIncomeRaw > 0 ? Math.round((c.value / grandTotalIncomeRaw) * 100) : 0}%)`,
                         type: 'square',
@@ -673,17 +673,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Center label */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-10 -translate-y-3">
+                {/* Center label — primary currency total only, dynamic with filters/clicks */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-12 -translate-y-4">
                   <div className="text-center leading-tight">
                     <p className="text-[8px] sm:text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">
-                      Total Income
+                      {activeDonutIndex !== null ? incomeByCategory[activeDonutIndex]?.name : 'Total Income'}
                     </p>
                     {currencyBreakdown.length > 1 && (
-                      <p className="text-[7px] sm:text-[9px] text-muted-foreground">Multi-currency</p>
+                      <p className="text-[7px] sm:text-[9px] text-muted-foreground">{currency} shown</p>
                     )}
                     <p className="text-sm sm:text-xl font-bold tabular-nums mt-0.5" style={{ color: theme.colors.primary }}>
-                      {Math.round(grandTotalIncomeRaw).toLocaleString()}
+                      {activeDonutIndex !== null
+                        ? formatCurrency(incomeByCategory[activeDonutIndex]?.value ?? 0, currency)
+                        : formatCurrency(primaryCurrencyIncomeTotal, currency)}
                     </p>
                   </div>
                 </div>
