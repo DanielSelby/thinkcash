@@ -39,18 +39,18 @@ const ACCOUNT_TYPE_COLORS: Record<string, string> = {
   bank: '#2563eb', mobile_money: '#f59e0b', cash: '#16a34a', investment: '#7c3aed',
 }
 
-// Outer ring — vivid category colors (green, blue, orange, purple, red…)
+// Outer ring — vivid category colors
 const DONUT_COLORS = ['#16a34a','#2563eb','#f97316','#7c3aed','#dc2626','#0d9488','#db2777','#65a30d','#ca8a04']
 
-// Inner ring — pastel currency colors matching reference image exactly
+// Inner ring — pastel currency colors
 const CURRENCY_COLORS: Record<string, string> = {
-  EUR: '#86efac',  // soft green  (Image 2 top)
-  GBP: '#93c5fd',  // soft blue   (Image 2 bottom)
-  USD: '#fdba74',  // soft orange (Image 2 right)
-  GHS: '#fca5a5',  // soft red    (Image 2 small slice)
-  NGN: '#c4b5fd',  // soft purple
-  KES: '#fde68a',  // soft yellow
-  ZAR: '#a5f3fc',  // soft cyan
+  EUR: '#86efac',
+  GBP: '#93c5fd',
+  USD: '#fdba74',
+  GHS: '#fca5a5',
+  NGN: '#c4b5fd',
+  KES: '#fde68a',
+  ZAR: '#a5f3fc',
 }
 const CURRENCY_FALLBACK = ['#86efac','#93c5fd','#fdba74','#fca5a5','#c4b5fd','#fde68a','#a5f3fc']
 const getCurrencyColor  = (name: string, i: number) =>
@@ -108,7 +108,6 @@ const CategoryOuterLabel = (props: any) => {
   const { cx, cy, midAngle, outerRadius, percent, name, viewBox } = props
   if (percent < 0.05) return null
   const RAD = Math.PI / 180
-  // Responsive offset based on chart size
   const offset = (viewBox?.width ?? 400) < 340 ? 14 : 20
   const r = outerRadius + offset
   const x = cx + r * Math.cos(-midAngle * RAD)
@@ -126,11 +125,11 @@ const CategoryOuterLabel = (props: any) => {
 const CurrencyInnerLabel = (props: any) => {
   const { cx, cy, midAngle, innerRadius, outerRadius, percent, name, value, viewBox } = props
   if (percent < 0.08) return null
-  const RAD = Math.PI / 180
-  const r   = innerRadius + (outerRadius - innerRadius) * 0.5
-  const x   = cx + r * Math.cos(-midAngle * RAD)
-  const y   = cy + r * Math.sin(-midAngle * RAD)
-  const fs  = (viewBox?.width ?? 400) < 340 ? 8 : 10
+  const RAD   = Math.PI / 180
+  const r     = innerRadius + (outerRadius - innerRadius) * 0.5
+  const x     = cx + r * Math.cos(-midAngle * RAD)
+  const y     = cy + r * Math.sin(-midAngle * RAD)
+  const fs    = (viewBox?.width ?? 400) < 340 ? 8 : 10
   return (
     <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
       fontSize={fs} fontWeight={700} fill="#1f2937">
@@ -421,30 +420,45 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </Card>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI Cards — one Income card per currency present, then Net/Savings (primary currency) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-        <KPICard label="Total Income" colorClass="kpi-green" icon={TrendingUp}
-          value={hasMixedIncome
-            ? Object.entries(incomeByCurrency).map(([c, v]) => formatCurrency(v, c)).join(' + ')
-            : fmt(totalIncome)}
-          sub={`${filteredIncomes.length} txns`}
-          tooltip={`${filteredIncomes.length} transaction(s)\n${hasMixedIncome ? Object.entries(incomeByCurrency).map(([c,v]) => `${c}: ${formatCurrency(v,c)}`).join('\n') : fmt(totalIncome)}`}
-        />
-        <KPICard label="Total Expenses" colorClass="kpi-red" icon={TrendingDown}
-          value={hasMixedExpense
-            ? Object.entries(expenseByCurrency).map(([c, v]) => formatCurrency(v, c)).join(' + ')
-            : fmt(totalExpense)}
-          sub={`${filteredExpenses.length} txns`}
-          tooltip={`${filteredExpenses.length} transaction(s)\n${hasMixedExpense ? Object.entries(expenseByCurrency).map(([c,v]) => `${c}: ${formatCurrency(v,c)}`).join('\n') : fmt(totalExpense)}`}
-        />
+        {Object.entries(incomeByCurrency)
+          .sort(([a], [b]) => a === currency ? -1 : b === currency ? 1 : 0)
+          .map(([cur, amt]) => {
+            const txnCount = filteredIncomes.filter(r => getTransactionCurrency(r) === cur).length
+            return (
+              <KPICard key={`inc-${cur}`} label={`Total Income (${cur})`} colorClass="kpi-green" icon={TrendingUp}
+                value={formatCurrency(amt, cur)}
+                sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
+                tooltip={`Exact: ${formatCurrency(amt, cur)}\n${txnCount} transaction(s) in ${cur}`}
+              />
+            )
+          })}
+
+        {Object.entries(expenseByCurrency)
+          .sort(([a], [b]) => a === currency ? -1 : b === currency ? 1 : 0)
+          .map(([cur, amt]) => {
+            const txnCount = filteredExpenses.filter(r => getTransactionCurrency(r) === cur).length
+            return (
+              <KPICard key={`exp-${cur}`} label={`Total Expenses (${cur})`} colorClass="kpi-red" icon={TrendingDown}
+                value={formatCurrency(amt, cur)}
+                sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
+                tooltip={`Exact: ${formatCurrency(amt, cur)}\n${txnCount} transaction(s) in ${cur}`}
+              />
+            )
+          })}
+
         <KPICard label="Net Balance" colorClass="kpi-blue" icon={Wallet}
           value={fmt(net)}
           sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}
-          tooltip={hasMixedIncome || hasMixedExpense ? `Primary currency (${currency}) only` : `${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`}
+          tooltip={hasMixedIncome || hasMixedExpense
+            ? `Primary currency (${currency}) only\n${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`
+            : `${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`}
         />
         <KPICard label="Savings Rate" colorClass="kpi-purple" icon={Target}
-          value={`${savingsRate}%`} sub="Of income saved"
-          tooltip={`${savingsRate}% saved · Net ${fmt(net)} ÷ Income ${fmt(totalIncome)}`}
+          value={`${savingsRate}%`}
+          sub="Of income saved"
+          tooltip={`${savingsRate}% saved · Net ${fmt(net)} ÷ Income ${fmt(totalIncome)}\nPrimary currency (${currency}) only`}
         />
       </div>
 
@@ -639,7 +653,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       ))}
                     </Pie>
 
-                    {/* Inner ring — currencies (gap between 76% outer → 33%..52% inner) */}
+                    {/* Inner ring — currencies */}
                     <Pie
                       data={currencyBreakdown}
                       dataKey="value"
@@ -680,7 +694,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Centre label — sits inside inner ring hole, shifted up slightly for legend */}
+                {/* Centre label */}
                 <div
                   className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
                   style={{ top: 0, height: 'calc(100% - 52px)' }}
