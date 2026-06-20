@@ -218,3 +218,17 @@ export interface Loan {
   created_at: string
   updated_at: string
 }
+
+export interface CustodyTransaction {
+  id: string
+  user_id: string
+  person_name: string
+  direction: 'received' | 'given'
+  amount: number
+  currency: string
+  account_id: string | null
+  date: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}

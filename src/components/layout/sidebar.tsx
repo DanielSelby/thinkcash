@@ -28,6 +28,7 @@ const navItems = [
   { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
   { href: '/user-accounts',icon: CreditCard,      label: 'My Accounts'       },
   { href: '/wealth',       icon: Landmark,        label: 'Net Worth'         },
+  { href: '/custody',      icon: Users,           label: 'Custody Account'   },
   { href: '/health-score', icon: HeartPulse,      label: 'Health Score'      },
   { href: '/ai-advisor',   icon: Sparkles,        label: 'AI Advisor'        },
 ]
