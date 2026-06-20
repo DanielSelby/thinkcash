@@ -65,6 +65,68 @@ export const THEMES = {
     },
     topbar: { background: '#1B2A6B', text: '#FFFFFF' },
   },
+
+  // Theme 3 — Teal & Sand
+  teal: {
+    name: 'Teal & Sand',
+    colors: {
+      primary:        '#006d77',
+      primaryMid:     '#00838f',
+      primaryLight:   '#0a9396',
+      primaryPale:    '#e6f5f5',
+      accent:         '#dccca3',
+      accentLight:    'rgba(220,204,163,0.20)',
+      background:     '#F4F8F8',
+      surface:        '#FFFFFF',
+      text:           '#013237',
+      textMuted:      '#3D6B6F',
+      success:        '#0A7A45',
+      danger:         '#C0392B',
+      warning:        '#C87A0A',
+      info:           '#1565C0',
+    },
+    sidebar: {
+      background:       '#006d77',
+      text:             '#FFFFFF',
+      textMuted:        'rgba(255,255,255,0.6)',
+      activeBackground: 'rgba(220,204,163,0.22)',
+      activeText:       '#dccca3',
+      borderColor:      'rgba(255,255,255,0.12)',
+      hoverBackground:  'rgba(255,255,255,0.08)',
+    },
+    topbar: { background: '#006d77', text: '#FFFFFF' },
+  },
+
+  // Theme 4 — Plum & Blush
+  plum: {
+    name: 'Plum & Blush',
+    colors: {
+      primary:        '#412234',
+      primaryMid:     '#522a41',
+      primaryLight:   '#65334f',
+      primaryPale:    '#fbf3f3',
+      accent:         '#ead7d7',
+      accentLight:    'rgba(234,215,215,0.25)',
+      background:     '#F8F4F5',
+      surface:        '#FFFFFF',
+      text:           '#28141F',
+      textMuted:      '#6B4A5A',
+      success:        '#0A7A45',
+      danger:         '#C0392B',
+      warning:        '#C87A0A',
+      info:           '#1565C0',
+    },
+    sidebar: {
+      background:       '#412234',
+      text:             '#FFFFFF',
+      textMuted:        'rgba(255,255,255,0.6)',
+      activeBackground: 'rgba(234,215,215,0.22)',
+      activeText:       '#ead7d7',
+      borderColor:      'rgba(255,255,255,0.12)',
+      hoverBackground:  'rgba(255,255,255,0.08)',
+    },
+    topbar: { background: '#412234', text: '#FFFFFF' },
+  },
 }
 
 export type ThemeKey = keyof typeof THEMES

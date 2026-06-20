@@ -26,6 +26,15 @@ const exportFmt = (n: number, cur = 'GHS') =>
     maximumFractionDigits: 2,
   }).format(n)
 
+// Sort currencies: primary first, rest alphabetically
+function sortCurrencies(currencies: string[], primary: string): string[] {
+  return [...currencies].sort((a, b) => {
+    if (a === primary) return -1
+    if (b === primary) return 1
+    return a.localeCompare(b)
+  })
+}
+
 export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   const { activeTheme, currency: primaryCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -35,7 +44,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
 
   // ── Resolve account currency for a transaction ──────────────────
   const getTxCurrency = (r: any): string =>
-    accounts.find(a => a.id === r.account_id)?.currency || primaryCurrency
+    accounts.find((a: any) => a.id === r.account_id)?.currency || primaryCurrency
 
   // ── Period bounds ───────────────────────────────────────────────
   const dateRange = useMemo(() => {
@@ -89,34 +98,54 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
     return map
   }, [filteredExpenses, accounts, primaryCurrency])
 
-  const incomeCurrencies  = Object.keys(incomeByCurrency).sort(c => c === primaryCurrency ? -1 : 1)
-  const expenseCurrencies = Object.keys(expenseByCurrency).sort(c => c === primaryCurrency ? -1 : 1)
+  const incomeCurrencies  = sortCurrencies(Object.keys(incomeByCurrency),  primaryCurrency)
+  const expenseCurrencies = sortCurrencies(Object.keys(expenseByCurrency), primaryCurrency)
   const hasMixedCurrency  = incomeCurrencies.length > 1 || expenseCurrencies.length > 1
 
   // Primary-currency totals for Net/Savings
-  const totalIncome   = incomeByCurrency[primaryCurrency]  ?? Object.values(incomeByCurrency)[0]  ?? 0
-  const totalExpenses = expenseByCurrency[primaryCurrency] ?? Object.values(expenseByCurrency)[0] ?? 0
-  const netSavings    = totalIncome - totalExpenses
-  const savingsRate   = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0
+  const totalIncomePrimary   = incomeByCurrency[primaryCurrency]  ?? 0
+  const totalExpensesPrimary = expenseByCurrency[primaryCurrency] ?? 0
+  const netSavings           = totalIncomePrimary - totalExpensesPrimary
+  const savingsRate          = totalIncomePrimary > 0 ? (netSavings / totalIncomePrimary) * 100 : 0
 
-  // ── Category breakdowns ─────────────────────────────────────────
-  const incomeByCategory = useMemo(() => {
-    const map: Record<string, number> = {}
-    filteredIncomes.forEach(i => {
-      const cat = i.category || 'Other'
-      map[cat] = (map[cat] || 0) + Number(i.amount)
+  // ── Category breakdown — per currency per category ──────────────
+  // Structure: { currency: { category: amount } }
+  const incomeCatByCurrency = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    filteredIncomes.forEach(r => {
+      const cur = getTxCurrency(r)
+      const cat = r.category || 'Other'
+      if (!map[cur]) map[cur] = {}
+      map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
     })
-    return Object.entries(map).sort(([, a], [, b]) => b - a)
-  }, [filteredIncomes])
+    return map
+  }, [filteredIncomes, accounts, primaryCurrency])
 
-  const expenseByCategory = useMemo(() => {
-    const map: Record<string, number> = {}
-    filteredExpenses.forEach(e => {
-      const cat = e.category || 'Other'
-      map[cat] = (map[cat] || 0) + Number(e.amount)
+  const expenseCatByCurrency = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    filteredExpenses.forEach(r => {
+      const cur = getTxCurrency(r)
+      const cat = r.category || 'Other'
+      if (!map[cur]) map[cur] = {}
+      map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
     })
-    return Object.entries(map).sort(([, a], [, b]) => b - a)
-  }, [filteredExpenses])
+    return map
+  }, [filteredExpenses, accounts, primaryCurrency])
+
+  // Sorted category entries per currency: [currency, [cat, amt][]][]
+  const incomeCatEntries = useMemo(() =>
+    incomeCurrencies.map(cur => ({
+      currency: cur,
+      rows: Object.entries(incomeCatByCurrency[cur] || {}).sort(([, a], [, b]) => b - a),
+      total: incomeByCurrency[cur] || 0,
+    })), [incomeCatByCurrency, incomeCurrencies, incomeByCurrency])
+
+  const expenseCatEntries = useMemo(() =>
+    expenseCurrencies.map(cur => ({
+      currency: cur,
+      rows: Object.entries(expenseCatByCurrency[cur] || {}).sort(([, a], [, b]) => b - a),
+      total: expenseByCurrency[cur] || 0,
+    })), [expenseCatByCurrency, expenseCurrencies, expenseByCurrency])
 
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => {
     const d = new Date(new Date().getFullYear(), i, 1)
@@ -127,32 +156,39 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
 
   // ── CSV Export ──────────────────────────────────────────────────
   const handleExportCSV = () => {
-    const rows = [
+    const rows: any[][] = [
       [`${APP_NAME} Financial Report`],
       [`Period: ${dateRange.label}`],
       [`Generated: ${format(new Date(), 'PPP')}`],
       [],
-      ['SUMMARY', ''],
-      ...incomeCurrencies.map(cur  => [`Total Income (${cur})`,   exportFmt(incomeByCurrency[cur],  cur)]),
-      ...expenseCurrencies.map(cur => [`Total Expenses (${cur})`, exportFmt(expenseByCurrency[cur], cur)]),
-      [`Net Savings (${primaryCurrency})`, exportFmt(netSavings, primaryCurrency)],
-      ['Savings Rate', `${savingsRate.toFixed(1)}%`],
+      ['INCOME TOTALS BY CURRENCY'],
+      ['Currency', 'Amount'],
+      ...incomeCurrencies.map(cur => [cur, exportFmt(incomeByCurrency[cur], cur)]),
       [],
-      ['INCOME BY CATEGORY', ''],
-      ['Category', 'Amount', '% of Total'],
-      ...incomeByCategory.map(([cat, amt]) => [
-        cat,
-        amt.toFixed(2),
-        `${totalIncome > 0 ? ((amt / totalIncome) * 100).toFixed(1) : 0}%`,
-      ]),
+      ['INCOME BY CATEGORY'],
+      ['Currency', 'Category', 'Amount', '% of Currency Total'],
+      ...incomeCatEntries.flatMap(({ currency, rows, total }) =>
+        rows.map(([cat, amt]) => [
+          currency, cat, exportFmt(amt, currency),
+          `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
+        ])
+      ),
       [],
-      ['EXPENSES BY CATEGORY', ''],
-      ['Category', 'Amount', '% of Total'],
-      ...expenseByCategory.map(([cat, amt]) => [
-        cat,
-        amt.toFixed(2),
-        `${totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(1) : 0}%`,
-      ]),
+      ['EXPENSE TOTALS BY CURRENCY'],
+      ['Currency', 'Amount'],
+      ...expenseCurrencies.map(cur => [cur, exportFmt(expenseByCurrency[cur], cur)]),
+      [],
+      ['EXPENSES BY CATEGORY'],
+      ['Currency', 'Category', 'Amount', '% of Currency Total'],
+      ...expenseCatEntries.flatMap(({ currency, rows, total }) =>
+        rows.map(([cat, amt]) => [
+          currency, cat, exportFmt(amt, currency),
+          `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
+        ])
+      ),
+      [],
+      [`NET SAVINGS (${primaryCurrency} only)`, exportFmt(netSavings, primaryCurrency)],
+      ['SAVINGS RATE', `${savingsRate.toFixed(1)}%`],
     ]
     const csv  = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -169,25 +205,50 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       const XLSX = await import('xlsx')
       const wb   = XLSX.utils.book_new()
 
+      // Summary sheet
       const summaryData = [
         [`${APP_NAME} Financial Report`],
         [`Period: ${dateRange.label}`],
         [`Generated: ${format(new Date(), 'PPP')}`],
         [],
-        ['Metric', 'Currency', 'Amount'],
-        ...incomeCurrencies.map(cur  => [`Total Income`,   cur, incomeByCurrency[cur]]),
-        ...expenseCurrencies.map(cur => [`Total Expenses`, cur, expenseByCurrency[cur]]),
-        [`Net Savings`,  primaryCurrency, netSavings],
-        ['Savings Rate', '', `${savingsRate.toFixed(1)}%`],
+        ['INCOME BY CURRENCY'],
+        ['Currency', 'Amount'],
+        ...incomeCurrencies.map(cur => [cur, incomeByCurrency[cur]]),
+        [],
+        ['INCOME BY CATEGORY'],
+        ['Currency', 'Category', 'Amount', '%'],
+        ...incomeCatEntries.flatMap(({ currency, rows, total }) =>
+          rows.map(([cat, amt]) => [
+            currency, cat, amt,
+            total > 0 ? +((amt / total) * 100).toFixed(1) : 0,
+          ])
+        ),
+        [],
+        ['EXPENSE BY CURRENCY'],
+        ['Currency', 'Amount'],
+        ...expenseCurrencies.map(cur => [cur, expenseByCurrency[cur]]),
+        [],
+        ['EXPENSES BY CATEGORY'],
+        ['Currency', 'Category', 'Amount', '%'],
+        ...expenseCatEntries.flatMap(({ currency, rows, total }) =>
+          rows.map(([cat, amt]) => [
+            currency, cat, amt,
+            total > 0 ? +((amt / total) * 100).toFixed(1) : 0,
+          ])
+        ),
+        [],
+        [`Net Savings (${primaryCurrency})`, netSavings],
+        ['Savings Rate', `${savingsRate.toFixed(1)}%`],
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary')
 
+      // Income detail sheet
       const incomeData = [
         ['Title', 'Category', 'Amount', 'Currency', 'Date', 'Notes'],
         ...filteredIncomes.map(i => [
           i.title || i.description || '',
-          i.category,
-          i.amount,
+          i.category || 'Other',
+          Number(i.amount),
           getTxCurrency(i),
           i.date,
           i.notes || '',
@@ -195,12 +256,13 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incomeData), 'Income')
 
+      // Expenses detail sheet
       const expData = [
         ['Title', 'Category', 'Amount', 'Currency', 'Date', 'Payment Method', 'Notes'],
         ...filteredExpenses.map(e => [
           e.title || e.description || '',
-          e.category,
-          e.amount,
+          e.category || 'Other',
+          Number(e.amount),
           getTxCurrency(e),
           e.date,
           e.payment_method || '',
@@ -229,61 +291,65 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       doc.text(`Period: ${dateRange.label}`, 14, 30)
       doc.text(`Generated: ${format(new Date(), 'PPP')}`, 14, 37)
 
+      // Summary
       doc.setFontSize(13); doc.setTextColor(0, 75, 35)
       doc.text('Summary', 14, 50)
       autoTable(doc, {
         startY: 55,
         head: [['Metric', 'Currency', 'Amount']],
         body: [
-          ...incomeCurrencies.map(cur  => [`Total Income`,   cur, exportFmt(incomeByCurrency[cur],  cur)]),
-          ...expenseCurrencies.map(cur => [`Total Expenses`, cur, exportFmt(expenseByCurrency[cur], cur)]),
+          ...incomeCurrencies.map(cur  => ['Total Income',   cur, exportFmt(incomeByCurrency[cur],  cur)]),
+          ...expenseCurrencies.map(cur => ['Total Expenses', cur, exportFmt(expenseByCurrency[cur], cur)]),
           [`Net Savings`,  primaryCurrency, exportFmt(netSavings, primaryCurrency)],
-          ['Savings Rate', '', `${savingsRate.toFixed(1)}%`],
+          ['Savings Rate', '',              `${savingsRate.toFixed(1)}%`],
         ],
         theme: 'striped',
         headStyles:   { fillColor: [0, 75, 35] },
         columnStyles: { 2: { halign: 'right' } },
       })
 
+      // Income by category
       const y1 = (doc as any).lastAutoTable.finalY + 15
-      doc.setFontSize(13); doc.setTextColor(0, 75, 35)
+      doc.setFontSize(13); doc.setTextColor(22, 163, 74)
       doc.text('Income by Category', 14, y1)
       autoTable(doc, {
         startY: y1 + 5,
-        head: [['Category', 'Amount', '% of Total']],
-        body: incomeByCategory.map(([cat, amt]) => [
-          cat,
-          exportFmt(amt, primaryCurrency),
-          `${totalIncome > 0 ? ((amt / totalIncome) * 100).toFixed(1) : 0}%`,
-        ]),
+        head: [['Currency', 'Category', 'Amount', '%']],
+        body: incomeCatEntries.flatMap(({ currency, rows, total }) =>
+          rows.map(([cat, amt]) => [
+            currency, cat,
+            exportFmt(amt, currency),
+            `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
+          ])
+        ),
         theme: 'striped',
         headStyles:   { fillColor: [22, 163, 74] },
-        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+        columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } },
       })
 
+      // Expenses by category
       const y2 = (doc as any).lastAutoTable.finalY + 15
-      doc.setFontSize(13); doc.setTextColor(0, 75, 35)
+      doc.setFontSize(13); doc.setTextColor(220, 38, 38)
       doc.text('Expenses by Category', 14, y2)
       autoTable(doc, {
         startY: y2 + 5,
-        head: [['Category', 'Amount', '% of Total']],
-        body: expenseByCategory.map(([cat, amt]) => [
-          cat,
-          exportFmt(amt, primaryCurrency),
-          `${totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(1) : 0}%`,
-        ]),
+        head: [['Currency', 'Category', 'Amount', '%']],
+        body: expenseCatEntries.flatMap(({ currency, rows, total }) =>
+          rows.map(([cat, amt]) => [
+            currency, cat,
+            exportFmt(amt, currency),
+            `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
+          ])
+        ),
         theme: 'striped',
         headStyles:   { fillColor: [220, 38, 38] },
-        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+        columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } },
       })
 
       const pageCount = (doc as any).internal.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i); doc.setFontSize(9); doc.setTextColor(150, 150, 150)
-        doc.text(
-          `${APP_NAME} — Confidential | Page ${i} of ${pageCount}`,
-          14, doc.internal.pageSize.height - 10
-        )
+        doc.text(`${APP_NAME} — Confidential | Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10)
       }
       doc.save(`think-shika-pa-report-${slug}.pdf`)
       toast({ title: 'PDF report exported', variant: 'success' })
@@ -300,26 +366,18 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-4 px-5">
           <div className="flex items-center gap-3 flex-wrap">
-
-            {/* Period toggles */}
             <div className="flex gap-2">
               {(['monthly', 'quarterly', 'annual'] as ReportPeriod[]).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
+                <button key={p} onClick={() => setPeriod(p)}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors"
-                  style={
-                    period === p
-                      ? { background: theme.colors.primary, color: '#fff' }
-                      : { background: '#f1f5f9', color: '#64748b' }
-                  }
-                >
+                  style={period === p
+                    ? { background: theme.colors.primary, color: '#fff' }
+                    : { background: '#f1f5f9', color: '#64748b' }}>
                   {p}
                 </button>
               ))}
             </div>
 
-            {/* Month selector */}
             {period === 'monthly' && (
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="w-44 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
@@ -331,12 +389,10 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
               </Select>
             )}
 
-            {/* Period label */}
             <span className="text-sm font-semibold ml-auto" style={{ color: theme.colors.primary }}>
               {dateRange.label}
             </span>
 
-            {/* Export buttons */}
             <div className="flex gap-2 flex-shrink-0">
               <button onClick={handleExportCSV}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
@@ -356,10 +412,9 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         </CardContent>
       </Card>
 
-      {/* ── KPI Cards ── */}
+      {/* ── KPI Cards — one per currency for income/expenses ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
 
-        {/* Income — one card per currency */}
         {incomeCurrencies.length === 0 ? (
           <Card className="kpi-green bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border">
             <div className="flex items-center gap-2 mb-2">
@@ -382,7 +437,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
           </Card>
         ))}
 
-        {/* Expenses — one card per currency */}
         {expenseCurrencies.length === 0 ? (
           <Card className="kpi-red bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border">
             <div className="flex items-center gap-2 mb-2">
@@ -405,7 +459,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
           </Card>
         ))}
 
-        {/* Net Savings */}
         <Card className={`bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border ${netSavings >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
           <div className="flex items-center gap-2 mb-2 min-w-0">
             <PiggyBank className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -421,7 +474,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
           )}
         </Card>
 
-        {/* Savings Rate */}
         <Card className="kpi-purple bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2 min-w-0">
             <BarChart3 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -436,64 +488,108 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         </Card>
       </div>
 
-      {/* ── Category Breakdowns ── */}
+      {/* ── Category Breakdowns — grouped per currency ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
+        {/* Income by Category */}
         <Card className="bg-white rounded-xl shadow-sm">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-green-600" />Income by Category
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {incomeByCategory.length === 0 ? (
+          <CardContent>
+            {incomeCatEntries.length === 0 || incomeCatEntries.every(e => e.rows.length === 0) ? (
               <p className="text-muted-foreground text-sm text-center py-4">No income for this period</p>
-            ) : incomeByCategory.map(([cat, amt]) => (
-              <div key={cat} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: (CATEGORY_COLORS as Record<string, string>)[cat] || '#94a3b8' }} />
-                  <span className="text-sm truncate">{cat}</span>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className="text-xs text-muted-foreground">
-                    {totalIncome > 0 ? ((amt / totalIncome) * 100).toFixed(0) : 0}%
-                  </span>
-                  <span className="font-semibold text-sm tabular-nums text-green-600">
-                    {formatCurrency(amt, primaryCurrency)}
-                  </span>
-                </div>
+            ) : (
+              <div className="space-y-5">
+                {incomeCatEntries.map(({ currency, rows, total }) => (
+                  <div key={currency}>
+                    {/* Currency header — only shown when multi-currency */}
+                    {hasMixedCurrency && (
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{currency}</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground">{formatCurrency(total, currency)}</p>
+                      </div>
+                    )}
+                    <div className="space-y-2.5">
+                      {rows.map(([cat, amt]) => {
+                        const pct = total > 0 ? Math.round((amt / total) * 100) : 0
+                        return (
+                          <div key={cat} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ background: (CATEGORY_COLORS as Record<string, string>)[cat] || '#94a3b8' }} />
+                              <span className="text-sm truncate">{cat}</span>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                              <span className="font-semibold text-sm tabular-nums text-green-600 w-28 text-right">
+                                {formatCurrency(amt, currency)}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {/* Divider between currency groups */}
+                    {hasMixedCurrency && incomeCatEntries.indexOf(incomeCatEntries.find(e => e.currency === currency)!) < incomeCatEntries.length - 1 && (
+                      <div className="border-t border-border/50 mt-3" />
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 
+        {/* Expenses by Category */}
         <Card className="bg-white rounded-xl shadow-sm">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingDown className="w-4 h-4 text-red-500" />Expenses by Category
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {expenseByCategory.length === 0 ? (
+          <CardContent>
+            {expenseCatEntries.length === 0 || expenseCatEntries.every(e => e.rows.length === 0) ? (
               <p className="text-muted-foreground text-sm text-center py-4">No expenses for this period</p>
-            ) : expenseByCategory.map(([cat, amt]) => (
-              <div key={cat} className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ background: (CATEGORY_COLORS as Record<string, string>)[cat] || '#94a3b8' }} />
-                  <span className="text-sm truncate">{cat}</span>
-                </div>
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <span className="text-xs text-muted-foreground">
-                    {totalExpenses > 0 ? ((amt / totalExpenses) * 100).toFixed(0) : 0}%
-                  </span>
-                  <span className="font-semibold text-sm tabular-nums text-red-500">
-                    {formatCurrency(amt, primaryCurrency)}
-                  </span>
-                </div>
+            ) : (
+              <div className="space-y-5">
+                {expenseCatEntries.map(({ currency, rows, total }) => (
+                  <div key={currency}>
+                    {hasMixedCurrency && (
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{currency}</p>
+                        <p className="text-[10px] font-semibold text-muted-foreground">{formatCurrency(total, currency)}</p>
+                      </div>
+                    )}
+                    <div className="space-y-2.5">
+                      {rows.map(([cat, amt]) => {
+                        const pct = total > 0 ? Math.round((amt / total) * 100) : 0
+                        return (
+                          <div key={cat} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ background: (CATEGORY_COLORS as Record<string, string>)[cat] || '#94a3b8' }} />
+                              <span className="text-sm truncate">{cat}</span>
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <span className="text-xs text-muted-foreground w-8 text-right">{pct}%</span>
+                              <span className="font-semibold text-sm tabular-nums text-red-500 w-28 text-right">
+                                {formatCurrency(amt, currency)}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {hasMixedCurrency && expenseCatEntries.indexOf(expenseCatEntries.find(e => e.currency === currency)!) < expenseCatEntries.length - 1 && (
+                      <div className="border-t border-border/50 mt-3" />
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
 

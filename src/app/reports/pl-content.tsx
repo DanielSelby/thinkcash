@@ -13,7 +13,7 @@ import { THEMES } from '@/lib/config'
 interface Props {
   incomes:  any[]
   expenses: any[]
-  accounts?: any[]
+  accounts: any[]
 }
 
 const MONTHS = ['January','February','March','April','May','June',
@@ -22,37 +22,49 @@ const YEARS  = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
 
 const APP_NAME = 'Think-Shika PA'
 
-// ── Currency-aware formatter for exports (no forced GHS) ──────────────
 const exportFmt = (n: number, cur = 'GHS') =>
   `${cur} ` + new Intl.NumberFormat('en-GH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)
 
+function sortCurrencies(currencies: string[], primary: string): string[] {
+  return [...currencies].sort((a, b) => {
+    if (a === primary) return -1
+    if (b === primary) return 1
+    return a.localeCompare(b)
+  })
+}
+
 const INCOME_ACCOUNTS = [
-  { code: '4001', name: 'Employment Income',  cats: ['Salary', 'salary', 'Bonus', 'bonus'] },
-  { code: '4002', name: 'Business Income',    cats: ['Business', 'business', 'Freelance', 'freelance'] },
-  { code: '4003', name: 'Investment Income',  cats: ['Investment', 'investment'] },
-  { code: '4004', name: 'Rental Income',      cats: ['Rental', 'rental'] },
-  { code: '4005', name: 'Gifts & Grants',     cats: ['Gift', 'gift', 'Other', 'other'] },
+  { code: '4001', name: 'Employment Income',  cats: ['salary', 'bonus'] },
+  { code: '4002', name: 'Business Income',    cats: ['business', 'freelance'] },
+  { code: '4003', name: 'Investment Income',  cats: ['investment'] },
+  { code: '4004', name: 'Rental Income',      cats: ['rental'] },
+  { code: '4005', name: 'Gifts & Grants',     cats: ['gift', 'other'] },
 ]
 
 const EXPENSE_ACCOUNTS = [
-  { code: '5001', name: 'Housing',            cats: ['Housing', 'housing'] },
-  { code: '5002', name: 'Utilities',          cats: ['Utilities', 'utilities'] },
-  { code: '5003', name: 'Food & Dining',      cats: ['Food & Dining', 'food', 'Food'] },
-  { code: '5004', name: 'Transport',          cats: ['Transport', 'transportation', 'Transport & Fuel'] },
-  { code: '5005', name: 'Healthcare',         cats: ['Healthcare', 'healthcare'] },
-  { code: '5006', name: 'Education',          cats: ['Education', 'education'] },
-  { code: '5007', name: 'Entertainment',      cats: ['Entertainment', 'entertainment'] },
-  { code: '5008', name: 'Shopping',           cats: ['Shopping', 'shopping', 'Clothing', 'clothing', 'Personal Care'] },
-  { code: '5009', name: 'Insurance',          cats: ['Insurance', 'insurance'] },
-  { code: '5010', name: 'Debt & Savings',     cats: ['Debt Payment', 'Savings', 'savings', 'investments'] },
-  { code: '5011', name: 'Travel',             cats: ['Travel', 'travel'] },
-  { code: '5099', name: 'Other Expenses',     cats: ['Other', 'other'] },
+  { code: '5001', name: 'Housing',            cats: ['housing'] },
+  { code: '5002', name: 'Utilities',          cats: ['utilities'] },
+  { code: '5003', name: 'Food & Dining',      cats: ['food & dining', 'food'] },
+  { code: '5004', name: 'Transport',          cats: ['transport', 'transportation', 'transport & fuel'] },
+  { code: '5005', name: 'Healthcare',         cats: ['healthcare'] },
+  { code: '5006', name: 'Education',          cats: ['education'] },
+  { code: '5007', name: 'Entertainment',      cats: ['entertainment'] },
+  { code: '5008', name: 'Shopping',           cats: ['shopping', 'clothing', 'personal care'] },
+  { code: '5009', name: 'Insurance',          cats: ['insurance'] },
+  { code: '5010', name: 'Debt & Savings',     cats: ['debt payment', 'savings', 'investments'] },
+  { code: '5011', name: 'Travel',             cats: ['travel'] },
+  { code: '5099', name: 'Other Expenses',     cats: ['other'] },
 ]
 
-export function PLContent({ incomes, expenses, accounts = [] }: Props) {
+function resolveAccount(cat: string, accounts: typeof INCOME_ACCOUNTS) {
+  const lower = (cat ?? '').toLowerCase()
+  return accounts.find(a => a.cats.includes(lower)) ?? { code: accounts[accounts.length - 1].code, name: accounts[accounts.length - 1].name }
+}
+
+export function PLContent({ incomes, expenses, accounts }: Props) {
   const { activeTheme, currency: primaryCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -61,10 +73,11 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
   const [selMonth, setSelMonth] = useState(String(now.getMonth()))
   const [selYear,  setSelYear]  = useState(String(now.getFullYear()))
 
-  // ── Resolve account currency for a transaction ────────────────────
+  // ── Resolve account currency ────────────────────────────────────
   const getTxCurrency = (r: any): string =>
-    accounts.find(a => a.id === r.account_id)?.currency || primaryCurrency
+    accounts.find((a: any) => a.id === r.account_id)?.currency || primaryCurrency
 
+  // ── Period bounds ───────────────────────────────────────────────
   const { from, to, label } = useMemo(() => {
     const yr = Number(selYear)
     if (period === 'monthly') {
@@ -91,7 +104,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
   const filteredExpenses = useMemo(() =>
     expenses.filter(e => e.date >= from && e.date <= to), [expenses, from, to])
 
-  // ── Group totals by currency ──────────────────────────────────────
+  // ── Totals by currency ──────────────────────────────────────────
   const incomeByCurrency = useMemo(() => {
     const map: Record<string, number> = {}
     filteredIncomes.forEach(r => {
@@ -110,94 +123,84 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
     return map
   }, [filteredExpenses, accounts, primaryCurrency])
 
+  const incomeCurrencies  = sortCurrencies(Object.keys(incomeByCurrency),  primaryCurrency)
+  const expenseCurrencies = sortCurrencies(Object.keys(expenseByCurrency), primaryCurrency)
+  const hasMixedCurrency  = incomeCurrencies.length > 1 || expenseCurrencies.length > 1
+
   // Primary-currency totals for Net/Savings
-  const totalIncome   = incomeByCurrency[primaryCurrency]  ?? Object.values(incomeByCurrency)[0]  ?? 0
-  const totalExpenses = expenseByCurrency[primaryCurrency] ?? Object.values(expenseByCurrency)[0] ?? 0
+  const totalIncome   = incomeByCurrency[primaryCurrency]  ?? 0
+  const totalExpenses = expenseByCurrency[primaryCurrency] ?? 0
   const netSurplus    = totalIncome - totalExpenses
   const savingsRate   = totalIncome > 0 ? ((netSurplus / totalIncome) * 100).toFixed(1) : '0.0'
 
-  // ── P&L rows — per-currency aware ────────────────────────────────
-  // We build rows per currency so each row shows its actual currency
+  // ── P&L rows — per currency, grouped by account code ───────────
+  // Structure: { currency: { code: { code, name, amount } } }
   const incomeRowsByCurrency = useMemo(() => {
-    const result: Record<string, Array<{ code: string; name: string; amount: number; currency: string }>> = {}
+    const result: Record<string, Record<string, { code: string; name: string; amount: number }>> = {}
     filteredIncomes.forEach(r => {
       const cur = getTxCurrency(r)
-      if (!result[cur]) result[cur] = []
-      const cat = r.category ?? ''
-      const account = INCOME_ACCOUNTS.find(a =>
-        a.cats.some(c => c.toLowerCase() === cat.toLowerCase())
-      ) ?? { code: '4099', name: 'Other Income' }
-      const existing = result[cur].find(x => x.code === account.code)
-      if (existing) {
-        existing.amount += Number(r.amount)
-      } else {
-        result[cur].push({ code: account.code, name: account.name, amount: Number(r.amount), currency: cur })
-      }
+      const acc = resolveAccount(r.category, INCOME_ACCOUNTS)
+      if (!result[cur]) result[cur] = {}
+      if (!result[cur][acc.code]) result[cur][acc.code] = { code: acc.code, name: acc.name, amount: 0 }
+      result[cur][acc.code].amount += Number(r.amount)
     })
-    // Sort each currency's rows by code
-    Object.values(result).forEach(rows => rows.sort((a, b) => a.code.localeCompare(b.code)))
     return result
   }, [filteredIncomes, accounts, primaryCurrency])
 
   const expenseRowsByCurrency = useMemo(() => {
-    const result: Record<string, Array<{ code: string; name: string; amount: number; currency: string }>> = {}
+    const result: Record<string, Record<string, { code: string; name: string; amount: number }>> = {}
     filteredExpenses.forEach(r => {
       const cur = getTxCurrency(r)
-      if (!result[cur]) result[cur] = []
-      const cat = r.category ?? ''
-      const account = EXPENSE_ACCOUNTS.find(a =>
-        a.cats.some(c => c.toLowerCase() === cat.toLowerCase())
-      ) ?? { code: '5099', name: 'Other Expenses' }
-      const existing = result[cur].find(x => x.code === account.code)
-      if (existing) {
-        existing.amount += Number(r.amount)
-      } else {
-        result[cur].push({ code: account.code, name: account.name, amount: Number(r.amount), currency: cur })
-      }
+      const acc = resolveAccount(r.category, EXPENSE_ACCOUNTS)
+      if (!result[cur]) result[cur] = {}
+      if (!result[cur][acc.code]) result[cur][acc.code] = { code: acc.code, name: acc.name, amount: 0 }
+      result[cur][acc.code].amount += Number(r.amount)
     })
-    Object.values(result).forEach(rows => rows.sort((a, b) => a.code.localeCompare(b.code)))
     return result
   }, [filteredExpenses, accounts, primaryCurrency])
 
-  // ── Flat rows for exports (legacy format, single-currency) ────────
-  const allIncomeRowsFlat = useMemo(() =>
-    Object.entries(incomeRowsByCurrency).flatMap(([cur, rows]) =>
-      rows.map(r => ({ ...r, currency: cur }))
-    ), [incomeRowsByCurrency])
+  // Sorted arrays per currency
+  const incomeSections = useMemo(() =>
+    incomeCurrencies.map(cur => ({
+      currency: cur,
+      rows: Object.values(incomeRowsByCurrency[cur] || {}).sort((a, b) => a.code.localeCompare(b.code)),
+      total: incomeByCurrency[cur] || 0,
+    })), [incomeRowsByCurrency, incomeCurrencies, incomeByCurrency])
 
-  const allExpenseRowsFlat = useMemo(() =>
-    Object.entries(expenseRowsByCurrency).flatMap(([cur, rows]) =>
-      rows.map(r => ({ ...r, currency: cur }))
-    ), [expenseRowsByCurrency])
+  const expenseSections = useMemo(() =>
+    expenseCurrencies.map(cur => ({
+      currency: cur,
+      rows: Object.values(expenseRowsByCurrency[cur] || {}).sort((a, b) => a.code.localeCompare(b.code)),
+      total: expenseByCurrency[cur] || 0,
+    })), [expenseRowsByCurrency, expenseCurrencies, expenseByCurrency])
+
+  // Flat rows for exports
+  const incomeRowsFlat = incomeSections.flatMap(s => s.rows.map(r => ({ ...r, currency: s.currency })))
+  const expenseRowsFlat = expenseSections.flatMap(s => s.rows.map(r => ({ ...r, currency: s.currency })))
 
   const slug = label.replace(/\s/g, '-').toLowerCase()
 
-  // Currencies present
-  const incomeCurrencies  = Object.keys(incomeByCurrency).sort(c => c === primaryCurrency ? -1 : 1)
-  const expenseCurrencies = Object.keys(expenseByCurrency).sort(c => c === primaryCurrency ? -1 : 1)
-  const hasMixedCurrency  = incomeCurrencies.length > 1 || expenseCurrencies.length > 1
-
-  // ── CSV Export ────────────────────────────────────────────────────
+  // ── CSV Export ──────────────────────────────────────────────────
   const handleExportCSV = () => {
-    const rows = [
+    const rows: any[][] = [
       [`${APP_NAME} — Personal Income Statement`],
       [`Period: ${label}`],
       [`Generated: ${format(new Date(), 'PPP')}`],
       [],
-      ['INCOME', '', ''],
-      ['Code', 'Account', 'Currency', 'Amount'],
-      ...allIncomeRowsFlat.map(r => [r.code, r.name, r.currency, exportFmt(r.amount, r.currency)]),
+      ['INCOME'],
+      ['Currency', 'Code', 'Account', 'Amount'],
+      ...incomeRowsFlat.map(r => [r.currency, r.code, r.name, exportFmt(r.amount, r.currency)]),
       [],
-      ...incomeCurrencies.map(cur => ['', `TOTAL INCOME (${cur})`, cur, exportFmt(incomeByCurrency[cur], cur)]),
+      ...incomeCurrencies.map(cur => ['', '', `TOTAL INCOME (${cur})`, exportFmt(incomeByCurrency[cur], cur)]),
       [],
-      ['EXPENSES', '', ''],
-      ['Code', 'Account', 'Currency', 'Amount'],
-      ...allExpenseRowsFlat.map(r => [r.code, r.name, r.currency, exportFmt(r.amount, r.currency)]),
+      ['EXPENSES'],
+      ['Currency', 'Code', 'Account', 'Amount'],
+      ...expenseRowsFlat.map(r => [r.currency, r.code, r.name, exportFmt(r.amount, r.currency)]),
       [],
-      ...expenseCurrencies.map(cur => ['', `TOTAL EXPENSES (${cur})`, cur, exportFmt(expenseByCurrency[cur], cur)]),
+      ...expenseCurrencies.map(cur => ['', '', `TOTAL EXPENSES (${cur})`, exportFmt(expenseByCurrency[cur], cur)]),
       [],
-      ['', `NET SURPLUS / (DEFICIT) (${primaryCurrency})`, primaryCurrency, exportFmt(netSurplus, primaryCurrency)],
-      ['', 'SAVINGS RATE', '', `${savingsRate}%`],
+      [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`, '', '', exportFmt(netSurplus, primaryCurrency)],
+      ['SAVINGS RATE', '', '', `${savingsRate}%`],
     ]
     const csv  = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -208,7 +211,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
     toast({ title: 'P&L exported as CSV', variant: 'success' })
   }
 
-  // ── Excel Export ──────────────────────────────────────────────────
+  // ── Excel Export ────────────────────────────────────────────────
   const handleExportExcel = async () => {
     try {
       const XLSX = await import('xlsx')
@@ -219,18 +222,18 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
         [`Generated: ${format(new Date(), 'PPP')}`],
         [],
         ['INCOME'],
-        ['Code', 'Account', 'Currency', 'Amount'],
-        ...allIncomeRowsFlat.map(r => [r.code, r.name, r.currency, r.amount]),
+        ['Currency', 'Code', 'Account', 'Amount'],
+        ...incomeRowsFlat.map(r => [r.currency, r.code, r.name, r.amount]),
         [],
-        ...incomeCurrencies.map(cur => ['', `TOTAL INCOME (${cur})`, cur, incomeByCurrency[cur]]),
+        ...incomeCurrencies.map(cur => ['', '', `TOTAL INCOME (${cur})`, incomeByCurrency[cur]]),
         [],
         ['EXPENSES'],
-        ['Code', 'Account', 'Currency', 'Amount'],
-        ...allExpenseRowsFlat.map(r => [r.code, r.name, r.currency, r.amount]),
+        ['Currency', 'Code', 'Account', 'Amount'],
+        ...expenseRowsFlat.map(r => [r.currency, r.code, r.name, r.amount]),
         [],
-        ...expenseCurrencies.map(cur => ['', `TOTAL EXPENSES (${cur})`, cur, expenseByCurrency[cur]]),
+        ...expenseCurrencies.map(cur => ['', '', `TOTAL EXPENSES (${cur})`, expenseByCurrency[cur]]),
         [],
-        [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`, '', primaryCurrency, netSurplus],
+        [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`, '', '', netSurplus],
         ['SAVINGS RATE', '', '', `${savingsRate}%`],
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'P&L Statement')
@@ -241,7 +244,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
     }
   }
 
-  // ── PDF Export ────────────────────────────────────────────────────
+  // ── PDF Export ──────────────────────────────────────────────────
   const handleExportPDF = async () => {
     try {
       const { default: jsPDF }     = await import('jspdf')
@@ -260,17 +263,17 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
       doc.text('INCOME', 14, 52)
       autoTable(doc, {
         startY: 56,
-        head: [['Code', 'Account', 'Currency', 'Amount']],
+        head: [['Currency', 'Code', 'Account', 'Amount']],
         body: [
-          ...allIncomeRowsFlat.map(r => [r.code, r.name, r.currency, exportFmt(r.amount, r.currency)]),
-          ...incomeCurrencies.map(cur => ['', `TOTAL INCOME (${cur})`, cur, exportFmt(incomeByCurrency[cur], cur)]),
+          ...incomeRowsFlat.map(r => [r.currency, r.code, r.name, exportFmt(r.amount, r.currency)]),
+          ...incomeCurrencies.map(cur => ['', '', `TOTAL INCOME (${cur})`, exportFmt(incomeByCurrency[cur], cur)]),
         ],
         theme: 'striped',
         headStyles:   { fillColor: [22, 163, 74] },
         columnStyles: { 3: { halign: 'right' } },
         bodyStyles:   { fontSize: 10 },
         didParseCell: (data) => {
-          if (data.row.index >= allIncomeRowsFlat.length) {
+          if (data.row.index >= incomeRowsFlat.length) {
             data.cell.styles.fontStyle = 'bold'
           }
         },
@@ -281,17 +284,17 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
       doc.text('EXPENSES', 14, y1)
       autoTable(doc, {
         startY: y1 + 4,
-        head: [['Code', 'Account', 'Currency', 'Amount']],
+        head: [['Currency', 'Code', 'Account', 'Amount']],
         body: [
-          ...allExpenseRowsFlat.map(r => [r.code, r.name, r.currency, exportFmt(r.amount, r.currency)]),
-          ...expenseCurrencies.map(cur => ['', `TOTAL EXPENSES (${cur})`, cur, exportFmt(expenseByCurrency[cur], cur)]),
+          ...expenseRowsFlat.map(r => [r.currency, r.code, r.name, exportFmt(r.amount, r.currency)]),
+          ...expenseCurrencies.map(cur => ['', '', `TOTAL EXPENSES (${cur})`, exportFmt(expenseByCurrency[cur], cur)]),
         ],
         theme: 'striped',
         headStyles:   { fillColor: [220, 38, 38] },
         columnStyles: { 3: { halign: 'right' } },
         bodyStyles:   { fontSize: 10 },
         didParseCell: (data) => {
-          if (data.row.index >= allExpenseRowsFlat.length) {
+          if (data.row.index >= expenseRowsFlat.length) {
             data.cell.styles.fontStyle = 'bold'
           }
         },
@@ -299,8 +302,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
 
       const y2 = (doc as any).lastAutoTable.finalY + 12
       autoTable(doc, {
-        startY: y2,
-        head: [],
+        startY: y2, head: [],
         body: [
           [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`,
             netSurplus >= 0 ? exportFmt(netSurplus, primaryCurrency) : `(${exportFmt(Math.abs(netSurplus), primaryCurrency)})`],
@@ -316,8 +318,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
 
       const pageCount = (doc as any).internal.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i)
-        doc.setFontSize(9); doc.setTextColor(150, 150, 150)
+        doc.setPage(i); doc.setFontSize(9); doc.setTextColor(150, 150, 150)
         doc.text(`${APP_NAME} — P&L Statement | Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10)
       }
       doc.save(`think-shika-pl-${slug}.pdf`)
@@ -328,15 +329,13 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
     }
   }
 
-  // ── Row component ─────────────────────────────────────────────────
+  // ── Row component ───────────────────────────────────────────────
   const Row = ({ code, name, amount, currency }: { code: string; name: string; amount: number; currency: string }) => (
     <div className="flex items-center py-2.5 border-b border-border/50 last:border-0">
       <span className="w-14 text-xs font-mono text-muted-foreground flex-shrink-0">{code}</span>
       <span className="flex-1 text-sm">{name}</span>
       <span className="text-sm font-semibold tabular-nums">
-        {amount > 0
-          ? formatCurrency(amount, currency)
-          : <span className="text-muted-foreground">—</span>}
+        {formatCurrency(amount, currency)}
       </span>
     </div>
   )
@@ -344,24 +343,22 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
   return (
     <div className="space-y-6 max-w-3xl">
 
-      {/* ── Period selector + Export buttons — single row ── */}
+      {/* ── Period selector + Export buttons — single card row ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-4 px-5">
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Period toggle */}
             <div className="flex gap-2">
               {(['monthly', 'quarterly', 'annual'] as const).map(p => (
                 <button key={p} onClick={() => setPeriod(p)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-                    period === p ? 'text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                  }`}
-                  style={period === p ? { background: theme.colors.primary } : {}}>
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors"
+                  style={period === p
+                    ? { background: theme.colors.primary, color: '#fff' }
+                    : { background: '#f1f5f9', color: '#64748b' }}>
                   {p}
                 </button>
               ))}
             </div>
 
-            {/* Month/year selectors */}
             {period === 'monthly' && (
               <>
                 <Select value={selMonth} onValueChange={setSelMonth}>
@@ -390,12 +387,10 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
               </Select>
             )}
 
-            {/* Period label */}
             <span className="text-sm font-semibold ml-auto" style={{ color: theme.colors.primary }}>
               {label}
             </span>
 
-            {/* Export buttons — inline in the same row */}
             <div className="flex gap-2 flex-shrink-0">
               <button onClick={handleExportCSV}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
@@ -415,12 +410,11 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
         </CardContent>
       </Card>
 
-      {/* ── KPI Cards — 4 cards matching Overview layout ── */}
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
 
-        {/* Total Income — one card per currency */}
         {incomeCurrencies.length === 0 ? (
-          <Card className="kpi-green rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden">
+          <Card className="kpi-green rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <TrendingUp className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
               <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Income</p>
@@ -441,9 +435,8 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
           </Card>
         ))}
 
-        {/* Total Expenses — one card per currency */}
         {expenseCurrencies.length === 0 ? (
-          <Card className="kpi-red rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden">
+          <Card className="kpi-red rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <TrendingDown className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
               <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">Total Expenses</p>
@@ -464,7 +457,6 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
           </Card>
         ))}
 
-        {/* Net Surplus — primary currency */}
         <Card className={`rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden ${netSurplus >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
           <div className="flex items-center gap-1.5 mb-1">
             <Wallet className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
@@ -480,7 +472,6 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
           )}
         </Card>
 
-        {/* Savings Rate */}
         <Card className="kpi-purple rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden">
           <div className="flex items-center gap-1.5 mb-1">
             <BarChart2 className="w-3.5 h-3.5 flex-shrink-0 text-purple-500" />
@@ -488,6 +479,9 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
           </div>
           <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums">{savingsRate}%</p>
           <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 truncate">Of income saved</p>
+          {hasMixedCurrency && (
+            <p className="text-[9px] sm:text-[10px] text-muted-foreground">{primaryCurrency} only</p>
+          )}
         </Card>
       </div>
 
@@ -499,7 +493,7 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
             <span className="text-xs text-muted-foreground">{label}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            Think-Shika PA{hasMixedCurrency ? ' · Multi-currency — amounts shown per currency' : ' · All amounts in ' + primaryCurrency}
+            Think-Shika PA · {hasMixedCurrency ? 'Multi-currency — amounts shown per currency' : `All amounts in ${primaryCurrency}`}
           </p>
         </CardHeader>
         <CardContent className="pt-4 space-y-6">
@@ -511,31 +505,39 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
               <p className="text-xs font-bold uppercase tracking-widest text-green-700">Income</p>
             </div>
 
-            {incomeCurrencies.length === 0 ? (
+            {incomeSections.length === 0 ? (
               <div className="bg-green-50/50 rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
                 No income recorded
               </div>
             ) : (
-              incomeCurrencies.map(cur => (
-                <div key={cur} className="mb-4 last:mb-0">
-                  {incomeCurrencies.length > 1 && (
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1 px-1">{cur}</p>
-                  )}
-                  <div className="bg-green-50/50 rounded-xl px-4 py-1">
-                    {(incomeRowsByCurrency[cur] ?? []).map(r => (
-                      <Row key={r.code} code={r.code} name={r.name} amount={r.amount} currency={cur} />
-                    ))}
+              <div className="space-y-4">
+                {incomeSections.map(({ currency, rows, total }, idx) => (
+                  <div key={currency}>
+                    {/* Currency label — only when multi-currency */}
+                    {hasMixedCurrency && (
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1 px-1">
+                        {currency}
+                      </p>
+                    )}
+                    <div className="bg-green-50/50 rounded-xl px-4 py-1">
+                      {rows.map(r => (
+                        <Row key={r.code} code={r.code} name={r.name} amount={r.amount} currency={currency} />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between px-4 pt-3 mt-1">
+                      <span className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
+                        Total Income{hasMixedCurrency ? ` (${currency})` : ''}
+                      </span>
+                      <span className="text-sm font-bold tabular-nums text-green-600">
+                        {formatCurrency(total, currency)}
+                      </span>
+                    </div>
+                    {hasMixedCurrency && idx < incomeSections.length - 1 && (
+                      <div className="border-t border-border/40 mt-4" />
+                    )}
                   </div>
-                  <div className="flex items-center justify-between px-4 pt-3 mt-1">
-                    <span className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
-                      Total Income{incomeCurrencies.length > 1 ? ` (${cur})` : ''}
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-green-600">
-                      {formatCurrency(incomeByCurrency[cur], cur)}
-                    </span>
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
 
@@ -546,31 +548,38 @@ export function PLContent({ incomes, expenses, accounts = [] }: Props) {
               <p className="text-xs font-bold uppercase tracking-widest text-red-700">Expenses</p>
             </div>
 
-            {expenseCurrencies.length === 0 ? (
+            {expenseSections.length === 0 ? (
               <div className="bg-red-50/50 rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
                 No expenses recorded
               </div>
             ) : (
-              expenseCurrencies.map(cur => (
-                <div key={cur} className="mb-4 last:mb-0">
-                  {expenseCurrencies.length > 1 && (
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1 px-1">{cur}</p>
-                  )}
-                  <div className="bg-red-50/50 rounded-xl px-4 py-1">
-                    {(expenseRowsByCurrency[cur] ?? []).map(r => (
-                      <Row key={r.code} code={r.code} name={r.name} amount={r.amount} currency={cur} />
-                    ))}
+              <div className="space-y-4">
+                {expenseSections.map(({ currency, rows, total }, idx) => (
+                  <div key={currency}>
+                    {hasMixedCurrency && (
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1 px-1">
+                        {currency}
+                      </p>
+                    )}
+                    <div className="bg-red-50/50 rounded-xl px-4 py-1">
+                      {rows.map(r => (
+                        <Row key={r.code} code={r.code} name={r.name} amount={r.amount} currency={currency} />
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between px-4 pt-3 mt-1">
+                      <span className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
+                        Total Expenses{hasMixedCurrency ? ` (${currency})` : ''}
+                      </span>
+                      <span className="text-sm font-bold tabular-nums text-red-500">
+                        ({formatCurrency(total, currency)})
+                      </span>
+                    </div>
+                    {hasMixedCurrency && idx < expenseSections.length - 1 && (
+                      <div className="border-t border-border/40 mt-4" />
+                    )}
                   </div>
-                  <div className="flex items-center justify-between px-4 pt-3 mt-1">
-                    <span className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
-                      Total Expenses{expenseCurrencies.length > 1 ? ` (${cur})` : ''}
-                    </span>
-                    <span className="text-sm font-bold tabular-nums text-red-500">
-                      ({formatCurrency(expenseByCurrency[cur], cur)})
-                    </span>
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
 
