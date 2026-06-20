@@ -8,8 +8,23 @@ export interface Profile {
   role: UserRole
   is_active: boolean
   allowed_pages: string[] | null
+  last_active_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface AccessTemplate {
+  id: string
+  name: string
+  description: string | null
+  page_keys: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface AppSetting {
+  key: string
+  value: string | null
 }
 
 export type IncomeCategory =
@@ -65,7 +80,6 @@ export interface UserAccount {
   is_active: boolean
   created_at: string
   updated_at: string
-  // computed
   total_income?: number
   total_expenses?: number
   balance?: number
