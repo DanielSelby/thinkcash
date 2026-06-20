@@ -21,6 +21,7 @@ export default async function DashboardPage() {
     { data: goals },
     { data: accounts },
     { data: transfers },
+    { data: custodyTransactions },
   ] = await Promise.all([
     supabase.from('incomes').select('*')
       .eq('user_id', user.id).order('date', { ascending: false }),
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
     supabase.from('user_accounts').select('*')
       .eq('user_id', user.id).eq('is_active', true),
     supabase.from('transfers').select('*').eq('user_id', user.id),
+    supabase.from('custody_transactions').select('*').eq('user_id', user.id),
   ])
 
   return (
@@ -43,6 +45,7 @@ export default async function DashboardPage() {
         profile={profile}
         accounts={accounts  ?? []}
         transfers={transfers ?? []}
+        custodyTransactions={custodyTransactions ?? []}
       />
     </AppShell>
   )

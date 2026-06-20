@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { TransactionsContent } from './transactions-content'
 
 export const metadata = { title: 'Transactions' }
@@ -10,6 +11,10 @@ export default async function TransactionsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'transactions')
 
   const [{ data: incomes }, { data: expenses }, { data: accounts }] = await Promise.all([
     supabase.from('incomes').select('*').eq('user_id', user.id).order('date', { ascending: false }),

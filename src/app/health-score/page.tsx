@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { HealthScoreContent } from './health-score-content'
 
 export const metadata = { title: 'Financial Health Score' }
@@ -10,6 +11,10 @@ export default async function HealthScorePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'health-score')
 
   const now        = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]

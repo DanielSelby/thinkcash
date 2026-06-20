@@ -23,6 +23,7 @@ interface Props {
   budgets:   any[]
   goals:     any[]
   profile:   any
+  custodyTransactions?: any[]
 }
 
 const MONTHS = [
@@ -139,7 +140,7 @@ const CurrencyInnerLabel = (props: any) => {
   )
 }
 
-export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile }: Props) {
+export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -165,13 +166,22 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
-      const totalIncome  = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
-      const totalExpense = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
-      const transfersOut = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const transfersIn  = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const balance      = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
-      return { ...acc, total_income: totalIncome, total_expenses: totalExpense, transfers_in: transfersIn, transfers_out: transfersOut, balance }
-    }), [accounts, incomes, expenses, transfers])
+      const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      // Custody: "received" adds cash into the linked account, "given" pays cash back out of it
+      const custodyIn      = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
+      const custodyOut     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
+      const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
+      return {
+        ...acc,
+        total_income: totalIncome, total_expenses: totalExpense,
+        transfers_in: transfersIn, transfers_out: transfersOut,
+        custody_in: custodyIn, custody_out: custodyOut,
+        balance,
+      }
+    }), [accounts, incomes, expenses, transfers, custodyTransactions])
 
   const setFrom   = (v: string) => { setLocalFrom(v);  setIsFiltered(true) }
   const setTo     = (v: string) => { setLocalTo(v);    setIsFiltered(true) }

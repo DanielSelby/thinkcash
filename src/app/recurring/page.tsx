@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { RecurringContent } from './recurring-content'
 
 export const metadata = { title: 'Recurring Transactions' }
@@ -10,6 +11,10 @@ export default async function RecurringPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'recurring')
 
   const { data: recurring } = await supabase
     .from('recurring_transactions')
@@ -23,4 +28,3 @@ export default async function RecurringPage() {
     </AppShell>
   )
 }
-

@@ -2,10 +2,13 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
+import { canAccessPage } from '@/lib/page-access'
 import {
   TrendingUp, TrendingDown, Wallet, PiggyBank,
   Home, Car, Smartphone, Briefcase, Heart,
@@ -93,8 +96,15 @@ const ACCOUNTS = [
 ]
 
 export default function AccountsPage() {
-  const { activeTheme } = useAppStore()
+  const { activeTheme, profile } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
+  const router = useRouter()
+
+  useEffect(() => {
+    if (profile && profile.role !== 'admin' && !canAccessPage(profile.allowed_pages, 'accounts')) {
+      router.replace('/dashboard')
+    }
+  }, [profile, router])
 
   const totalAccounts = ACCOUNTS.reduce((s, g) => s + g.accounts.length, 0)
 

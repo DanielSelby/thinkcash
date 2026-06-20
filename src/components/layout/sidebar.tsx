@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
 import { APP_CONFIG } from '@/lib/config'
+import { canAccessPage } from '@/lib/page-access'
 
 const navItems = [
   { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'         },
@@ -124,10 +125,17 @@ const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
 
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname()
-  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize, viewMode } = useAppStore()
+  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize, viewMode, profile } = useAppStore()
   const theme       = getTheme()
   const { sidebar } = theme
-  const items       = isAdmin ? adminItems : navItems
+  const isAdminUser = profile?.role === 'admin'
+  const allowedPages = profile?.allowed_pages ?? null
+  const items       = (isAdmin ? adminItems : navItems).filter(item => {
+    if (isAdmin) return true // admin panel nav is never restricted
+    const key = item.href.replace(/^\//, '')
+    if (key === 'dashboard') return true // dashboard is always accessible
+    return isAdminUser || canAccessPage(allowedPages, key)
+  })
 
   const size           = logoSize ?? 'md'
   const logoAreaHeight = appLogo && sidebarOpen
@@ -243,7 +251,9 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         {!isAdmin && [
           { href: '/health-score', icon: HeartPulse, label: 'Health Score' },
           { href: '/ai-advisor',   icon: Sparkles,   label: 'AI Advisor'   },
-        ].map(({ href, icon, label }) => (
+        ]
+          .filter(({ href }) => isAdminUser || canAccessPage(allowedPages, href.replace(/^\//, '')))
+          .map(({ href, icon, label }) => (
           <NavLink
             key={href}
             href={href}

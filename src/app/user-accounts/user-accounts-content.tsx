@@ -114,11 +114,12 @@ interface Props {
   incomes:          { amount: number; account_id: string | null }[]
   expenses:         { amount: number; account_id: string | null }[]
   initialTransfers: Transfer[]
+  custodyTransactions?: { amount: number; account_id: string | null; direction: string }[]
   userId: string
 }
 
 export function UserAccountsContent({
-  initialAccounts, incomes, expenses, initialTransfers, userId,
+  initialAccounts, incomes, expenses, initialTransfers, custodyTransactions = [], userId,
 }: Props) {
   const { activeTheme, currency: appCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -159,9 +160,17 @@ export function UserAccountsContent({
       const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
       const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
       const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const balance       = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn
-      return { ...acc, total_income: totalIncome, total_expenses: totalExpense, transfers_in: transfersIn, transfers_out: transfersOut, balance }
-    }), [accounts, incomes, expenses, transfers])
+      const custodyIn      = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
+      const custodyOut     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
+      const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
+      return {
+        ...acc,
+        total_income: totalIncome, total_expenses: totalExpense,
+        transfers_in: transfersIn, transfers_out: transfersOut,
+        custody_in: custodyIn, custody_out: custodyOut,
+        balance,
+      }
+    }), [accounts, incomes, expenses, transfers, custodyTransactions])
 
   const totalBalance  = accountsWithBalance.reduce((s, a) => s + (a.balance ?? 0), 0)
   const totalIncome   = accountsWithBalance.reduce((s, a) => s + (a.total_income ?? 0), 0)

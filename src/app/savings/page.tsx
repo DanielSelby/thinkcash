@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { SavingsContent } from './savings-content'
 
 export const metadata = { title: 'Savings Goals' }
@@ -10,6 +11,10 @@ export default async function SavingsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'savings')
 
   const { data: goals } = await supabase
     .from('savings_goals')
@@ -23,4 +28,3 @@ export default async function SavingsPage() {
     </AppShell>
   )
 }
-

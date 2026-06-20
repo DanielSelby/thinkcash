@@ -1,15 +1,17 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Search, UserCheck, UserX, Trash2, Users, ShieldAlert } from 'lucide-react'
+import { Search, UserCheck, UserX, Trash2, Users, ShieldAlert, Lock, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/misc'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from '@/components/ui/toaster'
 import { formatDate } from '@/lib/utils'
+import { GATEABLE_PAGES } from '@/lib/page-access'
 import type { Profile } from '@/types'
 
 interface Props { initialUsers: Profile[] }
@@ -17,6 +19,10 @@ interface Props { initialUsers: Profile[] }
 export function AdminUsersContent({ initialUsers }: Props) {
   const [users, setUsers] = useState(initialUsers)
   const [search, setSearch] = useState('')
+  const [accessUser, setAccessUser] = useState<Profile | null>(null)
+  const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set())
+  const [restrictMode, setRestrictMode] = useState(false) // false = unrestricted (full access)
+  const [saving, setSaving] = useState(false)
 
   const filtered = useMemo(() => users.filter(u =>
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -40,6 +46,45 @@ export function AdminUsersContent({ initialUsers }: Props) {
     const { error } = await supabase.from('profiles').delete().eq('id', userId)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     else { setUsers(prev => prev.filter(u => u.id !== userId)); toast({ title: 'User deleted' }) }
+  }
+
+  const openAccessDialog = (u: Profile) => {
+    setAccessUser(u)
+    if (u.allowed_pages === null || u.allowed_pages === undefined) {
+      setRestrictMode(false)
+      setSelectedPages(new Set())
+    } else {
+      setRestrictMode(true)
+      setSelectedPages(new Set(u.allowed_pages))
+    }
+  }
+
+  const togglePage = (key: string) => {
+    setSelectedPages(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const selectAllPages = () => setSelectedPages(new Set(GATEABLE_PAGES.map(p => p.key)))
+  const clearAllPages  = () => setSelectedPages(new Set())
+
+  const saveAccess = async () => {
+    if (!accessUser) return
+    setSaving(true)
+    const supabase = createClient()
+    const value = restrictMode ? Array.from(selectedPages) : null
+    const { error } = await supabase.from('profiles').update({ allowed_pages: value }).eq('id', accessUser.id)
+    if (error) {
+      toast({ title: 'Failed to update access', description: error.message, variant: 'destructive' })
+    } else {
+      setUsers(prev => prev.map(u => u.id === accessUser.id ? { ...u, allowed_pages: value } : u))
+      toast({ title: 'Access updated', variant: 'success' })
+      setAccessUser(null)
+    }
+    setSaving(false)
   }
 
   return (
@@ -66,6 +111,7 @@ export function AdminUsersContent({ initialUsers }: Props) {
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">User</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Role</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Status</th>
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Access</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Joined</th>
                 <th className="text-right px-6 py-3 font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -93,9 +139,27 @@ export function AdminUsersContent({ initialUsers }: Props) {
                   <td className="px-6 py-4">
                     <Badge variant={u.is_active ? 'success' : 'destructive'}>{u.is_active ? 'Active' : 'Suspended'}</Badge>
                   </td>
+                  <td className="px-6 py-4">
+                    {u.role === 'admin' ? (
+                      <span className="text-xs text-muted-foreground">Full (admin)</span>
+                    ) : u.allowed_pages === null || u.allowed_pages === undefined ? (
+                      <Badge variant="secondary">Full access</Badge>
+                    ) : (
+                      <Badge variant="secondary">{u.allowed_pages.length} page{u.allowed_pages.length === 1 ? '' : 's'}</Badge>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-muted-foreground">{formatDate(u.created_at)}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end gap-1">
+                      {u.role !== 'admin' && (
+                        <Button
+                          size="icon" variant="ghost" className="w-8 h-8"
+                          onClick={() => openAccessDialog(u)}
+                          title="Manage page access"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                       <Button
                         size="icon" variant="ghost" className={`w-8 h-8 ${u.is_active ? 'text-warning hover:text-warning' : 'text-success hover:text-success'}`}
                         onClick={() => toggleStatus(u.id, u.is_active)}
@@ -122,6 +186,78 @@ export function AdminUsersContent({ initialUsers }: Props) {
           )}
         </div>
       </Card>
+
+      {/* Page Access Dialog */}
+      <Dialog open={!!accessUser} onOpenChange={o => !o && setAccessUser(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Page Access — {accessUser?.full_name}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30">
+              <div>
+                <p className="text-sm font-semibold">Restrict access</p>
+                <p className="text-xs text-muted-foreground">
+                  {restrictMode ? 'User can only see pages checked below' : 'User has full access to every page'}
+                </p>
+              </div>
+              <button
+                onClick={() => setRestrictMode(v => !v)}
+                className="w-11 h-6 rounded-full relative transition-colors flex-shrink-0"
+                style={{ background: restrictMode ? '#dc2626' : '#cbd5e1' }}
+              >
+                <div
+                  className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all"
+                  style={{ left: restrictMode ? '22px' : '2px' }}
+                />
+              </button>
+            </div>
+
+            {restrictMode && (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {selectedPages.size} of {GATEABLE_PAGES.length} selected
+                  </p>
+                  <div className="flex gap-3">
+                    <button onClick={selectAllPages} className="text-xs font-semibold text-primary hover:underline">Select all</button>
+                    <button onClick={clearAllPages} className="text-xs font-semibold text-muted-foreground hover:underline">Clear all</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                  {GATEABLE_PAGES.map(p => {
+                    const checked = selectedPages.has(p.key)
+                    return (
+                      <button
+                        key={p.key}
+                        onClick={() => togglePage(p.key)}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-sm transition-colors ${
+                          checked ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                          checked ? 'bg-primary border-primary' : 'border-border'
+                        }`}>
+                          {checked && <div className="w-2 h-2 bg-white rounded-sm" />}
+                        </div>
+                        <span className="truncate">{p.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setAccessUser(null)}>Cancel</Button>
+              <Button onClick={saveAccess} disabled={saving}>
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Access'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

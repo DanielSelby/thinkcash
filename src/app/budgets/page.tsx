@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { BudgetsContent } from './budgets-content'
 
 export const metadata = { title: 'Budgets' }
@@ -10,6 +11,10 @@ export default async function BudgetsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'budgets')
 
   const [{ data: budgets }, { data: expenses }] = await Promise.all([
     // All budgets — client filters by month/year

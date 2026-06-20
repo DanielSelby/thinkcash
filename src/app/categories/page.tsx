@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { canAccessPage } from '@/lib/page-access'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,8 +27,15 @@ export const STORAGE_KEY_INCOME  = 'ts_income_categories'
 export const STORAGE_KEY_EXPENSE = 'ts_expense_categories'
 
 export default function CategoriesPage() {
-  const { activeTheme } = useAppStore()
+  const { activeTheme, profile } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
+  const router = useRouter()
+
+  useEffect(() => {
+    if (profile && profile.role !== 'admin' && !canAccessPage(profile.allowed_pages, 'categories')) {
+      router.replace('/dashboard')
+    }
+  }, [profile, router])
 
   const [incomeCategories,  setIncomeCategories]  = useState<string[]>([])
   const [expenseCategories, setExpenseCategories] = useState<string[]>([])

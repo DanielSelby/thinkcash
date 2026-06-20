@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
+import { requirePageAccess } from '@/lib/require-page-access'
 import { UserAccountsContent } from './user-accounts-content'
 
 export const metadata = { title: 'My Accounts' }
@@ -11,11 +12,16 @@ export default async function UserAccountsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
+  const { data: profile } = await supabase
+    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+  requirePageAccess(profile, 'user-accounts')
+
   const [
     { data: accounts },
     { data: incomes },
     { data: expenses },
     { data: transfers },
+    { data: custodyTransactions },
   ] = await Promise.all([
     supabase.from('user_accounts').select('*')
       .eq('user_id', user.id).eq('is_active', true)
@@ -27,6 +33,8 @@ export default async function UserAccountsPage() {
     supabase.from('transfers').select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: false }),
+    supabase.from('custody_transactions').select('amount, account_id, direction')
+      .eq('user_id', user.id),
   ])
 
   return (
@@ -36,6 +44,7 @@ export default async function UserAccountsPage() {
         incomes={incomes ?? []}
         expenses={expenses ?? []}
         initialTransfers={transfers ?? []}
+        custodyTransactions={custodyTransactions ?? []}
         userId={user.id}
       />
     </AppShell>
