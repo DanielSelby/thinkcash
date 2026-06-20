@@ -68,17 +68,55 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
   const { activeTheme, currency: primaryCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
+  // Resolves a transaction's currency via the account it's linked to (accounts carry
+  // their own currency — e.g. a GHS bank account vs a EUR cash wallet). Falls back to
+  // the user's primary currency if the transaction already has its own `currency` field
+  // or if the linked account can't be found.
+  const getTxCurrency = (tx: { account_id?: string; currency?: string }): string => {
+    if (tx?.currency) return tx.currency
+    const acc = accounts.find(a => a.id === tx?.account_id)
+    return acc?.currency || primaryCurrency
+  }
+
   const now = new Date()
   const [period,   setPeriod]   = useState<'monthly' | 'quarterly' | 'annual'>('monthly')
   const [selMonth, setSelMonth] = useState(String(now.getMonth()))
   const [selYear,  setSelYear]  = useState(String(now.getFullYear()))
+  const [customFrom,    setCustomFrom]    = useState('')
+  const [customTo,      setCustomTo]      = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('All')
+  const [currencyFilter, setCurrencyFilter] = useState('All')
 
-  // ── Resolve account currency ────────────────────────────────────
-  const getTxCurrency = (r: any): string =>
-    accounts.find((a: any) => a.id === r.account_id)?.currency || primaryCurrency
+  // ── Available filter options ─────────────────────────────────────
+  const allCategories = useMemo(() =>
+    Array.from(new Set([...incomes.map(i => i.category), ...expenses.map(e => e.category)].filter(Boolean))).sort(),
+    [incomes, expenses])
 
-  // ── Period bounds ───────────────────────────────────────────────
+  const allCurrenciesAvailable = useMemo(() =>
+    Array.from(new Set([
+      ...incomes.map(i => getTxCurrency(i)),
+      ...expenses.map(e => getTxCurrency(e)),
+    ])).sort((a, b) => a === primaryCurrency ? -1 : b === primaryCurrency ? 1 : a.localeCompare(b)),
+    [incomes, expenses, accounts, primaryCurrency])
+
+  const clearAllFilters = () => {
+    setCustomFrom(''); setCustomTo('')
+    setCategoryFilter('All'); setCurrencyFilter('All')
+  }
+  const hasActiveFilters = !!customFrom || !!customTo || categoryFilter !== 'All' || currencyFilter !== 'All'
+
+  // ── Period bounds — custom From/To overrides the quick-period buttons ──
   const { from, to, label } = useMemo(() => {
+    if (customFrom || customTo) {
+      return {
+        from:  customFrom || '0001-01-01',
+        to:    customTo   || '9999-12-31',
+        label: customFrom && customTo
+          ? `${format(new Date(customFrom), 'MMM d, yyyy')} – ${format(new Date(customTo), 'MMM d, yyyy')}`
+          : customFrom ? `From ${format(new Date(customFrom), 'MMM d, yyyy')}`
+          : `Until ${format(new Date(customTo), 'MMM d, yyyy')}`,
+      }
+    }
     const yr = Number(selYear)
     if (period === 'monthly') {
       const mo = Number(selMonth)
@@ -97,12 +135,21 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
       }
     }
     return { from: `${yr}-01-01`, to: `${yr}-12-31`, label: `Year ${yr}` }
-  }, [period, selMonth, selYear])
+  }, [period, selMonth, selYear, customFrom, customTo])
 
   const filteredIncomes  = useMemo(() =>
-    incomes.filter(i  => i.date >= from && i.date <= to), [incomes, from, to])
+    incomes.filter(i =>
+      i.date >= from && i.date <= to &&
+      (categoryFilter === 'All' || i.category === categoryFilter) &&
+      (currencyFilter === 'All' || getTxCurrency(i) === currencyFilter)
+    ), [incomes, from, to, categoryFilter, currencyFilter, accounts, primaryCurrency])
+
   const filteredExpenses = useMemo(() =>
-    expenses.filter(e => e.date >= from && e.date <= to), [expenses, from, to])
+    expenses.filter(e =>
+      e.date >= from && e.date <= to &&
+      (categoryFilter === 'All' || e.category === categoryFilter) &&
+      (currencyFilter === 'All' || getTxCurrency(e) === currencyFilter)
+    ), [expenses, from, to, categoryFilter, currencyFilter, accounts, primaryCurrency])
 
   // ── Totals by currency ──────────────────────────────────────────
   const incomeByCurrency = useMemo(() => {
@@ -361,15 +408,15 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
   return (
     <div className="space-y-6 max-w-3xl">
 
-      {/* ── Period selector + Export buttons — single card row ── */}
+      {/* ── Period selector + Export buttons ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-4 px-5">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex gap-2">
               {(['monthly', 'quarterly', 'annual'] as const).map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
+                <button key={p} onClick={() => { setPeriod(p); setCustomFrom(''); setCustomTo('') }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors"
-                  style={period === p
+                  style={period === p && !customFrom && !customTo
                     ? { background: theme.colors.primary, color: '#fff' }
                     : { background: '#f1f5f9', color: '#64748b' }}>
                   {p}
@@ -377,7 +424,7 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
               ))}
             </div>
 
-            {period === 'monthly' && (
+            {period === 'monthly' && !customFrom && !customTo && (
               <>
                 <Select value={selMonth} onValueChange={setSelMonth}>
                   <SelectTrigger className="w-36 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
@@ -396,7 +443,7 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
               </>
             )}
 
-            {(period === 'annual' || period === 'quarterly') && (
+            {(period === 'annual' || period === 'quarterly') && !customFrom && !customTo && (
               <Select value={selYear} onValueChange={setSelYear}>
                 <SelectTrigger className="w-24 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -425,6 +472,51 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
               </button>
             </div>
           </div>
+
+          {/* ── Filter Transactions row ── */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter Transactions</p>
+              {hasActiveFilters && (
+                <button onClick={clearAllFilters}
+                  className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+                  Clear filters
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                  className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                  className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Category</label>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="w-40 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Categories</SelectItem>
+                    {allCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Currency</label>
+                <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                  <SelectTrigger className="w-32 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Currencies</SelectItem>
+                    {allCurrenciesAvailable.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -447,7 +539,10 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
                 Total Income{incomeCurrencies.length > 1 ? ` (${cur})` : ''}
               </p>
             </div>
-            <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums break-all">
+            <p
+              className="kpi-value text-sm sm:text-xl font-bold tabular-nums"
+              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}
+            >
               {formatCurrency(incomeByCurrency[cur], cur)}
             </p>
           </Card>
@@ -469,7 +564,10 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
                 Total Expenses{expenseCurrencies.length > 1 ? ` (${cur})` : ''}
               </p>
             </div>
-            <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums break-all">
+            <p
+              className="kpi-value text-sm sm:text-xl font-bold tabular-nums"
+              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}
+            >
               {formatCurrency(expenseByCurrency[cur], cur)}
             </p>
           </Card>
@@ -485,7 +583,10 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
                   Net {val >= 0 ? 'Savings' : 'Deficit'}{allCurrenciesUsed.length > 1 ? ` (${cur})` : ''}
                 </p>
               </div>
-              <p className={`kpi-value text-sm sm:text-xl font-bold tabular-nums break-all ${val < 0 ? 'text-red-500' : ''}`}>
+              <p
+                className={`kpi-value text-sm sm:text-xl font-bold tabular-nums ${val < 0 ? 'text-red-500' : ''}`}
+                style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}
+              >
                 {formatCurrency(Math.abs(val), cur)}
               </p>
             </Card>

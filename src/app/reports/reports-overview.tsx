@@ -41,13 +41,45 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
 
   const [period,        setPeriod]        = useState<ReportPeriod>('monthly')
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
+  const [customFrom,    setCustomFrom]    = useState('')
+  const [customTo,      setCustomTo]      = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('All')
+  const [currencyFilter, setCurrencyFilter] = useState('All')
 
   // ── Resolve account currency for a transaction ──────────────────
   const getTxCurrency = (r: any): string =>
     accounts.find((a: any) => a.id === r.account_id)?.currency || primaryCurrency
 
-  // ── Period bounds ───────────────────────────────────────────────
+  // ── Available filter options, derived from the full unfiltered dataset ──
+  const allCategories = useMemo(() =>
+    Array.from(new Set([...incomes.map(i => i.category), ...expenses.map(e => e.category)].filter(Boolean))).sort(),
+    [incomes, expenses])
+
+  const allCurrenciesAvailable = useMemo(() =>
+    Array.from(new Set([
+      ...incomes.map(i => getTxCurrency(i)),
+      ...expenses.map(e => getTxCurrency(e)),
+    ])).sort((a, b) => a === primaryCurrency ? -1 : b === primaryCurrency ? 1 : a.localeCompare(b)),
+    [incomes, expenses, accounts, primaryCurrency])
+
+  const clearAllFilters = () => {
+    setCustomFrom(''); setCustomTo('')
+    setCategoryFilter('All'); setCurrencyFilter('All')
+  }
+  const hasActiveFilters = !!customFrom || !!customTo || categoryFilter !== 'All' || currencyFilter !== 'All'
+
+  // ── Period bounds — custom From/To takes priority over the quick-period buttons ──
   const dateRange = useMemo(() => {
+    if (customFrom || customTo) {
+      return {
+        start: customFrom || '0001-01-01',
+        end:   customTo   || '9999-12-31',
+        label: customFrom && customTo
+          ? `${format(parseISO(customFrom), 'MMM d, yyyy')} – ${format(parseISO(customTo), 'MMM d, yyyy')}`
+          : customFrom ? `From ${format(parseISO(customFrom), 'MMM d, yyyy')}`
+          : `Until ${format(parseISO(customTo), 'MMM d, yyyy')}`,
+      }
+    }
     const now = new Date()
     if (period === 'monthly') {
       const d = parseISO(`${selectedMonth}-01`)
@@ -69,15 +101,23 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       end:   format(endOfYear(now),   'yyyy-MM-dd'),
       label: `Year ${now.getFullYear()}`,
     }
-  }, [period, selectedMonth])
+  }, [period, selectedMonth, customFrom, customTo])
 
   const filteredIncomes = useMemo(() =>
-    incomes.filter(i => i.date >= dateRange.start && i.date <= dateRange.end),
-    [incomes, dateRange])
+    incomes.filter(i =>
+      i.date >= dateRange.start && i.date <= dateRange.end &&
+      (categoryFilter === 'All' || i.category === categoryFilter) &&
+      (currencyFilter === 'All' || getTxCurrency(i) === currencyFilter)
+    ),
+    [incomes, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
 
   const filteredExpenses = useMemo(() =>
-    expenses.filter(e => e.date >= dateRange.start && e.date <= dateRange.end),
-    [expenses, dateRange])
+    expenses.filter(e =>
+      e.date >= dateRange.start && e.date <= dateRange.end &&
+      (categoryFilter === 'All' || e.category === categoryFilter) &&
+      (currencyFilter === 'All' || getTxCurrency(e) === currencyFilter)
+    ),
+    [expenses, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
 
   // ── Totals by currency ──────────────────────────────────────────
   const incomeByCurrency = useMemo(() => {
@@ -362,15 +402,15 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   return (
     <div className="space-y-6">
 
-      {/* ── Period selector + Export buttons — single card row ── */}
+      {/* ── Period selector + Export buttons ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-4 px-5">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex gap-2">
               {(['monthly', 'quarterly', 'annual'] as ReportPeriod[]).map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
+                <button key={p} onClick={() => { setPeriod(p); setCustomFrom(''); setCustomTo('') }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors"
-                  style={period === p
+                  style={period === p && !customFrom && !customTo
                     ? { background: theme.colors.primary, color: '#fff' }
                     : { background: '#f1f5f9', color: '#64748b' }}>
                   {p}
@@ -378,7 +418,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
               ))}
             </div>
 
-            {period === 'monthly' && (
+            {period === 'monthly' && !customFrom && !customTo && (
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="w-44 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -407,6 +447,51 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
                 style={{ background: theme.colors.primary }}>
                 <FileText className="w-3.5 h-3.5" />PDF
               </button>
+            </div>
+          </div>
+
+          {/* ── Filter Transactions row — From/To date, Category, Currency ── */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter Transactions</p>
+              {hasActiveFilters && (
+                <button onClick={clearAllFilters}
+                  className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+                  Clear filters
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                  className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                  className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Category</label>
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="w-40 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Categories</SelectItem>
+                    {allCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Currency</label>
+                <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                  <SelectTrigger className="w-32 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Currencies</SelectItem>
+                    {allCurrenciesAvailable.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         </CardContent>
