@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -17,6 +17,38 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
 import { APP_CONFIG, THEMES, type ThemeKey } from '@/lib/config'
+
+const TAGLINE_PHRASES = ['Spend Wisely.', 'Grow Boldly.']
+
+function AnimatedTagline() {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex(i => (i + 1) % TAGLINE_PHRASES.length)
+    }, 2600)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="hidden md:flex items-center justify-center flex-1 px-4 overflow-hidden">
+      <div className="relative h-5 flex items-center" style={{ minWidth: 160 }}>
+        {TAGLINE_PHRASES.map((phrase, i) => (
+          <span
+            key={phrase}
+            className="absolute left-0 right-0 text-center text-sm font-medium text-white/70 tracking-wide transition-all duration-500 ease-out"
+            style={{
+              opacity: i === index ? 1 : 0,
+              transform: i === index ? 'translateY(0)' : 'translateY(6px)',
+            }}
+          >
+            {phrase}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export function TopNav() {
   const { profile, getTheme, setThemeKey, activeTheme, viewMode, setViewMode } = useAppStore()
@@ -78,6 +110,8 @@ export function TopNav() {
           )}
         </div>
       </form>
+
+      <AnimatedTagline />
 
       <div className="ml-auto flex items-center gap-2">
 
