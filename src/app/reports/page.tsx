@@ -18,7 +18,7 @@ export default async function ReportsPage() {
     supabase.from('expenses').select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: true }),
-    supabase.from('accounts').select('*')
+    supabase.from('user_accounts').select('*')
       .eq('user_id', user.id),
   ])
 
