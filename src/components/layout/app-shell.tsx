@@ -1,11 +1,16 @@
 'use client'
 
 import { useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { TopNav } from './top-nav'
 import { useAppStore } from '@/store'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000 // only write last_active_at once every 5 min
+const LAST_ACTIVE_SESSION_KEY = 'ts_last_active_ping'
+const LOGIN_LOGGED_SESSION_KEY = 'ts_login_logged'
 
 export function AppShell({ children, isAdmin }: { children: React.ReactNode; isAdmin?: boolean }) {
   const {
@@ -13,6 +18,7 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     viewMode, sidebarOpen, setSidebarOpen,
   } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
+  const pathname  = usePathname()
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -35,6 +41,36 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     }
     loadSettings()
   }, [])
+
+  // ── Activity tracking: throttled last_active_at ping + page_view log ──
+  useEffect(() => {
+    if (!profile?.id) return
+    const supabase = createClient()
+
+    // Throttled last_active_at update — at most once every 5 minutes per session
+    const lastPing = Number(sessionStorage.getItem(LAST_ACTIVE_SESSION_KEY) || 0)
+    const now = Date.now()
+    if (now - lastPing > LAST_ACTIVE_THROTTLE_MS) {
+      sessionStorage.setItem(LAST_ACTIVE_SESSION_KEY, String(now))
+      supabase.from('profiles')
+        .update({ last_active_at: new Date().toISOString() })
+        .eq('id', profile.id)
+        .then(() => {}, () => {}) // fire-and-forget, never block UI on failure
+    }
+
+    // Log a 'login' event once per browser session, then 'page_view' on every route change
+    if (!sessionStorage.getItem(LOGIN_LOGGED_SESSION_KEY)) {
+      sessionStorage.setItem(LOGIN_LOGGED_SESSION_KEY, '1')
+      supabase.from('activity_log')
+        .insert({ user_id: profile.id, event_type: 'login', page_path: pathname })
+        .then(() => {}, () => {})
+    } else {
+      supabase.from('activity_log')
+        .insert({ user_id: profile.id, event_type: 'page_view', page_path: pathname })
+        .then(() => {}, () => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.id, pathname])
 
   // Auto-collapse sidebar whenever mobile view is active — including on
   // initial mount/refresh, not just on a live toggle change

@@ -247,3 +247,11 @@ export interface CustodyTransaction {
   created_at: string
   updated_at: string
 }
+
+export interface ActivityLogEntry {
+  id: string
+  user_id: string
+  event_type: 'login' | 'page_view' | 'logout'
+  page_path: string | null
+  created_at: string
+}

@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import {
   Search, UserCheck, UserX, Trash2, Users,
   ShieldAlert, Lock, Loader2, Clock, LayoutTemplate, Plus, Pencil,
+  Activity, LogIn, FileText, LogOut,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -17,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from '@/components/ui/toaster'
 import { formatDate } from '@/lib/utils'
 import { GATEABLE_PAGES } from '@/lib/page-access'
-import type { Profile, AccessTemplate } from '@/types'
+import type { Profile, AccessTemplate, ActivityLogEntry } from '@/types'
 
 interface Props {
   initialUsers: Profile[]
@@ -92,6 +93,11 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
   const [templateForm, setTemplateForm] = useState<TemplateForm | null>(null)
   const [templateSaving, setTemplateSaving] = useState(false)
+
+  // ── Activity log viewer ───────────────────────────────────────────
+  const [activityUser, setActivityUser]   = useState<Profile | null>(null)
+  const [activityLog, setActivityLog]     = useState<ActivityLogEntry[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
 
   const filtered = useMemo(() => users.filter(u =>
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -246,6 +252,37 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
     }
   }
 
+  const openActivityLog = async (u: Profile) => {
+    setActivityUser(u)
+    setActivityLoading(true)
+    setActivityLog([])
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('activity_log')
+      .select('*')
+      .eq('user_id', u.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    if (error) {
+      toast({ title: 'Failed to load activity', description: error.message, variant: 'destructive' })
+    } else {
+      setActivityLog(data || [])
+    }
+    setActivityLoading(false)
+  }
+
+  const eventIcon = (type: ActivityLogEntry['event_type']) => {
+    if (type === 'login')  return <LogIn  className="w-3.5 h-3.5 text-green-600" />
+    if (type === 'logout') return <LogOut className="w-3.5 h-3.5 text-muted-foreground" />
+    return <FileText className="w-3.5 h-3.5 text-blue-600" />
+  }
+
+  const eventLabel = (entry: ActivityLogEntry) => {
+    if (entry.event_type === 'login')  return 'Logged in'
+    if (entry.event_type === 'logout') return 'Logged out'
+    return entry.page_path ? `Viewed ${entry.page_path}` : 'Viewed a page'
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -324,10 +361,25 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
                       </Badge>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-xs text-muted-foreground">{lastActive(u)}</td>
+                  <td className="px-6 py-4 text-xs">
+                    <button
+                      onClick={() => openActivityLog(u)}
+                      className="text-muted-foreground hover:text-primary transition-colors underline-offset-2 hover:underline"
+                      title="View activity log"
+                    >
+                      {lastActive(u)}
+                    </button>
+                  </td>
                   <td className="px-6 py-4 text-muted-foreground">{formatDate(u.created_at)}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end gap-1">
+                      <Button
+                        size="icon" variant="ghost" className="w-8 h-8"
+                        onClick={() => openActivityLog(u)}
+                        title="View activity log"
+                      >
+                        <Activity className="w-3.5 h-3.5" />
+                      </Button>
                       {u.role !== 'admin' && (
                         <Button
                           size="icon" variant="ghost" className="w-8 h-8"
@@ -540,6 +592,52 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Activity Log Dialog */}
+      <Dialog open={!!activityUser} onOpenChange={o => !o && setActivityUser(null)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Activity Log — {activityUser?.full_name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Last active: <span className="font-medium">{activityUser ? lastActive(activityUser) : ''}</span>
+              {' · '}Most recent 50 events
+            </p>
+
+            {activityLoading ? (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : activityLog.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-10">No activity recorded yet</p>
+            ) : (
+              <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+                {activityLog.map(entry => (
+                  <div key={entry.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/40 transition-colors">
+                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
+                      {eventIcon(entry.event_type)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm truncate">{eventLabel(entry)}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex-shrink-0">
+                      {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-border">
+              <Button variant="outline" onClick={() => setActivityUser(null)}>Close</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
