@@ -127,10 +127,25 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
   const expenseCurrencies = sortCurrencies(Object.keys(expenseByCurrency), primaryCurrency)
   const hasMixedCurrency  = incomeCurrencies.length > 1 || expenseCurrencies.length > 1
 
-  // Primary-currency totals for Net/Savings
+  // Net Surplus computed PER CURRENCY — never blended across currencies.
+  // Every currency seen in income OR expenses gets its own income-minus-expenses row.
+  const allCurrenciesUsed = sortCurrencies(
+    Array.from(new Set([...incomeCurrencies, ...expenseCurrencies])),
+    primaryCurrency
+  )
+
+  const netSurplusByCurrency = useMemo(() => {
+    const map: Record<string, number> = {}
+    allCurrenciesUsed.forEach(cur => {
+      map[cur] = (incomeByCurrency[cur] ?? 0) - (expenseByCurrency[cur] ?? 0)
+    })
+    return map
+  }, [allCurrenciesUsed, incomeByCurrency, expenseByCurrency])
+
+  // Primary-currency figures, kept for the Savings Rate % (a ratio only makes sense within one currency)
   const totalIncome   = incomeByCurrency[primaryCurrency]  ?? 0
   const totalExpenses = expenseByCurrency[primaryCurrency] ?? 0
-  const netSurplus    = totalIncome - totalExpenses
+  const netSurplus    = netSurplusByCurrency[primaryCurrency] ?? 0
   const savingsRate   = totalIncome > 0 ? ((netSurplus / totalIncome) * 100).toFixed(1) : '0.0'
 
   // ── P&L rows — per currency, grouped by account code ───────────
@@ -199,8 +214,8 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
       [],
       ...expenseCurrencies.map(cur => ['', '', `TOTAL EXPENSES (${cur})`, exportFmt(expenseByCurrency[cur], cur)]),
       [],
-      [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`, '', '', exportFmt(netSurplus, primaryCurrency)],
-      ['SAVINGS RATE', '', '', `${savingsRate}%`],
+      ...allCurrenciesUsed.map(cur => [`NET SURPLUS / (DEFICIT) (${cur})`, '', '', exportFmt(netSurplusByCurrency[cur], cur)]),
+      ['SAVINGS RATE', '', '', `${savingsRate}% (${primaryCurrency} only)`],
     ]
     const csv  = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -233,8 +248,8 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
         [],
         ...expenseCurrencies.map(cur => ['', '', `TOTAL EXPENSES (${cur})`, expenseByCurrency[cur]]),
         [],
-        [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`, '', '', netSurplus],
-        ['SAVINGS RATE', '', '', `${savingsRate}%`],
+        ...allCurrenciesUsed.map(cur => [`NET SURPLUS / (DEFICIT) (${cur})`, '', '', netSurplusByCurrency[cur]]),
+        ['SAVINGS RATE', '', '', `${savingsRate}% (${primaryCurrency} only)`],
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(data), 'P&L Statement')
       XLSX.writeFile(wb, `think-shika-pl-${slug}.xlsx`)
@@ -304,15 +319,18 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
       autoTable(doc, {
         startY: y2, head: [],
         body: [
-          [`NET SURPLUS / (DEFICIT) (${primaryCurrency})`,
-            netSurplus >= 0 ? exportFmt(netSurplus, primaryCurrency) : `(${exportFmt(Math.abs(netSurplus), primaryCurrency)})`],
-          ['SAVINGS RATE', `${savingsRate}%`],
+          ...allCurrenciesUsed.map(cur => [
+            `NET SURPLUS / (DEFICIT) (${cur})`,
+            netSurplusByCurrency[cur] >= 0
+              ? exportFmt(netSurplusByCurrency[cur], cur)
+              : `(${exportFmt(Math.abs(netSurplusByCurrency[cur]), cur)})`,
+          ]),
+          ['SAVINGS RATE', `${savingsRate}% (${primaryCurrency} only)`],
         ],
         theme: 'plain',
         columnStyles: {
           0: { fontStyle: 'bold', fontSize: 11 },
-          1: { halign: 'right', fontStyle: 'bold', fontSize: 11,
-               textColor: netSurplus >= 0 ? [22, 163, 74] : [220, 38, 38] },
+          1: { halign: 'right', fontStyle: 'bold', fontSize: 11 },
         },
       })
 
@@ -457,20 +475,22 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
           </Card>
         ))}
 
-        <Card className={`rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden ${netSurplus >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
-          <div className="flex items-center gap-1.5 mb-1">
-            <Wallet className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-              Net {netSurplus >= 0 ? 'Savings' : 'Deficit'}
-            </p>
-          </div>
-          <p className={`kpi-value text-sm sm:text-xl font-bold tabular-nums break-all ${netSurplus < 0 ? 'text-red-500' : ''}`}>
-            {formatCurrency(Math.abs(netSurplus), primaryCurrency)}
-          </p>
-          {hasMixedCurrency && (
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">{primaryCurrency} only</p>
-          )}
-        </Card>
+        {allCurrenciesUsed.map(cur => {
+          const val = netSurplusByCurrency[cur] ?? 0
+          return (
+            <Card key={`net-${cur}`} className={`rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden ${val >= 0 ? 'kpi-blue' : 'kpi-red'}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <Wallet className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+                <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+                  Net {val >= 0 ? 'Savings' : 'Deficit'}{allCurrenciesUsed.length > 1 ? ` (${cur})` : ''}
+                </p>
+              </div>
+              <p className={`kpi-value text-sm sm:text-xl font-bold tabular-nums break-all ${val < 0 ? 'text-red-500' : ''}`}>
+                {formatCurrency(Math.abs(val), cur)}
+              </p>
+            </Card>
+          )
+        })}
 
         <Card className="kpi-purple rounded-xl shadow-sm border border-border bg-white p-3 sm:p-4 overflow-hidden">
           <div className="flex items-center gap-1.5 mb-1">
@@ -583,25 +603,31 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
             )}
           </div>
 
-          {/* NET SURPLUS */}
-          <div className="border-t-2 border-border pt-4">
-            <div className="flex items-center justify-between px-4 py-3 rounded-xl"
-              style={{ background: theme.colors.primaryPale }}>
-              <div>
-                <p className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
-                  Net Surplus / (Deficit)
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Savings rate: {savingsRate}% of income
-                  {hasMixedCurrency && ` · ${primaryCurrency} only`}
-                </p>
-              </div>
-              <p className={`text-2xl font-bold tabular-nums ${netSurplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {netSurplus >= 0 ? '' : '('}
-                {formatCurrency(Math.abs(netSurplus), primaryCurrency)}
-                {netSurplus < 0 ? ')' : ''}
-              </p>
-            </div>
+          {/* NET SURPLUS — one row per currency, never blended */}
+          <div className="border-t-2 border-border pt-4 space-y-2">
+            {allCurrenciesUsed.map(cur => {
+              const val = netSurplusByCurrency[cur] ?? 0
+              return (
+                <div key={`netrow-${cur}`} className="flex items-center justify-between px-4 py-3 rounded-xl"
+                  style={{ background: theme.colors.primaryPale }}>
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wide" style={{ color: theme.colors.primary }}>
+                      Net Surplus / (Deficit){allCurrenciesUsed.length > 1 ? ` (${cur})` : ''}
+                    </p>
+                    {cur === primaryCurrency && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Savings rate: {savingsRate}% of income
+                      </p>
+                    )}
+                  </div>
+                  <p className={`text-2xl font-bold tabular-nums ${val >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {val >= 0 ? '' : '('}
+                    {formatCurrency(Math.abs(val), cur)}
+                    {val < 0 ? ')' : ''}
+                  </p>
+                </div>
+              )
+            })}
           </div>
 
         </CardContent>
