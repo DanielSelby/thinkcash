@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -18,33 +18,55 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
 import { APP_CONFIG, THEMES, type ThemeKey } from '@/lib/config'
 
-const TAGLINE_PHRASES = ['Spend Wisely.', 'Grow Boldly.']
+const TAGLINE_PHRASES = [
+  'Spend Wisely.',
+  'Grow Boldly.',
+  'Track Every Penny Today.',
+  'Prosper Tomorrow.',
+]
 
 function AnimatedTagline() {
   const [index, setIndex] = useState(0)
+  const [animating, setAnimating] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setIndex(i => (i + 1) % TAGLINE_PHRASES.length)
-    }, 2600)
+      setAnimating(true)
+      setTimeout(() => {
+        setIndex(i => (i + 1) % TAGLINE_PHRASES.length)
+        setAnimating(false)
+      }, 400)
+    }, 2800)
     return () => clearInterval(interval)
   }, [])
 
   return (
     <div className="hidden md:flex items-center justify-center flex-1 px-4 overflow-hidden">
-      <div className="relative h-5 flex items-center" style={{ minWidth: 160 }}>
-        {TAGLINE_PHRASES.map((phrase, i) => (
-          <span
-            key={phrase}
-            className="absolute left-0 right-0 text-center text-sm font-medium text-white/70 tracking-wide transition-all duration-500 ease-out"
-            style={{
-              opacity: i === index ? 1 : 0,
-              transform: i === index ? 'translateY(0)' : 'translateY(6px)',
-            }}
-          >
-            {phrase}
-          </span>
-        ))}
+      <div className="relative h-5 flex items-center overflow-hidden" style={{ minWidth: 220 }}>
+        <span
+          className="absolute left-0 right-0 text-center text-sm font-medium text-white/70 tracking-wide"
+          style={{
+            transition: 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease',
+            transform: animating ? 'translateX(-110%)' : 'translateX(0)',
+            opacity: animating ? 0 : 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {TAGLINE_PHRASES[index]}
+        </span>
+        <span
+          className="absolute left-0 right-0 text-center text-sm font-medium text-white/70 tracking-wide"
+          style={{
+            transition: animating
+              ? 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease'
+              : 'none',
+            transform: animating ? 'translateX(0)' : 'translateX(110%)',
+            opacity: animating ? 1 : 0,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {TAGLINE_PHRASES[(index + 1) % TAGLINE_PHRASES.length]}
+        </span>
       </div>
     </div>
   )
@@ -89,7 +111,7 @@ export function TopNav() {
       style={{ background: topbar.background, borderColor: 'rgba(255,255,255,0.12)' }}
       className="h-16 border-b flex items-center gap-4 px-6 sticky top-0 z-40"
     >
-      {/* Search — now functional, navigates to Transactions with search query */}
+      {/* Search — navigates to Transactions with search query */}
       <form onSubmit={handleSearch} className="flex-1 max-w-xs">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/50" />

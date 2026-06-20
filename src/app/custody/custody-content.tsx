@@ -52,6 +52,13 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
   const [expandedPerson, setExpandedPerson] = useState<string | null>(null)
   const [prefillPerson, setPrefillPerson] = useState<string | null>(null)
 
+  // ── Filter slicers ──────────────────────────────────────────────
+  const [filterFrom,   setFilterFrom]   = useState('')
+  const [filterTo,     setFilterTo]     = useState('')
+  const [filterMonth,  setFilterMonth]  = useState('')
+  const [filterYear,   setFilterYear]   = useState('')
+  const [filterPerson, setFilterPerson] = useState('All')
+
   const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -61,7 +68,39 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
     },
   })
 
+  // ── Available people for the Person slicer (derived from ALL transactions, not filtered ones) ──
+  const allPeople = useMemo(() =>
+    Array.from(new Set(transactions.map(t => t.person_name))).sort(),
+    [transactions])
+
+  const allYears = useMemo(() =>
+    Array.from(new Set(transactions.map(t => t.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a)),
+    [transactions])
+
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  const clearFilters = () => {
+    setFilterFrom(''); setFilterTo('')
+    setFilterMonth(''); setFilterYear('')
+    setFilterPerson('All')
+  }
+  const hasActiveFilters = !!filterFrom || !!filterTo || !!filterMonth || !!filterYear || filterPerson !== 'All'
+
+  // ── Apply slicers ────────────────────────────────────────────────
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      if (filterFrom && t.date < filterFrom) return false
+      if (filterTo && t.date > filterTo) return false
+      if (filterMonth && t.date.slice(5, 7) !== filterMonth) return false
+      if (filterYear && t.date.slice(0, 4) !== filterYear) return false
+      if (filterPerson !== 'All' && t.person_name !== filterPerson) return false
+      return true
+    })
+  }, [transactions, filterFrom, filterTo, filterMonth, filterYear, filterPerson])
+
   // ── Group by person, compute running balance per currency ──────────
+  // NOTE: running balances are computed from the FULL transaction history per person
+  // (not the filtered set) so balances stay accurate even when a date/person filter is active.
   const groupedByPerson = useMemo(() => {
     const map: Record<string, {
       name: string
@@ -69,7 +108,6 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
       balanceByCurrency: Record<string, number>
     }> = {}
 
-    // sort oldest -> newest first so running balance accumulates correctly
     const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at))
 
     sorted.forEach(t => {
@@ -81,11 +119,15 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
       map[t.person_name].transactions.push(t)
     })
 
-    // re-sort each person's transactions newest-first for display
-    Object.values(map).forEach(p => p.transactions.sort((a, b) => b.date.localeCompare(a.date)))
+    // Now swap in the FILTERED transaction list for display purposes only (balances above already final)
+    Object.values(map).forEach(p => {
+      p.transactions = filteredTransactions.filter(t => t.person_name === p.name).sort((a, b) => b.date.localeCompare(a.date))
+    })
 
-    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name))
-  }, [transactions])
+    return Object.values(map)
+      .filter(p => p.transactions.length > 0 || !hasActiveFilters)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [transactions, filteredTransactions, hasActiveFilters])
 
   // ── Overall totals by currency (sum of what you're currently holding) ──
   const totalsByCurrency = useMemo(() => {
@@ -197,6 +239,65 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
         </Button>
       </div>
 
+      {/* Filter Slicers */}
+      <Card className="bg-white rounded-xl shadow-sm border border-border">
+        <CardContent className="py-4 px-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter Transactions</p>
+            {hasActiveFilters && (
+              <button onClick={clearFilters}
+                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
+              <Select value={filterMonth || 'all'} onValueChange={v => setFilterMonth(v === 'all' ? '' : v)}>
+                <SelectTrigger className="w-36 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  {MONTH_NAMES.map((m, i) => (
+                    <SelectItem key={i} value={String(i + 1).padStart(2, '0')}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Year</label>
+              <Select value={filterYear || 'all'} onValueChange={v => setFilterYear(v === 'all' ? '' : v)}>
+                <SelectTrigger className="w-28 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Years</SelectItem>
+                  {allYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Person</label>
+              <Select value={filterPerson} onValueChange={setFilterPerson}>
+                <SelectTrigger className="w-40 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All People</SelectItem>
+                  {allPeople.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
@@ -294,15 +395,20 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
                     </div>
                     <div className="divide-y divide-border">
                       {(() => {
-                        // compute running balance newest-first display by walking forward through chronological order
-                        const chrono = [...person.transactions].sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at))
+                        // Running balance walks the person's FULL chronological history (not just the filtered view),
+                        // so the balance shown next to each row stays mathematically accurate even when filters are active.
+                        const fullChrono = transactions
+                          .filter(t => t.person_name === person.name)
+                          .sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at))
                         const runningMap: Record<string, number> = {}
-                        const withRunning = chrono.map(t => {
+                        const runningByTxnId: Record<string, number> = {}
+                        fullChrono.forEach(t => {
                           const delta = t.direction === 'received' ? Number(t.amount) : -Number(t.amount)
                           runningMap[t.currency] = (runningMap[t.currency] || 0) + delta
-                          return { ...t, runningBalance: runningMap[t.currency] }
+                          runningByTxnId[t.id] = runningMap[t.currency]
                         })
-                        return withRunning.slice().reverse().map(t => (
+                        const withRunning = person.transactions.map(t => ({ ...t, runningBalance: runningByTxnId[t.id] ?? 0 }))
+                        return withRunning.map(t => (
                           <div key={t.id} className="flex items-center justify-between px-4 py-3 gap-3 group">
                             <div className="flex items-center gap-3 min-w-0">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -315,7 +421,7 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <Badge variant={t.direction === 'received' ? 'secondary' : 'success'}>
-                                    {t.direction === 'received' ? 'Received' : 'Given back'}
+                                    {t.direction === 'received' ? 'Received From Person' : 'Released To Person'}
                                   </Badge>
                                   <span className="text-xs text-muted-foreground">{formatDate(t.date)}</span>
                                 </div>
@@ -375,8 +481,8 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="received">Received from them (I'm now holding this)</SelectItem>
-                  <SelectItem value="given">Given back / paid out to them</SelectItem>
+                  <SelectItem value="received">Receive From The Person (Money Receive To Custody)</SelectItem>
+                  <SelectItem value="given">Release To The Person (Money Release From Custody)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
