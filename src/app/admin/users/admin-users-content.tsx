@@ -4,11 +4,12 @@ import { useState, useMemo } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import {
   Search, UserCheck, UserX, Trash2, Users,
-  ShieldAlert, Lock, Loader2, Clock,
+  ShieldAlert, Lock, Loader2, Clock, LayoutTemplate, Plus, Pencil,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/misc'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
@@ -23,14 +24,74 @@ interface Props {
   templates?: AccessTemplate[]
 }
 
-export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
+interface TemplateForm {
+  id?: string
+  name: string
+  description: string
+  pageKeys: Set<string>
+}
+
+// Shared checkbox grid — used by both the per-user access dialog and the
+// template editor, so the two never drift apart visually.
+function PagesGrid({ selected, onToggle, onSelectAll, onClearAll }: {
+  selected: Set<string>
+  onToggle: (key: string) => void
+  onSelectAll: () => void
+  onClearAll: () => void
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {selected.size} of {GATEABLE_PAGES.length} selected
+        </p>
+        <div className="flex gap-3">
+          <button type="button" onClick={onSelectAll} className="text-xs font-semibold text-primary hover:underline">Select all</button>
+          <button type="button" onClick={onClearAll} className="text-xs font-semibold text-muted-foreground hover:underline">Clear all</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+        {GATEABLE_PAGES.map(p => {
+          const checked = selected.has(p.key)
+          return (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => onToggle(p.key)}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-sm transition-colors ${
+                checked ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+              }`}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                checked ? 'bg-primary border-primary' : 'border-border'
+              }`}>
+                {checked && <div className="w-2 h-2 bg-white rounded-sm" />}
+              </div>
+              <span className="truncate">{p.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+export function AdminUsersContent({ initialUsers, templates: initialTemplates = [] }: Props) {
   const [users, setUsers] = useState(initialUsers)
+  const [templates, setTemplates] = useState(initialTemplates)
   const [search, setSearch] = useState('')
+
+  // ── Per-user page access dialog ──────────────────────────────────
   const [accessUser, setAccessUser] = useState<Profile | null>(null)
   const [selectedPages, setSelectedPages] = useState<Set<string>>(new Set())
   const [restrictMode, setRestrictMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [templateOpen, setTemplateOpen] = useState(false)
+
+  // ── Template manager dialog ──────────────────────────────────────
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
+  const [templateForm, setTemplateForm] = useState<TemplateForm | null>(null)
+  const [templateSaving, setTemplateSaving] = useState(false)
 
   const filtered = useMemo(() => users.filter(u =>
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -114,6 +175,68 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
     setSaving(false)
   }
 
+  // ── Template CRUD ─────────────────────────────────────────────────
+  const openNewTemplate = () => setTemplateForm({ name: '', description: '', pageKeys: new Set() })
+
+  const openEditTemplate = (t: AccessTemplate) =>
+    setTemplateForm({ id: t.id, name: t.name, description: t.description || '', pageKeys: new Set(t.page_keys) })
+
+  const toggleTemplatePage = (key: string) => {
+    setTemplateForm(f => {
+      if (!f) return f
+      const next = new Set(f.pageKeys)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return { ...f, pageKeys: next }
+    })
+  }
+
+  const saveTemplate = async () => {
+    if (!templateForm || !templateForm.name.trim()) return
+    setTemplateSaving(true)
+    const supabase = createClient()
+    const payload = {
+      name: templateForm.name.trim(),
+      description: templateForm.description.trim() || null,
+      page_keys: Array.from(templateForm.pageKeys),
+    }
+
+    if (templateForm.id) {
+      const { data: updated, error } = await supabase
+        .from('access_templates')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', templateForm.id).select().single()
+      if (error) toast({ title: 'Failed to update template', description: error.message, variant: 'destructive' })
+      else {
+        setTemplates(prev => prev.map(t => t.id === templateForm.id ? updated : t))
+        toast({ title: 'Template updated', variant: 'success' })
+        setTemplateForm(null)
+      }
+    } else {
+      const { data: created, error } = await supabase
+        .from('access_templates')
+        .insert(payload)
+        .select().single()
+      if (error) toast({ title: 'Failed to create template', description: error.message, variant: 'destructive' })
+      else {
+        setTemplates(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+        toast({ title: 'Template created', variant: 'success' })
+        setTemplateForm(null)
+      }
+    }
+    setTemplateSaving(false)
+  }
+
+  const deleteTemplate = async (id: string) => {
+    if (!confirm('Delete this template? Users already restricted with it keep their current access — this only removes it from future use.')) return
+    const supabase = createClient()
+    const { error } = await supabase.from('access_templates').delete().eq('id', id)
+    if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
+    else {
+      setTemplates(prev => prev.filter(t => t.id !== id))
+      toast({ title: 'Template deleted' })
+    }
+  }
+
   const lastActive = (u: Profile) => {
     if (!u.last_active_at) return 'Never'
     try {
@@ -125,13 +248,16 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold flex items-center gap-2">
             <ShieldAlert className="w-6 h-6 text-destructive" /> User Management
           </h1>
           <p className="text-muted-foreground text-sm">{users.length} total users</p>
         </div>
+        <Button variant="outline" onClick={() => { setTemplateManagerOpen(true); setTemplateForm(null) }}>
+          <LayoutTemplate className="w-4 h-4 mr-1" /> Manage Templates
+        </Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -243,43 +369,53 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
         </div>
       </Card>
 
-      {/* Page Access Dialog */}
+      {/* Page Access Dialog (per user) */}
       <Dialog open={!!accessUser} onOpenChange={o => !o && setAccessUser(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Page Access — {accessUser?.full_name}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Templates */}
-            {templates.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => setTemplateOpen(v => !v)}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 text-sm transition-colors"
-                >
-                  <span className="text-muted-foreground">Apply a template...</span>
-                  <span className="text-xs text-primary font-semibold">▾</span>
-                </button>
-                {templateOpen && (
-                  <div className="absolute top-full mt-1 w-full z-50 bg-card border border-border rounded-xl shadow-lg overflow-hidden">
-                    {templates.map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => applyTemplate(t)}
-                        className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors border-b border-border last:border-0"
-                      >
-                        <p className="font-medium text-sm">{t.name}</p>
-                        {t.description && (
-                          <p className="text-xs text-muted-foreground">{t.description}</p>
-                        )}
-                        <p className="text-xs text-primary mt-0.5">{t.page_keys.length} pages</p>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setTemplateOpen(v => !v)}
+                disabled={templates.length === 0}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-muted-foreground">
+                  {templates.length === 0 ? 'No templates yet — create one below' : 'Apply a template...'}
+                </span>
+                <span className="text-xs text-primary font-semibold">▾</span>
+              </button>
+              {templateOpen && templates.length > 0 && (
+                <div className="absolute top-full mt-1 w-full z-50 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto">
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => applyTemplate(t)}
+                      className="w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors border-b border-border last:border-0"
+                    >
+                      <p className="font-medium text-sm">{t.name}</p>
+                      {t.description && (
+                        <p className="text-xs text-muted-foreground">{t.description}</p>
+                      )}
+                      <p className="text-xs text-primary mt-0.5">{t.page_keys.length} pages</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => { setTemplateManagerOpen(true); openNewTemplate() }}
+                className="text-xs font-semibold text-primary hover:underline mt-1.5"
+              >
+                + Create or edit templates
+              </button>
+            </div>
 
             {/* Restrict toggle */}
             <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30">
@@ -292,6 +428,7 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setRestrictMode(v => !v)}
                 className="w-11 h-6 rounded-full relative transition-colors flex-shrink-0"
                 style={{ background: restrictMode ? '#dc2626' : '#cbd5e1' }}
@@ -305,38 +442,12 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
 
             {/* Page checkboxes */}
             {restrictMode && (
-              <>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {selectedPages.size} of {GATEABLE_PAGES.length} selected
-                  </p>
-                  <div className="flex gap-3">
-                    <button onClick={selectAllPages} className="text-xs font-semibold text-primary hover:underline">Select all</button>
-                    <button onClick={clearAllPages} className="text-xs font-semibold text-muted-foreground hover:underline">Clear all</button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                  {GATEABLE_PAGES.map(p => {
-                    const checked = selectedPages.has(p.key)
-                    return (
-                      <button
-                        key={p.key}
-                        onClick={() => togglePage(p.key)}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-sm transition-colors ${
-                          checked ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
-                        }`}
-                      >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
-                          checked ? 'bg-primary border-primary' : 'border-border'
-                        }`}>
-                          {checked && <div className="w-2 h-2 bg-white rounded-sm" />}
-                        </div>
-                        <span className="truncate">{p.label}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
+              <PagesGrid
+                selected={selectedPages}
+                onToggle={togglePage}
+                onSelectAll={selectAllPages}
+                onClearAll={clearAllPages}
+              />
             )}
 
             <div className="flex justify-end gap-3 pt-2 border-t border-border">
@@ -346,6 +457,89 @@ export function AdminUsersContent({ initialUsers, templates = [] }: Props) {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Template Manager Dialog */}
+      <Dialog
+        open={templateManagerOpen}
+        onOpenChange={o => { if (!o) { setTemplateManagerOpen(false); setTemplateForm(null) } }}
+      >
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {templateForm ? (templateForm.id ? 'Edit Template' : 'New Template') : 'Manage Access Templates'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {templateForm ? (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Template Name</Label>
+                <Input
+                  placeholder="e.g. Bookkeeper"
+                  value={templateForm.name}
+                  onChange={e => setTemplateForm(f => f && { ...f, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Description (optional)</Label>
+                <Input
+                  placeholder="e.g. Income, expenses, and reports only"
+                  value={templateForm.description}
+                  onChange={e => setTemplateForm(f => f && { ...f, description: e.target.value })}
+                />
+              </div>
+              <PagesGrid
+                selected={templateForm.pageKeys}
+                onToggle={toggleTemplatePage}
+                onSelectAll={() => setTemplateForm(f => f && { ...f, pageKeys: new Set(GATEABLE_PAGES.map(p => p.key)) })}
+                onClearAll={() => setTemplateForm(f => f && { ...f, pageKeys: new Set() })}
+              />
+              <div className="flex justify-end gap-3 pt-2 border-t border-border">
+                <Button type="button" variant="outline" onClick={() => setTemplateForm(null)}>Back</Button>
+                <Button onClick={saveTemplate} disabled={templateSaving || !templateForm.name.trim()}>
+                  {templateSaving
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : templateForm.id ? 'Save Changes' : 'Create Template'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Button variant="outline" className="w-full" onClick={openNewTemplate}>
+                <Plus className="w-4 h-4 mr-1" /> New Template
+              </Button>
+
+              {templates.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">No templates yet</p>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                  {templates.map(t => (
+                    <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{t.name}</p>
+                        {t.description && <p className="text-xs text-muted-foreground truncate">{t.description}</p>}
+                        <p className="text-xs text-primary mt-0.5">{t.page_keys.length} pages</p>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => openEditTemplate(t)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="w-8 h-8 text-destructive" onClick={() => deleteTemplate(t.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2 border-t border-border">
+                <Button variant="outline" onClick={() => setTemplateManagerOpen(false)}>Close</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
