@@ -74,21 +74,21 @@ export function KPICard({ label, value, sub, colorClass, icon: Icon, tooltip }: 
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <CardContent className="p-2 sm:p-3.5 overflow-hidden">
+      <CardContent className="p-3 sm:p-3.5 overflow-hidden">
         <div className="flex items-start justify-between gap-1 sm:gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[8px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5 leading-tight">
+            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5 leading-tight">
               {label}
             </p>
-            <p className="kpi-value text-xs sm:text-lg font-bold tabular-nums leading-tight break-all">
+            <p className="kpi-value text-sm sm:text-lg font-bold tabular-nums leading-tight break-all">
               {value}
             </p>
             {sub && (
-              <p className="text-[8px] sm:text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</p>
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</p>
             )}
           </div>
-          <div className="w-5 h-5 sm:w-7 sm:h-7 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Icon className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 text-muted-foreground" />
+          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-muted-foreground" />
           </div>
         </div>
       </CardContent>
