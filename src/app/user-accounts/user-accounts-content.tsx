@@ -347,20 +347,21 @@ export function UserAccountsContent({
         </div>
       </div>
 
-      {/* Summary KPIs */}
+      {/* Summary KPIs — mobile keeps its original stacked layout/sizing; the
+          compact 3-in-a-row treatment only applies at sm+ (desktop). */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Balance</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalBalance)}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{accounts.length} account(s)</p>
+        <Card className="bg-white kpi-green p-4 sm:p-3.5 overflow-hidden">
+          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Balance</p>
+          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalBalance)}</p>
+          <p className="text-[10px] sm:text-[10px] text-muted-foreground mt-1 sm:mt-0.5 truncate">{accounts.length} account(s)</p>
         </Card>
-        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Received</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalIncome)}</p>
+        <Card className="bg-white kpi-blue p-4 sm:p-3.5 overflow-hidden">
+          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Received</p>
+          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalIncome)}</p>
         </Card>
-        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Spent</p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{fmt(totalExpenses)}</p>
+        <Card className="bg-white kpi-red p-4 sm:p-3.5 overflow-hidden">
+          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Spent</p>
+          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalExpenses)}</p>
         </Card>
       </div>
 
