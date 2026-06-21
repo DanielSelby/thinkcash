@@ -91,6 +91,7 @@ const transferSchema = z.object({
   from_account_id: z.string().min(1, 'From account is required'),
   to_account_id:   z.string().min(1, 'To account is required'),
   amount:          z.coerce.number().positive('Amount must be positive'),
+  exchange_rate:   z.coerce.number().positive('Exchange rate must be positive').optional(),
   date:            z.string().min(1, 'Date is required'),
   note:            z.string().optional(),
 }).refine(d => d.from_account_id !== d.to_account_id, {
@@ -104,6 +105,8 @@ interface Transfer {
   from_account_id: string
   to_account_id:   string
   amount:          number
+  to_amount?:      number | null
+  exchange_rate?:  number | null
   note?:           string | null
   date:            string
   created_at:      string
@@ -154,12 +157,25 @@ export function UserAccountsContent({
     defaultValues: { date: new Date().toISOString().split('T')[0] },
   })
 
+  // Watched values driving the live cross-currency conversion UI
+  const watchedFromId = transferForm.watch('from_account_id')
+  const watchedToId   = transferForm.watch('to_account_id')
+  const watchedAmount = transferForm.watch('amount')
+  const watchedRate   = transferForm.watch('exchange_rate')
+  const fromAccountSelected = accounts.find(a => a.id === watchedFromId)
+  const toAccountSelected   = accounts.find(a => a.id === watchedToId)
+  const isCrossCurrencyTransfer = !!fromAccountSelected && !!toAccountSelected && fromAccountSelected.currency !== toAccountSelected.currency
+  const convertedAmount = Number(watchedAmount || 0) * Number(watchedRate || 0)
+
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
       const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
       const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      // Out of the source account: always the source-currency `amount`.
       const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
-      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      // Into the destination account: the destination-currency `to_amount` if present (cross-currency transfer),
+      // falling back to `amount` for older same-currency transfers that predate this column.
+      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.to_amount ?? t.amount), 0)
       const custodyIn      = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
       const custodyOut     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
       const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
@@ -237,6 +253,13 @@ export function UserAccountsContent({
   const onTransferSubmit = async (data: TransferFormData) => {
     setTransferLoading(true)
     const supabase = createClient()
+
+    const fromAcc = accounts.find(a => a.id === data.from_account_id)
+    const toAcc   = accounts.find(a => a.id === data.to_account_id)
+    const isCrossCurrency = !!fromAcc && !!toAcc && fromAcc.currency !== toAcc.currency
+    const rate = isCrossCurrency ? Number(data.exchange_rate) : 1
+    const toAmount = Number(data.amount) * rate
+
     const { data: created, error } = await supabase
       .from('transfers')
       .insert({
@@ -244,6 +267,8 @@ export function UserAccountsContent({
         from_account_id: data.from_account_id,
         to_account_id:   data.to_account_id,
         amount:          data.amount,
+        to_amount:       toAmount,
+        exchange_rate:   rate,
         date:            data.date,
         note:            data.note || null,
       })
@@ -253,7 +278,12 @@ export function UserAccountsContent({
       toast({ title: 'Transfer failed', description: error.message, variant: 'destructive' })
     } else {
       setTransfers(prev => [created, ...prev])
-      toast({ title: `${fmt(data.amount)} transferred successfully`, variant: 'success' })
+      toast({
+        title: isCrossCurrency
+          ? `${formatCurrency(data.amount, fromAcc?.currency)} → ${formatCurrency(toAmount, toAcc?.currency)} transferred`
+          : `${fmt(data.amount)} transferred successfully`,
+        variant: 'success',
+      })
       transferForm.reset({ date: new Date().toISOString().split('T')[0] })
       setTransferOpen(false)
     }
@@ -272,6 +302,7 @@ export function UserAccountsContent({
   }
 
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name ?? '—'
+  const getAccountCurrency = (id: string) => accounts.find(a => a.id === id)?.currency
   const getIcon = (type: string) => ACCOUNT_TYPES.find(a => a.value === type)?.icon ?? Wallet
 
   return (
@@ -352,36 +383,50 @@ export function UserAccountsContent({
               <p className="text-sm text-muted-foreground text-center py-6">No transfers yet</p>
             ) : (
               <div>
-                {transfers.map(t => (
-                  <div key={t.id}
-                    className="flex items-center justify-between py-3 border-b border-border last:border-0 group gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                        <ArrowLeftRight className="w-4 h-4 text-blue-500" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 text-sm font-medium flex-wrap">
-                          <span className="truncate">{getAccountName(t.from_account_id)}</span>
-                          <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="truncate">{getAccountName(t.to_account_id)}</span>
+                {transfers.map(t => {
+                  const fromCur = getAccountCurrency(t.from_account_id)
+                  const toCur   = getAccountCurrency(t.to_account_id)
+                  const isCross = !!t.to_amount && fromCur !== toCur
+                  return (
+                    <div key={t.id}
+                      className="flex items-center justify-between py-3 border-b border-border last:border-0 group gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                          <ArrowLeftRight className="w-4 h-4 text-blue-500" />
                         </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {formatDate(t.date)}{t.note ? ` · ${t.note}` : ''}
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 text-sm font-medium flex-wrap">
+                            <span className="truncate">{getAccountName(t.from_account_id)}</span>
+                            <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <span className="truncate">{getAccountName(t.to_account_id)}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatDate(t.date)}{t.note ? ` · ${t.note}` : ''}
+                            {isCross && t.exchange_rate ? ` · Rate: ${t.exchange_rate}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {isCross ? (
+                          <span className="text-sm font-semibold tabular-nums text-blue-600 text-right">
+                            {formatCurrency(Number(t.amount), fromCur)}
+                            <span className="text-muted-foreground"> → </span>
+                            {formatCurrency(Number(t.to_amount), toCur)}
+                          </span>
+                        ) : (
+                          <span className="text-sm font-semibold tabular-nums text-blue-600">
+                            {formatCurrency(Number(t.amount), fromCur)}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => handleDeleteTransfer(t.id)}
+                          className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-sm font-semibold tabular-nums text-blue-600">
-                        {fmt(Number(t.amount))}
-                      </span>
-                      <button
-                        onClick={() => handleDeleteTransfer(t.id)}
-                        className="opacity-0 group-hover:opacity-100 text-destructive transition-opacity">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </CardContent>
@@ -611,14 +656,14 @@ export function UserAccountsContent({
             <div className="space-y-1.5">
               <Label>From Account</Label>
               <Select
-                onValueChange={v => transferForm.setValue('from_account_id', v)}
+                onValueChange={v => { transferForm.setValue('from_account_id', v); transferForm.setValue('exchange_rate', undefined as any) }}
                 defaultValue={transferForm.getValues('from_account_id')}
               >
                 <SelectTrigger><SelectValue placeholder="Select source account" /></SelectTrigger>
                 <SelectContent>
                   {accountsWithBalance.map(a => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({fmt(a.balance ?? 0)})
+                      {a.name} ({formatCurrency(a.balance ?? 0, a.currency)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -638,12 +683,12 @@ export function UserAccountsContent({
 
             <div className="space-y-1.5">
               <Label>To Account</Label>
-              <Select onValueChange={v => transferForm.setValue('to_account_id', v)}>
+              <Select onValueChange={v => { transferForm.setValue('to_account_id', v); transferForm.setValue('exchange_rate', undefined as any) }}>
                 <SelectTrigger><SelectValue placeholder="Select destination account" /></SelectTrigger>
                 <SelectContent>
                   {accountsWithBalance.map(a => (
                     <SelectItem key={a.id} value={a.id}>
-                      {a.name} ({fmt(a.balance ?? 0)})
+                      {a.name} ({formatCurrency(a.balance ?? 0, a.currency)})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -661,12 +706,34 @@ export function UserAccountsContent({
                 {transferForm.formState.errors.amount && (
                   <p className="text-xs text-destructive">{transferForm.formState.errors.amount.message}</p>
                 )}
+                {fromAccountSelected && (
+                  <p className="text-xs text-muted-foreground">In {fromAccountSelected.currency}</p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>Date</Label>
                 <Input type="date" {...transferForm.register('date')} />
               </div>
             </div>
+
+            {/* Exchange rate field — only shown when From/To accounts use different currencies */}
+            {isCrossCurrencyTransfer && (
+              <div className="space-y-1.5">
+                <Label>
+                  Exchange Rate
+                  <span className="text-muted-foreground text-xs ml-1">
+                    (1 {fromAccountSelected?.currency} = ? {toAccountSelected?.currency})
+                  </span>
+                </Label>
+                <Input
+                  type="number" step="0.000001" placeholder="e.g. 12.5"
+                  {...transferForm.register('exchange_rate')}
+                />
+                {transferForm.formState.errors.exchange_rate && (
+                  <p className="text-xs text-destructive">{transferForm.formState.errors.exchange_rate.message}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
@@ -675,15 +742,25 @@ export function UserAccountsContent({
 
             {transferForm.watch('from_account_id') &&
              transferForm.watch('to_account_id') &&
-             Number(transferForm.watch('amount')) > 0 && (
+             Number(transferForm.watch('amount')) > 0 &&
+             (!isCrossCurrencyTransfer || Number(transferForm.watch('exchange_rate')) > 0) && (
               <div className="p-3 rounded-xl text-sm"
                 style={{ background: theme.colors.primaryPale }}>
                 <p className="font-medium" style={{ color: theme.colors.primary }}>Transfer Summary</p>
-                <p className="text-muted-foreground mt-1">
-                  {fmt(Number(transferForm.watch('amount')))} from{' '}
-                  <strong>{getAccountName(transferForm.watch('from_account_id'))}</strong> to{' '}
-                  <strong>{getAccountName(transferForm.watch('to_account_id'))}</strong>
-                </p>
+                {isCrossCurrencyTransfer ? (
+                  <p className="text-muted-foreground mt-1">
+                    {formatCurrency(Number(transferForm.watch('amount')), fromAccountSelected?.currency)} from{' '}
+                    <strong>{getAccountName(transferForm.watch('from_account_id'))}</strong> →{' '}
+                    {formatCurrency(convertedAmount, toAccountSelected?.currency)} into{' '}
+                    <strong>{getAccountName(transferForm.watch('to_account_id'))}</strong>
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground mt-1">
+                    {fmt(Number(transferForm.watch('amount')))} from{' '}
+                    <strong>{getAccountName(transferForm.watch('from_account_id'))}</strong> to{' '}
+                    <strong>{getAccountName(transferForm.watch('to_account_id'))}</strong>
+                  </p>
+                )}
               </div>
             )}
 
