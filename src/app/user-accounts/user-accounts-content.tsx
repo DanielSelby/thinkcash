@@ -434,7 +434,8 @@ export function UserAccountsContent({
         </Card>
       )}
 
-      {/* Account Cards */}
+      {/* Account Cards — mobile keeps its original card size/spacing untouched;
+          the more compact treatment below applies only at sm+ (desktop). */}
       {accountsWithBalance.length === 0 ? (
         <Card className="bg-white p-12 text-center rounded-xl">
           <Wallet className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
@@ -447,91 +448,91 @@ export function UserAccountsContent({
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-3">
           {accountsWithBalance.map(acc => {
             const Icon      = getIcon(acc.type)
             const color     = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
             const typeLabel = ACCOUNT_TYPES.find(t => t.value === acc.type)?.label || acc.type
             return (
               <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-                <div className="h-1.5" style={{ background: color }} />
-                <CardContent className="p-4 sm:p-5">
-                  <div className="flex items-start justify-between mb-4 gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                <div className="h-1.5 sm:h-1" style={{ background: color }} />
+                <CardContent className="p-4 sm:p-3.5">
+                  <div className="flex items-start justify-between mb-4 sm:mb-3 gap-2">
+                    <div className="flex items-center gap-3 sm:gap-2.5 min-w-0">
+                      <div className="w-10 h-10 sm:w-8 sm:h-8 rounded-xl sm:rounded-lg flex items-center justify-center flex-shrink-0"
                         style={{ background: color + '18' }}>
-                        <Icon className="w-5 h-5" style={{ color }} />
+                        <Icon className="w-5 h-5 sm:w-4 sm:h-4" style={{ color }} />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{acc.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
+                        <p className="font-semibold text-sm sm:text-[13px] truncate">{acc.name}</p>
+                        <p className="text-xs sm:text-[11px] text-muted-foreground truncate">
                           {typeLabel}{acc.institution ? ` · ${acc.institution}` : ''}
                           {acc.currency !== 'GHS' && (
-                            <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs">{acc.currency}</span>
+                            <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs sm:text-[10px]">{acc.currency}</span>
                           )}
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
-                      <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => openEdit(acc)}>
+                      <Button size="icon" variant="ghost" className="w-7 h-7 sm:w-6 sm:h-6" onClick={() => openEdit(acc)}>
                         <Edit2 className="w-3 h-3" />
                       </Button>
                       <Button size="icon" variant="ghost"
-                        className="w-7 h-7 text-destructive hover:text-destructive"
+                        className="w-7 h-7 sm:w-6 sm:h-6 text-destructive hover:text-destructive"
                         onClick={() => handleDelete(acc.id)}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
 
-                  <div className="mb-4 overflow-hidden">
-                    <p className="text-xs text-muted-foreground mb-0.5">Current Balance</p>
-                    <p className="text-lg sm:text-2xl font-bold tabular-nums truncate" style={{ color }}>
+                  <div className="mb-4 sm:mb-3 overflow-hidden">
+                    <p className="text-xs sm:text-[11px] text-muted-foreground mb-0.5">Current Balance</p>
+                    <p className="text-lg sm:text-xl font-bold tabular-nums truncate" style={{ color }}>
                       {formatCurrency(acc.balance ?? 0, acc.currency)}
                     </p>
                     {acc.opening_balance > 0 && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      <p className="text-xs sm:text-[11px] text-muted-foreground mt-0.5 truncate">
                         Opening: {formatCurrency(acc.opening_balance, acc.currency)}
                       </p>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <ArrowUpRight className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  <div className="grid grid-cols-2 gap-2 pt-3 sm:pt-2.5 border-t border-border">
+                    <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
+                      <ArrowUpRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-green-600 flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground">Received</p>
-                        <p className="text-sm font-semibold text-green-600 tabular-nums truncate">
+                        <p className="text-xs sm:text-[11px] text-muted-foreground">Received</p>
+                        <p className="text-sm sm:text-xs font-semibold text-green-600 tabular-nums truncate">
                           {formatCurrency(acc.total_income ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <ArrowDownRight className="w-4 h-4 text-red-500 flex-shrink-0" />
+                    <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
+                      <ArrowDownRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground">Spent</p>
-                        <p className="text-sm font-semibold text-red-500 tabular-nums truncate">
+                        <p className="text-xs sm:text-[11px] text-muted-foreground">Spent</p>
+                        <p className="text-sm sm:text-xs font-semibold text-red-500 tabular-nums truncate">
                           {formatCurrency(acc.total_expenses ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
                     {(acc.transfers_in ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 min-w-0">
-                        <ArrowLeftRight className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                      <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
+                        <ArrowLeftRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-blue-500 flex-shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground">Transferred In</p>
-                          <p className="text-sm font-semibold text-blue-500 tabular-nums truncate">
+                          <p className="text-xs sm:text-[11px] text-muted-foreground">Transferred In</p>
+                          <p className="text-sm sm:text-xs font-semibold text-blue-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_in ?? 0, acc.currency)}
                           </p>
                         </div>
                       </div>
                     )}
                     {(acc.transfers_out ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 min-w-0">
-                        <ArrowLeftRight className="w-4 h-4 text-orange-500 flex-shrink-0" />
+                      <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
+                        <ArrowLeftRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-orange-500 flex-shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-xs text-muted-foreground">Transferred Out</p>
-                          <p className="text-sm font-semibold text-orange-500 tabular-nums truncate">
+                          <p className="text-xs sm:text-[11px] text-muted-foreground">Transferred Out</p>
+                          <p className="text-sm sm:text-xs font-semibold text-orange-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_out ?? 0, acc.currency)}
                           </p>
                         </div>
@@ -548,9 +549,9 @@ export function UserAccountsContent({
                         })
                         setTransferOpen(true)
                       }}
-                      className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                      className="mt-3 sm:mt-2.5 w-full flex items-center justify-center gap-2 py-2 sm:py-1.5 rounded-lg border border-dashed border-border text-xs sm:text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
                     >
-                      <ArrowLeftRight className="w-3.5 h-3.5" /> Transfer from this account
+                      <ArrowLeftRight className="w-3.5 h-3.5 sm:w-3 sm:h-3" /> Transfer from this account
                     </button>
                   )}
                 </CardContent>
