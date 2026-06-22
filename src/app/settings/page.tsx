@@ -1,13 +1,16 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { AppShell } from '@/components/layout/app-shell'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAppStore } from '@/store'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, Monitor, DollarSign, Bell, Shield, Palette, Image, Upload, Trash2, Maximize2, Plus } from 'lucide-react'
+import {
+  Sun, Moon, Monitor, DollarSign, Bell, Shield,
+  Palette, Image, Upload, Trash2, Maximize2, Plus, LogIn,
+} from 'lucide-react'
 import { toast } from '@/components/ui/toaster'
 import { THEMES, type ThemeKey } from '@/lib/config'
 import { createClient } from '@/lib/supabase/client'
@@ -56,8 +59,13 @@ const CURRENCIES = [
 ]
 
 const CUSTOM_CURRENCIES_KEY = 'ts_custom_currencies'
-
 type Currency = { value: string; label: string; flag: string }
+
+const LOGO_SIZES: { value: 'sm' | 'md' | 'lg'; label: string; desc: string; previewH: string }[] = [
+  { value: 'sm', label: 'Small',  desc: '32px', previewH: 'h-6'  },
+  { value: 'md', label: 'Medium', desc: '48px', previewH: 'h-10' },
+  { value: 'lg', label: 'Large',  desc: '72px', previewH: 'h-16' },
+]
 
 export default function SettingsPage() {
   const {
@@ -69,9 +77,17 @@ export default function SettingsPage() {
   } = useAppStore()
   const { theme, setTheme } = useTheme()
   const currentTheme = getTheme()
-  const fileRef      = useRef<HTMLInputElement>(null)
 
-  const [uploadingLogo,   setUploadingLogo]   = useState(false)
+  // Sidebar logo
+  const fileRef         = useRef<HTMLInputElement>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  // Login page logo
+  const loginLogoRef              = useRef<HTMLInputElement>(null)
+  const [uploadingLoginLogo, setUploadingLoginLogo] = useState(false)
+  const [loginLogo,          setLoginLogo]          = useState<string | null>(null)
+
+  // Currency
   const [showAddCurrency, setShowAddCurrency] = useState(false)
   const [newCurrencyCode, setNewCurrencyCode] = useState('')
   const [newCurrencyName, setNewCurrencyName] = useState('')
@@ -82,31 +98,25 @@ export default function SettingsPage() {
   })
 
   const isAdmin = profile?.role === 'admin'
+  const allCurrencies = [...CURRENCIES, ...customCurrencies]
 
-  const addCustomCurrency = () => {
-    const code = newCurrencyCode.trim().toUpperCase()
-    const name = newCurrencyName.trim()
-    if (!code || !name) { toast({ title: 'Code and name are required', variant: 'destructive' }); return }
-    if (CURRENCIES.some(c => c.value === code) || customCurrencies.some(c => c.value === code)) {
-      toast({ title: 'Currency already exists', variant: 'destructive' }); return
+  // Load login logo from DB on mount
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'login_logo')
+          .single()
+        if (data?.value) setLoginLogo(data.value)
+      } catch { /* not set yet */ }
     }
-    const updated = [...customCurrencies, { value: code, label: name, flag: newCurrencyFlag.trim() || '🏳️' }]
-    setCustomCurrencies(updated)
-    localStorage.setItem(CUSTOM_CURRENCIES_KEY, JSON.stringify(updated))
-    setCurrency(code)
-    setNewCurrencyCode(''); setNewCurrencyName(''); setNewCurrencyFlag('')
-    setShowAddCurrency(false)
-    toast({ title: `${code} added and selected`, variant: 'success' })
-  }
+    load()
+  }, [])
 
-  const removeCustomCurrency = (code: string) => {
-    const updated = customCurrencies.filter(c => c.value !== code)
-    setCustomCurrencies(updated)
-    localStorage.setItem(CUSTOM_CURRENCIES_KEY, JSON.stringify(updated))
-    if (currency === code) setCurrency('GHS')
-    toast({ title: `${code} removed` })
-  }
-
+  // ── Sidebar logo handlers ──────────────────────────────
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -149,13 +159,62 @@ export default function SettingsPage() {
     }
   }
 
-  const LOGO_SIZES: { value: 'sm' | 'md' | 'lg'; label: string; desc: string; previewH: string }[] = [
-    { value: 'sm', label: 'Small',  desc: '32px', previewH: 'h-6'  },
-    { value: 'md', label: 'Medium', desc: '48px', previewH: 'h-10' },
-    { value: 'lg', label: 'Large',  desc: '72px', previewH: 'h-16' },
-  ]
+  // ── Login logo handlers ────────────────────────────────
+  const handleLoginLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingLoginLogo(true)
+    try {
+      const supabase = createClient()
+      const ext  = file.name.split('.').pop()
+      const path = `logos/login-logo-${Date.now()}.${ext}`
+      const { error } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+      if (error) { toast({ title: 'Upload failed', description: error.message, variant: 'destructive' }); setUploadingLoginLogo(false); return }
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+      await supabase.from('app_settings').upsert({ key: 'login_logo', value: publicUrl, updated_at: new Date().toISOString() })
+      setLoginLogo(publicUrl)
+      toast({ title: 'Login logo updated — visible on login page!', variant: 'success' })
+    } catch (err: any) {
+      toast({ title: 'Upload failed', description: String(err), variant: 'destructive' })
+    }
+    setUploadingLoginLogo(false)
+  }
 
-  const allCurrencies = [...CURRENCIES, ...customCurrencies]
+  const handleRemoveLoginLogo = async () => {
+    try {
+      const supabase = createClient()
+      await supabase.from('app_settings').upsert({ key: 'login_logo', value: null, updated_at: new Date().toISOString() })
+      setLoginLogo(null)
+      toast({ title: 'Login logo removed' })
+    } catch (err: any) {
+      toast({ title: 'Remove failed', description: String(err), variant: 'destructive' })
+    }
+  }
+
+  // ── Currency handlers ──────────────────────────────────
+  const addCustomCurrency = () => {
+    const code = newCurrencyCode.trim().toUpperCase()
+    const name = newCurrencyName.trim()
+    if (!code || !name) { toast({ title: 'Code and name are required', variant: 'destructive' }); return }
+    if (CURRENCIES.some(c => c.value === code) || customCurrencies.some(c => c.value === code)) {
+      toast({ title: 'Currency already exists', variant: 'destructive' }); return
+    }
+    const updated = [...customCurrencies, { value: code, label: name, flag: newCurrencyFlag.trim() || '🏳️' }]
+    setCustomCurrencies(updated)
+    localStorage.setItem(CUSTOM_CURRENCIES_KEY, JSON.stringify(updated))
+    setCurrency(code)
+    setNewCurrencyCode(''); setNewCurrencyName(''); setNewCurrencyFlag('')
+    setShowAddCurrency(false)
+    toast({ title: `${code} added and selected`, variant: 'success' })
+  }
+
+  const removeCustomCurrency = (code: string) => {
+    const updated = customCurrencies.filter(c => c.value !== code)
+    setCustomCurrencies(updated)
+    localStorage.setItem(CUSTOM_CURRENCIES_KEY, JSON.stringify(updated))
+    if (currency === code) setCurrency('GHS')
+    toast({ title: `${code} removed` })
+  }
 
   return (
     <AppShell>
@@ -171,7 +230,7 @@ export default function SettingsPage() {
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Palette className="w-4 h-4" />App Color Theme
+              <Palette className="w-4 h-4" /> App Color Theme
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -206,7 +265,7 @@ export default function SettingsPage() {
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Sun className="w-4 h-4" />Display Mode
+              <Sun className="w-4 h-4" /> Display Mode
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -228,12 +287,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* ── Logo Upload + Size — Admin Only ── */}
+        {/* ── Sidebar Logo — Admin Only ── */}
         {isAdmin && (
           <Card className="bg-white border-primary/30">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <Image className="w-4 h-4" />App Logo
+                <Image className="w-4 h-4" /> Sidebar Logo
                 <span className="ml-auto text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-normal">
                   Admin Only
                 </span>
@@ -241,7 +300,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <p className="text-sm text-muted-foreground">
-                Upload a logo for the sidebar. All changes apply instantly to every user.
+                Appears in the app sidebar. All changes apply instantly to every user.
                 Recommended: PNG with transparent background.
               </p>
               <div className="flex items-start gap-4 flex-wrap">
@@ -265,7 +324,7 @@ export default function SettingsPage() {
                   <button onClick={() => fileRef.current?.click()} disabled={uploadingLogo}
                     className="flex flex-col items-center gap-2 w-full p-8 rounded-xl border-2 border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer">
                     <Upload className="w-8 h-8 text-muted-foreground" />
-                    <p className="text-sm font-medium">{uploadingLogo ? 'Uploading…' : 'Click to upload logo'}</p>
+                    <p className="text-sm font-medium">{uploadingLogo ? 'Uploading…' : 'Click to upload sidebar logo'}</p>
                     <p className="text-xs text-muted-foreground">PNG, JPG, SVG up to 2MB</p>
                   </button>
                 )}
@@ -306,11 +365,81 @@ export default function SettingsPage() {
           </Card>
         )}
 
+        {/* ── Login Page Logo — Admin Only ── */}
+        {isAdmin && (
+          <Card className="bg-white border-primary/30">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <LogIn className="w-4 h-4" /> Login Page Logo
+                <span className="ml-auto text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-normal">
+                  Admin Only
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Shown on the login and register pages above the form.
+                Recommended: 300×100px PNG with transparent background.
+              </p>
+
+              {/* Live preview */}
+              <div className="p-4 rounded-xl bg-muted/30 border border-border">
+                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-3">
+                  Preview — Login Page
+                </p>
+                <div
+                  style={{ background: currentTheme.colors.primary }}
+                  className="rounded-xl p-6 flex flex-col items-center gap-3 max-w-xs mx-auto"
+                >
+                  {loginLogo ? (
+                    <img src={loginLogo} alt="Login logo preview" className="h-16 w-auto object-contain" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                      <LogIn className="w-6 h-6 text-white" />
+                    </div>
+                  )}
+                  <p className="text-white font-bold text-sm">Think-Shika PA</p>
+                  <p className="text-white/70 text-xs">Think Wise. Plan Smart. Build Wealth.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4 flex-wrap">
+                {loginLogo ? (
+                  <>
+                    <div className="h-20 w-52 rounded-xl border border-border bg-muted flex items-center justify-center p-3">
+                      <img src={loginLogo} alt="Login logo" className="h-full w-auto object-contain" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button size="sm" variant="outline" onClick={() => loginLogoRef.current?.click()} disabled={uploadingLoginLogo}>
+                        <Upload className="w-4 h-4 mr-1" />{uploadingLoginLogo ? 'Uploading…' : 'Replace Logo'}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={handleRemoveLoginLogo}>
+                        <Trash2 className="w-4 h-4 mr-1" /> Remove
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => loginLogoRef.current?.click()}
+                    disabled={uploadingLoginLogo}
+                    className="flex flex-col items-center gap-2 w-full p-8 rounded-xl border-2 border-dashed border-border hover:border-primary/50 transition-colors cursor-pointer"
+                  >
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                    <p className="text-sm font-medium">{uploadingLoginLogo ? 'Uploading…' : 'Click to upload login logo'}</p>
+                    <p className="text-xs text-muted-foreground">PNG, JPG, SVG up to 2MB</p>
+                  </button>
+                )}
+                <input ref={loginLogoRef} type="file" accept="image/*" className="hidden" onChange={handleLoginLogoUpload} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ── Currency ── */}
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />Currency
+              <DollarSign className="w-4 h-4" /> Currency
               <span className="ml-auto text-xs text-muted-foreground font-normal">
                 {allCurrencies.length} currencies
               </span>
@@ -326,9 +455,7 @@ export default function SettingsPage() {
                     className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all group relative ${
                       isActive ? 'shadow-sm' : 'border-border hover:border-primary/40 text-muted-foreground'
                     }`}
-                    style={isActive
-                      ? { borderColor: currentTheme.colors.primary, background: currentTheme.colors.primaryPale }
-                      : {}}
+                    style={isActive ? { borderColor: currentTheme.colors.primary, background: currentTheme.colors.primaryPale } : {}}
                   >
                     <span className="text-base flex-shrink-0">{c.flag}</span>
                     <div className="min-w-0 flex-1">
@@ -339,8 +466,7 @@ export default function SettingsPage() {
                       <p className="text-xs text-muted-foreground truncate leading-tight">{c.label}</p>
                     </div>
                     {isActive && (
-                      <span className="text-xs font-bold flex-shrink-0"
-                        style={{ color: currentTheme.colors.accent }}>✓</span>
+                      <span className="text-xs font-bold flex-shrink-0" style={{ color: currentTheme.colors.accent }}>✓</span>
                     )}
                     {isCustom && !isActive && (
                       <button
@@ -355,7 +481,6 @@ export default function SettingsPage() {
               })}
             </div>
 
-            {/* Add custom currency */}
             {showAddCurrency ? (
               <div className="pt-3 border-t border-border space-y-3">
                 <p className="text-sm font-semibold">Add Custom Currency</p>
@@ -420,7 +545,7 @@ export default function SettingsPage() {
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Bell className="w-4 h-4" />Notifications
+              <Bell className="w-4 h-4" /> Notifications
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -435,8 +560,10 @@ export default function SettingsPage() {
                   <p className="text-sm font-medium">{item.label}</p>
                   <p className="text-xs text-muted-foreground">{item.description}</p>
                 </div>
-                <div style={{ background: currentTheme.colors.primary }}
-                  className="w-9 h-5 rounded-full relative cursor-pointer flex-shrink-0 ml-4">
+                <div
+                  style={{ background: currentTheme.colors.primary }}
+                  className="w-9 h-5 rounded-full relative cursor-pointer flex-shrink-0 ml-4"
+                >
                   <div className="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow-sm" />
                 </div>
               </div>
@@ -448,7 +575,7 @@ export default function SettingsPage() {
         <Card className="bg-white">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Shield className="w-4 h-4" />Privacy & Security
+              <Shield className="w-4 h-4" /> Privacy & Security
             </CardTitle>
           </CardHeader>
           <CardContent>
