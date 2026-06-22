@@ -107,20 +107,20 @@ function NavLink({
 
 const LOGO_IMG_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-8',
-  md: 'h-12',
-  lg: 'h-20',
+  md: 'h-14',
+  lg: 'h-24',
 }
 
 const LOGO_CIRCLE: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'w-12 h-12',
   md: 'w-16 h-16',
-  lg: 'w-24 h-24',
+  lg: 'w-20 h-20',
 }
 
 const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-16',
   md: 'h-20',
-  lg: 'h-28',
+  lg: 'h-24',
 }
 
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
@@ -161,7 +161,8 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
       >
         {appLogo ? (
           <div className={cn(
-            'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300 p-1.5',
+            'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300',
+            size === 'lg' && sidebarOpen ? 'p-0.5' : 'p-1.5',
             !sidebarOpen ? 'w-10 h-10' : LOGO_CIRCLE[size]
           )}>
             <img
