@@ -5,11 +5,15 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Plus, Search, Edit2, Trash2, TrendingDown, Loader2 } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/misc'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -34,6 +38,15 @@ interface Props {
   initialExpenses: Expense[]
   accounts: UserAccount[]
   userId: string
+}
+
+// Category palette for the bar/donut charts
+const DONUT_COLORS = ['#dc2626','#f97316','#7c3aed','#2563eb','#0d9488','#db2777','#65a30d','#ca8a04','#16a34a','#0891b2']
+
+const shortFmt = (v: number) => {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
+  return String(Math.round(v))
 }
 
 function groupByCurrency(items: any[], accounts: UserAccount[]) {
@@ -80,6 +93,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const [search,         setSearch]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [accountFilter,  setAccountFilter]  = useState('all')
+  const [activeDonutIndex, setActiveDonutIndex] = useState<number | null>(null)
 
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -146,7 +160,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     else {
       setExpenses(prev => prev.filter(e => e.id !== id))
-      toast({ title: 'Expense deleted' })
+      toast({ title: 'Deleted' })
     }
   }
 
@@ -160,6 +174,25 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
 
   const totalByCurrency    = useMemo(() => groupByCurrency(expenses, accounts), [expenses, accounts])
   const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
+  const hasMixedExpenseCurrency = Object.keys(filteredByCurrency).length > 1
+
+  // Category breakdown for the charts — driven by whatever is currently filtered/searched,
+  // so the charts and the table below always agree. Note: like the dashboard's category
+  // breakdown, this blends raw amounts across currencies for the visual share only; exact
+  // per-currency totals are in the KPI cards above and the table below.
+  const expenseByCategory = useMemo(() => {
+    const map: Record<string, number> = {}
+    filtered.forEach(e => {
+      const cat = e.category || 'Other'
+      map[cat] = (map[cat] || 0) + Number(e.amount)
+    })
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [filtered])
+
+  const grandTotalFiltered = useMemo(() =>
+    expenseByCategory.reduce((s, c) => s + c.value, 0), [expenseByCategory])
 
   const getAccountName = (id?: string | null) =>
     accounts.find(a => a.id === id)?.name ?? '—'
@@ -225,6 +258,102 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
           </Select>
         )}
       </div>
+
+      {/* Charts — bar chart + click-to-zoom donut, both driven by the filters above */}
+      {expenseByCategory.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="rounded-xl shadow-sm bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Expenses by Category</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {expenseByCategory.length} categor{expenseByCategory.length === 1 ? 'y' : 'ies'}
+                {hasMixedExpenseCurrency ? ' · blended for chart display' : ''}
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={Math.max(200, expenseByCategory.length * 36)}>
+                <BarChart data={expenseByCategory} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                    {expenseByCategory.map((_, i) => (
+                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-xl shadow-sm bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Category Share</CardTitle>
+              <p className="text-xs text-muted-foreground">Click a slice to zoom in</p>
+            </CardHeader>
+            <CardContent>
+              <div className="relative w-full mx-auto" style={{ maxWidth: 320 }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={expenseByCategory}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius="55%"
+                      outerRadius="80%"
+                      paddingAngle={2}
+                      animationDuration={500}
+                      onClick={(_, i) => setActiveDonutIndex(p => p === i ? null : i)}
+                    >
+                      {expenseByCategory.map((_, i) => (
+                        <Cell
+                          key={i}
+                          fill={activeDonutIndex !== null && activeDonutIndex !== i
+                            ? DONUT_COLORS[i % DONUT_COLORS.length] + '55'
+                            : DONUT_COLORS[i % DONUT_COLORS.length]}
+                          stroke="#fff" strokeWidth={2}
+                          style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: any, name: any) => [formatCurrency(Number(v)), name]} />
+                    <Legend
+                      layout="horizontal" align="center" verticalAlign="bottom"
+                      iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Centre label */}
+                <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
+                  style={{ top: 0, height: 'calc(100% - 40px)' }}>
+                  <div className="text-center leading-tight">
+                    <p className="text-[10px] sm:text-xs text-muted-foreground font-semibold uppercase tracking-wide">
+                      {activeDonutIndex !== null ? expenseByCategory[activeDonutIndex]?.name : 'Total'}
+                    </p>
+                    <p className="text-lg sm:text-xl font-bold tabular-nums mt-0.5 text-destructive">
+                      {activeDonutIndex !== null
+                        ? formatCurrency(expenseByCategory[activeDonutIndex]?.value ?? 0)
+                        : formatCurrency(grandTotalFiltered)}
+                    </p>
+                    {activeDonutIndex !== null ? (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {grandTotalFiltered > 0
+                          ? Math.round((expenseByCategory[activeDonutIndex].value / grandTotalFiltered) * 100)
+                          : 0}% of total
+                      </p>
+                    ) : hasMixedExpenseCurrency ? (
+                      <p className="text-[9px] text-muted-foreground mt-0.5">Blended across currencies</p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="p-0">
