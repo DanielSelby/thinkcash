@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
   ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
+  Eye, EyeOff,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -163,6 +164,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
+  const [showAccBalance,    setShowAccBalance]    = useState(true)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -483,15 +485,28 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
           Shown separately from Net Balance since they measure different things: this card reflects
           what's really sitting in your wallets right now; Net Balance reflects income minus expenses. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-        {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
-          <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
-            value={formatCurrency(bal, cur)}
-            sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).length} account(s)`}
-            tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
-          />
-        ))}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-muted-foreground">Total Account Balance</p>
+        <button
+          onClick={() => setShowAccBalance(v => !v)}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+        >
+          {showAccBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          {showAccBalance ? 'Hide Acc Balance' : 'Show Acc Balance'}
+        </button>
       </div>
+
+      {showAccBalance && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+          {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
+            <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
+              value={formatCurrency(bal, cur)}
+              sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).length} account(s)`}
+              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Account Balances */}
       {accounts.length > 0 && (
