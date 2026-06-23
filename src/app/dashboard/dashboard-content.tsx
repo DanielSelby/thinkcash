@@ -513,8 +513,16 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         <div className="space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm font-semibold">Account Balances</p>
-            <div className="flex gap-1.5 flex-wrap">
-              {['all','bank','mobile_money','cash','investment'].map(type => (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setShowAccBalance(v => !v)}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              >
+                {showAccBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showAccBalance ? 'Hide Acc Balance' : 'Show Acc Balance'}
+              </button>
+              <div className="flex gap-1.5 flex-wrap">
+                {['all','bank','mobile_money','cash','investment'].map(type => (
                 <button key={type} onClick={() => setAccountTypeFilter(type)}
                   className={`px-2 py-1 rounded-lg text-[11px] font-medium capitalize transition-colors border whitespace-nowrap ${
                     accountTypeFilter === type ? 'text-white border-transparent' : 'border-border bg-white text-muted-foreground hover:border-primary/50'
@@ -523,64 +531,69 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   {type === 'mobile_money' ? 'MoMo' : type === 'all' ? 'All' : type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-            {accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter).map(acc => {
-              const color = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
-              return (
-                <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-                  <div className="h-1" style={{ background: color }} />
-                  <CardContent className="p-2.5 sm:p-4">
-                    <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
-                    <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5 sm:mt-1 truncate" style={{ color }}>
-                      {formatCurrency(acc.balance ?? 0, acc.currency)}
-                    </p>
-                    <div className="flex justify-between text-[10px] sm:text-xs mt-1 sm:mt-2 gap-1">
-                      <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
-                      <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
-                    </div>
-                    {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
-                      <div className="flex justify-between text-[10px] sm:text-xs mt-0.5 sm:mt-1 gap-1">
-                        {(acc.transfers_in  ?? 0) > 0 && <span className="text-blue-500 truncate">↙{formatCurrency(acc.transfers_in  ?? 0, acc.currency)}</span>}
-                        {(acc.transfers_out ?? 0) > 0 && <span className="text-orange-500 truncate">↗{formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>}
-                      </div>
+          {showAccBalance && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                {accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter).map(acc => {
+                  const color = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+                  return (
+                    <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
+                      <div className="h-1" style={{ background: color }} />
+                      <CardContent className="p-2.5 sm:p-4">
+                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
+                        <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5 sm:mt-1 truncate" style={{ color }}>
+                          {formatCurrency(acc.balance ?? 0, acc.currency)}
+                        </p>
+                        <div className="flex justify-between text-[10px] sm:text-xs mt-1 sm:mt-2 gap-1">
+                          <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+                          <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
+                        </div>
+                        {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
+                          <div className="flex justify-between text-[10px] sm:text-xs mt-0.5 sm:mt-1 gap-1">
+                            {(acc.transfers_in  ?? 0) > 0 && <span className="text-blue-500 truncate">↙{formatCurrency(acc.transfers_in  ?? 0, acc.currency)}</span>}
+                            {(acc.transfers_out ?? 0) > 0 && <span className="text-orange-500 truncate">↗{formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+              <div className="px-3 sm:px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-xs sm:text-sm font-semibold">
+                    Total Balance
+                    {accountTypeFilter !== 'all' && (
+                      <span className="text-muted-foreground font-normal ml-1 capitalize">
+                        ({accountTypeFilter === 'mobile_money' ? 'MoMo' : accountTypeFilter})
+                      </span>
                     )}
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
-          <div className="px-3 sm:px-4 py-3 bg-white rounded-xl border border-border shadow-sm">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-xs sm:text-sm font-semibold">
-                Total Balance
-                {accountTypeFilter !== 'all' && (
-                  <span className="text-muted-foreground font-normal ml-1 capitalize">
-                    ({accountTypeFilter === 'mobile_money' ? 'MoMo' : accountTypeFilter})
-                  </span>
-                )}
-              </p>
-              {balanceCurrencies.length === 1 ? (
-                <p className="text-base sm:text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
-                  {formatCurrency(balanceByCurrency[balanceCurrencies[0]], balanceCurrencies[0])}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 justify-end">
-                  {balanceCurrencies.map(cur => (
-                    <span key={cur} className="text-sm sm:text-base font-bold tabular-nums" style={{ color: theme.colors.primary }}>
-                      {formatCurrency(balanceByCurrency[cur], cur)}
-                    </span>
-                  ))}
+                  </p>
+                  {balanceCurrencies.length === 1 ? (
+                    <p className="text-base sm:text-lg font-bold tabular-nums" style={{ color: theme.colors.primary }}>
+                      {formatCurrency(balanceByCurrency[balanceCurrencies[0]], balanceCurrencies[0])}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 justify-end">
+                      {balanceCurrencies.map(cur => (
+                        <span key={cur} className="text-sm sm:text-base font-bold tabular-nums" style={{ color: theme.colors.primary }}>
+                          {formatCurrency(balanceByCurrency[cur], cur)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {balanceCurrencies.length > 1 && (
-              <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-                Shown separately per currency — amounts are not combined
-              </p>
-            )}
-          </div>
+                {balanceCurrencies.length > 1 && (
+                  <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+                    Shown separately per currency — amounts are not combined
+                  </p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
