@@ -164,7 +164,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
-  const [showAccBalance,    setShowAccBalance]    = useState(true)
+  const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
+  const [showAccBalances,     setShowAccBalances]     = useState(true)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -488,15 +489,15 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-muted-foreground">Total Account Balance</p>
         <button
-          onClick={() => setShowAccBalance(v => !v)}
+          onClick={() => setShowTotalAccBalance(v => !v)}
           className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
         >
-          {showAccBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          {showAccBalance ? 'Hide Acc Balance' : 'Show Acc Balance'}
+          {showTotalAccBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          {showTotalAccBalance ? 'Hide Acc Balance' : 'Show Acc Balance'}
         </button>
       </div>
 
-      {showAccBalance && (
+      {showTotalAccBalance && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
           {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
             <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
@@ -515,11 +516,11 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             <p className="text-sm font-semibold">Account Balances</p>
             <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => setShowAccBalance(v => !v)}
+                onClick={() => setShowAccBalances(v => !v)}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
               >
-                {showAccBalance ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                {showAccBalance ? 'Hide Acc Balance' : 'Show Acc Balance'}
+                {showAccBalances ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showAccBalances ? 'Hide Acc Balance' : 'Show Acc Balance'}
               </button>
               <div className="flex gap-1.5 flex-wrap">
                 {['all','bank','mobile_money','cash','investment'].map(type => (
@@ -534,7 +535,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </div>
             </div>
           </div>
-          {showAccBalance && (
+          {showAccBalances && (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                 {accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter).map(acc => {
