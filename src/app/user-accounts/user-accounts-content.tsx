@@ -21,6 +21,7 @@ import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
+import { KPICard } from '@/components/ui/kpi-card'
 import type { UserAccount } from '@/types'
 
 const ACCOUNT_TYPES = [
@@ -114,8 +115,13 @@ interface Transfer {
 
 interface Props {
   initialAccounts:  UserAccount[]
-  incomes:          { amount: number; account_id: string | null }[]
-  expenses:         { amount: number; account_id: string | null }[]
+  // `date` is optional here defensively — if your page.tsx already does a
+  // `select('*')` for incomes/expenses (as several other pages in this app
+  // do), the real date is very likely already flowing through even though
+  // the original prop type only declared `amount`/`account_id`. If it's not
+  // present, the KPI cards below simply omit a trend instead of faking one.
+  incomes:          { amount: number; account_id: string | null; date?: string }[]
+  expenses:         { amount: number; account_id: string | null; date?: string }[]
   initialTransfers: Transfer[]
   custodyTransactions?: { amount: number; account_id: string | null; direction: string }[]
   userId: string
@@ -191,6 +197,50 @@ export function UserAccountsContent({
   const totalBalance  = accountsWithBalance.reduce((s, a) => s + (a.balance ?? 0), 0)
   const totalIncome   = accountsWithBalance.reduce((s, a) => s + (a.total_income ?? 0), 0)
   const totalExpenses = accountsWithBalance.reduce((s, a) => s + (a.total_expenses ?? 0), 0)
+
+  // ── Real (not fabricated) monthly series for the KPI cards' trend badges.
+  // Blended across currencies, same as totalIncome/totalExpenses/totalBalance
+  // above — kept consistent with what those headline numbers already do,
+  // rather than computing a "more correct" per-currency trend that wouldn't
+  // match the figure it's supposedly explaining. ─────────────────────────
+  const monthlySeries = useMemo(() => {
+    const map: Record<string, { income: number; expense: number }> = {}
+    incomes.forEach(i => {
+      const d = (i.date ?? '').slice(0, 7); if (!d) return
+      if (!map[d]) map[d] = { income: 0, expense: 0 }
+      map[d].income += Number(i.amount)
+    })
+    expenses.forEach(e => {
+      const d = (e.date ?? '').slice(0, 7); if (!d) return
+      if (!map[d]) map[d] = { income: 0, expense: 0 }
+      map[d].expense += Number(e.amount)
+    })
+    return Object.entries(map)
+      .map(([date, v]) => ({ date, ...v }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [incomes, expenses])
+
+  const now            = new Date()
+  const lastMonthDate   = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const lastMonthKey    = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`
+  const lastMonthBucket = monthlySeries.find(m => m.date === lastMonthKey) ?? null
+  const lastMonthIncome  = lastMonthBucket ? lastMonthBucket.income  : null
+  const lastMonthExpense = lastMonthBucket ? lastMonthBucket.expense : null
+  const incomeSeries  = monthlySeries.slice(-8).map(m => m.income)
+  const expenseSeries = monthlySeries.slice(-8).map(m => m.expense)
+
+  // Largest single account by each metric — used as the "Top" line in each
+  // card's detail panel. `undefined` (not a 0-value account) when nothing
+  // meaningful exists yet, so the panel doesn't show a hollow "X (GH₵0.00)".
+  const topBalanceAccount = accountsWithBalance.length
+    ? accountsWithBalance.reduce((best, a) => (a.balance ?? 0) > (best.balance ?? 0) ? a : best)
+    : null
+  const topIncomeAccount = accountsWithBalance.length
+    ? accountsWithBalance.reduce((best, a) => (a.total_income ?? 0) > (best.total_income ?? 0) ? a : best)
+    : null
+  const topExpenseAccount = accountsWithBalance.length
+    ? accountsWithBalance.reduce((best, a) => (a.total_expenses ?? 0) > (best.total_expenses ?? 0) ? a : best)
+    : null
 
   const openCreate = () => {
     setEditing(null)
@@ -347,22 +397,48 @@ export function UserAccountsContent({
         </div>
       </div>
 
-      {/* Summary KPIs — mobile keeps its original stacked layout/sizing; the
-          compact 3-in-a-row treatment only applies at sm+ (desktop). */}
+      {/* Summary KPIs — same flip-on-hover (desktop) / tap-to-expand (mobile)
+          card used on the dashboard. Total Balance intentionally has no
+          trend badge: reconstructing a true historical balance (accounting
+          for transfers, which can distort this already-blended cross-
+          currency sum even further) is a bigger problem than this pass. */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white kpi-green p-4 sm:p-3.5 overflow-hidden">
-          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Balance</p>
-          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalBalance)}</p>
-          <p className="text-[10px] sm:text-[10px] text-muted-foreground mt-1 sm:mt-0.5 truncate">{accounts.length} account(s)</p>
-        </Card>
-        <Card className="bg-white kpi-blue p-4 sm:p-3.5 overflow-hidden">
-          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Received</p>
-          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalIncome)}</p>
-        </Card>
-        <Card className="bg-white kpi-red p-4 sm:p-3.5 overflow-hidden">
-          <p className="text-[10px] sm:text-[10px] text-muted-foreground uppercase font-semibold tracking-wide truncate">Total Spent</p>
-          <p className="kpi-value text-lg sm:text-lg font-bold tabular-nums mt-1 sm:mt-0.5 truncate">{fmt(totalExpenses)}</p>
-        </Card>
+        <KPICard
+          label="Total Balance" colorClass="kpi-green" icon={Wallet}
+          value={fmt(totalBalance)}
+          sub={`${accounts.length} account(s)`}
+          accentColor="#16a34a"
+          avgValue={accounts.length > 0 ? `${fmt(totalBalance / accounts.length)} / account` : undefined}
+          topSource={topBalanceAccount && (topBalanceAccount.balance ?? 0) > 0
+            ? `${topBalanceAccount.name} (${fmt(topBalanceAccount.balance ?? 0)})` : undefined}
+          tooltip={`Sum of every account's current balance\n${accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency)}`).join('\n')}`}
+        />
+        <KPICard
+          label="Total Received" colorClass="kpi-blue" icon={ArrowUpRight}
+          value={fmt(totalIncome)}
+          sub={`${incomes.length} transaction(s)`}
+          accentColor="#3b82f6"
+          prevValue={lastMonthIncome !== null ? fmt(lastMonthIncome) : undefined}
+          prevLabel="Last month"
+          txnCount={`${incomes.length} transaction(s)`}
+          avgValue={incomes.length > 0 ? fmt(totalIncome / incomes.length) : undefined}
+          topSource={topIncomeAccount && (topIncomeAccount.total_income ?? 0) > 0
+            ? `${topIncomeAccount.name} (${fmt(topIncomeAccount.total_income ?? 0)})` : undefined}
+          sparkData={incomeSeries.length > 1 ? incomeSeries : undefined}
+        />
+        <KPICard
+          label="Total Spent" colorClass="kpi-red" icon={ArrowDownRight}
+          value={fmt(totalExpenses)}
+          sub={`${expenses.length} transaction(s)`}
+          accentColor="#ef4444"
+          prevValue={lastMonthExpense !== null ? fmt(lastMonthExpense) : undefined}
+          prevLabel="Last month"
+          txnCount={`${expenses.length} transaction(s)`}
+          avgValue={expenses.length > 0 ? fmt(totalExpenses / expenses.length) : undefined}
+          topSource={topExpenseAccount && (topExpenseAccount.total_expenses ?? 0) > 0
+            ? `${topExpenseAccount.name} (${fmt(topExpenseAccount.total_expenses ?? 0)})` : undefined}
+          sparkData={expenseSeries.length > 1 ? expenseSeries : undefined}
+        />
       </div>
 
       {/* Transfer History Panel */}
@@ -434,8 +510,7 @@ export function UserAccountsContent({
         </Card>
       )}
 
-      {/* Account Cards — mobile keeps its original card size/spacing untouched;
-          the more compact treatment below applies only at sm+ (desktop). */}
+      {/* Account Cards */}
       {accountsWithBalance.length === 0 ? (
         <Card className="bg-white p-12 text-center rounded-xl">
           <Wallet className="w-12 h-12 mx-auto mb-4 text-muted-foreground/30" />
@@ -448,37 +523,37 @@ export function UserAccountsContent({
           </Button>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {accountsWithBalance.map(acc => {
             const Icon      = getIcon(acc.type)
             const color     = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
             const typeLabel = ACCOUNT_TYPES.find(t => t.value === acc.type)?.label || acc.type
             return (
               <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-                <div className="h-1.5 sm:h-1" style={{ background: color }} />
+                <div className="h-1.5" style={{ background: color }} />
                 <CardContent className="p-4 sm:p-3.5">
                   <div className="flex items-start justify-between mb-4 sm:mb-3 gap-2">
-                    <div className="flex items-center gap-3 sm:gap-2.5 min-w-0">
-                      <div className="w-10 h-10 sm:w-8 sm:h-8 rounded-xl sm:rounded-lg flex items-center justify-center flex-shrink-0"
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center flex-shrink-0"
                         style={{ background: color + '18' }}>
                         <Icon className="w-5 h-5 sm:w-4 sm:h-4" style={{ color }} />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-sm sm:text-[13px] truncate">{acc.name}</p>
-                        <p className="text-xs sm:text-[11px] text-muted-foreground truncate">
+                        <p className="font-semibold text-sm truncate">{acc.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
                           {typeLabel}{acc.institution ? ` · ${acc.institution}` : ''}
                           {acc.currency !== 'GHS' && (
-                            <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs sm:text-[10px]">{acc.currency}</span>
+                            <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs">{acc.currency}</span>
                           )}
                         </p>
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
-                      <Button size="icon" variant="ghost" className="w-7 h-7 sm:w-6 sm:h-6" onClick={() => openEdit(acc)}>
+                      <Button size="icon" variant="ghost" className="w-7 h-7" onClick={() => openEdit(acc)}>
                         <Edit2 className="w-3 h-3" />
                       </Button>
                       <Button size="icon" variant="ghost"
-                        className="w-7 h-7 sm:w-6 sm:h-6 text-destructive hover:text-destructive"
+                        className="w-7 h-7 text-destructive hover:text-destructive"
                         onClick={() => handleDelete(acc.id)}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -486,53 +561,53 @@ export function UserAccountsContent({
                   </div>
 
                   <div className="mb-4 sm:mb-3 overflow-hidden">
-                    <p className="text-xs sm:text-[11px] text-muted-foreground mb-0.5">Current Balance</p>
-                    <p className="text-lg sm:text-xl font-bold tabular-nums truncate" style={{ color }}>
+                    <p className="text-xs text-muted-foreground mb-0.5">Current Balance</p>
+                    <p className="text-lg sm:text-lg font-bold tabular-nums truncate" style={{ color }}>
                       {formatCurrency(acc.balance ?? 0, acc.currency)}
                     </p>
                     {acc.opening_balance > 0 && (
-                      <p className="text-xs sm:text-[11px] text-muted-foreground mt-0.5 truncate">
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
                         Opening: {formatCurrency(acc.opening_balance, acc.currency)}
                       </p>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-3 sm:pt-2.5 border-t border-border">
-                    <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
-                      <ArrowUpRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-green-600 flex-shrink-0" />
+                  <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ArrowUpRight className="w-4 h-4 text-green-600 flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-xs sm:text-[11px] text-muted-foreground">Received</p>
-                        <p className="text-sm sm:text-xs font-semibold text-green-600 tabular-nums truncate">
+                        <p className="text-xs text-muted-foreground">Received</p>
+                        <p className="text-sm font-semibold text-green-600 tabular-nums truncate">
                           {formatCurrency(acc.total_income ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
-                      <ArrowDownRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-red-500 flex-shrink-0" />
+                    <div className="flex items-center gap-2 min-w-0">
+                      <ArrowDownRight className="w-4 h-4 text-red-500 flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-xs sm:text-[11px] text-muted-foreground">Spent</p>
-                        <p className="text-sm sm:text-xs font-semibold text-red-500 tabular-nums truncate">
+                        <p className="text-xs text-muted-foreground">Spent</p>
+                        <p className="text-sm font-semibold text-red-500 tabular-nums truncate">
                           {formatCurrency(acc.total_expenses ?? 0, acc.currency)}
                         </p>
                       </div>
                     </div>
                     {(acc.transfers_in ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
-                        <ArrowLeftRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-blue-500 flex-shrink-0" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ArrowLeftRight className="w-4 h-4 text-blue-500 flex-shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-xs sm:text-[11px] text-muted-foreground">Transferred In</p>
-                          <p className="text-sm sm:text-xs font-semibold text-blue-500 tabular-nums truncate">
+                          <p className="text-xs text-muted-foreground">Transferred In</p>
+                          <p className="text-sm font-semibold text-blue-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_in ?? 0, acc.currency)}
                           </p>
                         </div>
                       </div>
                     )}
                     {(acc.transfers_out ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 sm:gap-1.5 min-w-0">
-                        <ArrowLeftRight className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-orange-500 flex-shrink-0" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ArrowLeftRight className="w-4 h-4 text-orange-500 flex-shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-xs sm:text-[11px] text-muted-foreground">Transferred Out</p>
-                          <p className="text-sm sm:text-xs font-semibold text-orange-500 tabular-nums truncate">
+                          <p className="text-xs text-muted-foreground">Transferred Out</p>
+                          <p className="text-sm font-semibold text-orange-500 tabular-nums truncate">
                             {formatCurrency(acc.transfers_out ?? 0, acc.currency)}
                           </p>
                         </div>
@@ -549,9 +624,9 @@ export function UserAccountsContent({
                         })
                         setTransferOpen(true)
                       }}
-                      className="mt-3 sm:mt-2.5 w-full flex items-center justify-center gap-2 py-2 sm:py-1.5 rounded-lg border border-dashed border-border text-xs sm:text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
+                      className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-dashed border-border text-xs text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors"
                     >
-                      <ArrowLeftRight className="w-3.5 h-3.5 sm:w-3 sm:h-3" /> Transfer from this account
+                      <ArrowLeftRight className="w-3.5 h-3.5" /> Transfer from this account
                     </button>
                   )}
                 </CardContent>
