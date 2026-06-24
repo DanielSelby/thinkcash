@@ -63,45 +63,221 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
 }
 const getCurrencySymbol = (c: string) => CURRENCY_SYMBOLS[c] ?? c
 
-// ── KPI Card ──────────────────────────────────────────────────────────
-export function KPICard({ label, value, sub, colorClass, icon: Icon, tooltip }: {
-  label: string; value: string; sub?: string
-  colorClass: string; icon: any; tooltip?: string
+// ── KPI Card — flips to a detail panel on hover (desktop) / tap to expand
+// (mobile). Detail can be either the rich structured fields below (real
+// previous-period comparison, transaction volume, average, top category,
+// sparkline) or — for cards that don't have that data wired up, like the
+// Total Account Balance cards — it falls back to rendering the freeform
+// `tooltip` string those cards already pass, so nothing regresses. ──────
+export function KPICard({ label, value, sub, colorClass, icon: Icon, tooltip, prevValue, prevLabel, txnCount, avgValue, topSource, sparkData, accentColor }: {
+  label: string
+  value: string
+  sub?: string
+  colorClass: string
+  icon: any
+  tooltip?: string
+  prevValue?: string
+  prevLabel?: string
+  txnCount?: string
+  avgValue?: string
+  topSource?: string
+  sparkData?: number[]
+  accentColor?: string
 }) {
-  const [hovered, setHovered] = useState(false)
+  const [isFlipped, setIsFlipped]   = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const { activeTheme } = useAppStore()
+  const theme  = THEMES[activeTheme] ?? THEMES['green']
+  const accent = accentColor || theme.colors.primary
+
+  const pct = prevValue && value ? (() => {
+    const curr = parseFloat(value.replace(/[^0-9.-]/g, ''))
+    const prev = parseFloat(prevValue.replace(/[^0-9.-]/g, ''))
+    if (!prev || isNaN(curr) || isNaN(prev)) return null
+    return (((curr - prev) / Math.abs(prev)) * 100).toFixed(1)
+  })() : null
+
+  const isUp = pct !== null ? parseFloat(pct) >= 0 : null
+  const hasStructuredDetail = !!(prevValue || txnCount || avgValue || topSource || sparkData?.length)
+  const sparkChartData = sparkData?.map((v, i) => ({ i, v })) ?? []
+
+  const Sparkline = () => (
+    sparkData && sparkData.length > 1 ? (
+      <div className="mt-auto pt-1" style={{ height: 36 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={sparkChartData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+            <Area type="monotone" dataKey="v" stroke={accent} strokeWidth={2}
+              fill={accent + '22'} dot={false} isAnimationActive={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    ) : null
+  )
+
+  const backContent = (
+    <div className="flex flex-col gap-1.5 h-full">
+      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">{label} — detail</p>
+      {hasStructuredDetail ? (
+        <>
+          {prevValue && (
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground">{prevLabel || 'Last period'}</span>
+              <span className="font-medium">{prevValue}</span>
+            </div>
+          )}
+          {pct !== null && (
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-muted-foreground">Change</span>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${isUp ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {isUp ? '↑' : '↓'} {Math.abs(parseFloat(pct))}%
+              </span>
+            </div>
+          )}
+          <div className="h-px bg-border my-0.5" />
+          {txnCount && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Volume</span>
+              <span className="font-medium">{txnCount}</span>
+            </div>
+          )}
+          {avgValue && (
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Average</span>
+              <span className="font-medium">{avgValue}</span>
+            </div>
+          )}
+          {topSource && (
+            <div className="flex justify-between items-start text-xs gap-2">
+              <span className="text-muted-foreground flex-shrink-0">Top</span>
+              <span className="font-medium text-right leading-tight" style={{ fontSize: 11 }}>{topSource}</span>
+            </div>
+          )}
+          <Sparkline />
+        </>
+      ) : tooltip ? (
+        <p className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed">{tooltip}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">No additional detail</p>
+      )}
+    </div>
+  )
+
   return (
-    <Card
-      className={`${colorClass} rounded-xl shadow-sm border border-border bg-white overflow-visible relative`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <CardContent className="p-3 sm:p-3.5 overflow-hidden">
-        <div className="flex items-start justify-between gap-1 sm:gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5 leading-tight">
-              {label}
-            </p>
-            <p className="kpi-value text-sm sm:text-lg font-bold tabular-nums leading-tight break-all">
-              {value}
-            </p>
-            {sub && (
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</p>
+    <div className="group relative" style={{ perspective: 1000 }}>
+      {/* Desktop flip card */}
+      <div
+        className="hidden sm:block relative"
+        style={{ transformStyle: 'preserve-3d', transition: 'transform 0.55s cubic-bezier(.4,.2,.2,1)', transform: isFlipped ? 'rotateY(180deg)' : 'none', minHeight: 148 }}
+        onMouseEnter={() => setIsFlipped(true)}
+        onMouseLeave={() => setIsFlipped(false)}
+      >
+        {/* Front */}
+        <div
+          className="absolute inset-0 rounded-2xl border border-border bg-white shadow-sm overflow-hidden flex flex-col justify-between p-4"
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accent }} />
+          <div className="flex justify-between items-start gap-2">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">{label}</span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: accent + '18' }}>
+              <Icon className="w-4 h-4" style={{ color: accent }} />
+            </div>
+          </div>
+          <div>
+            <p className="text-xl sm:text-2xl font-semibold tabular-nums leading-tight mt-2">{value}</p>
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+              {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+              {pct !== null && (
+                <span className={`inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full ${isUp ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                  {isUp ? '↑' : '↓'}{Math.abs(parseFloat(pct))}%
+                </span>
+              )}
+            </div>
+          </div>
+          {(hasStructuredDetail || tooltip) && (
+            <p className="text-[10px] text-muted-foreground/50 mt-1">Hover for details</p>
+          )}
+        </div>
+
+        {/* Back */}
+        <div
+          className="absolute inset-0 rounded-2xl border border-border bg-white shadow-md overflow-hidden p-4"
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accent }} />
+          {backContent}
+        </div>
+      </div>
+
+      {/* Mobile expandable card */}
+      <div className="sm:hidden relative rounded-2xl border border-border bg-white shadow-sm overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: accent }} />
+        <button
+          className="w-full p-4 text-left"
+          onClick={() => setIsExpanded(v => !v)}
+          aria-expanded={isExpanded}
+        >
+          <div className="flex justify-between items-start gap-2">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: accent + '18' }}>
+                <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
+              </div>
+              <span className="text-muted-foreground text-sm" style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform .3s' }}>⌄</span>
+            </div>
+          </div>
+          <p className="text-xl font-semibold tabular-nums mt-2 leading-tight">{value}</p>
+          <div className="flex items-center gap-2 mt-1.5">
+            {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+            {pct !== null && (
+              <span className={`inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full ${isUp ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                {isUp ? '↑' : '↓'}{Math.abs(parseFloat(pct))}%
+              </span>
             )}
           </div>
-          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-muted/50 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-muted-foreground" />
+        </button>
+
+        {/* Expandable detail */}
+        <div
+          style={{ maxHeight: isExpanded ? 280 : 0, overflow: 'hidden', transition: 'max-height .4s ease' }}
+          aria-hidden={!isExpanded}
+        >
+          <div className="px-4 pb-4 border-t border-border pt-3">
+            {hasStructuredDetail ? (
+              <>
+                {prevValue && (
+                  <div className="flex justify-between text-xs py-1.5 border-b border-border/50">
+                    <span className="text-muted-foreground">{prevLabel || 'Last period'}</span>
+                    <span className="font-medium">{prevValue}</span>
+                  </div>
+                )}
+                {txnCount && (
+                  <div className="flex justify-between text-xs py-1.5 border-b border-border/50">
+                    <span className="text-muted-foreground">Volume</span>
+                    <span className="font-medium">{txnCount}</span>
+                  </div>
+                )}
+                {avgValue && (
+                  <div className="flex justify-between text-xs py-1.5 border-b border-border/50">
+                    <span className="text-muted-foreground">Average</span>
+                    <span className="font-medium">{avgValue}</span>
+                  </div>
+                )}
+                {topSource && (
+                  <div className="flex justify-between items-start text-xs py-1.5 gap-2">
+                    <span className="text-muted-foreground flex-shrink-0">Top</span>
+                    <span className="font-medium text-right" style={{ fontSize: 11 }}>{topSource}</span>
+                  </div>
+                )}
+                <Sparkline />
+              </>
+            ) : tooltip ? (
+              <p className="text-xs text-muted-foreground whitespace-pre-line leading-relaxed py-1.5">{tooltip}</p>
+            ) : null}
           </div>
         </div>
-      </CardContent>
-      {tooltip && hovered && (
-        <div className="absolute left-1/2 -translate-x-1/2 -top-2 -translate-y-full z-50 w-60 pointer-events-none hidden sm:block">
-          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-relaxed whitespace-pre-line">
-            {tooltip}
-          </div>
-          <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
-        </div>
-      )}
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -281,6 +457,68 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [filteredIncomes])
 
+  // ── Real (not fabricated) per-currency monthly series — powers the KPI
+  // cards' previous-month comparison and sparklines. Unlike `chartData`
+  // below (primary currency only, for the big area chart), this covers
+  // every currency so each currency's own income/expense card gets an
+  // honest trend instead of one borrowed from a different currency. ────
+  const monthlyByCurrency = useMemo(() => {
+    const map: Record<string, Record<string, { income: number; expense: number }>> = {}
+    filteredIncomes.forEach(r => {
+      const cur = getTransactionCurrency(r)
+      const d = (r.date ?? '').slice(0, 7); if (!d) return
+      if (!map[cur]) map[cur] = {}
+      if (!map[cur][d]) map[cur][d] = { income: 0, expense: 0 }
+      map[cur][d].income += Number(r.amount)
+    })
+    filteredExpenses.forEach(r => {
+      const cur = getTransactionCurrency(r)
+      const d = (r.date ?? '').slice(0, 7); if (!d) return
+      if (!map[cur]) map[cur] = {}
+      if (!map[cur][d]) map[cur][d] = { income: 0, expense: 0 }
+      map[cur][d].expense += Number(r.amount)
+    })
+    const result: Record<string, { date: string; income: number; expense: number }[]> = {}
+    Object.entries(map).forEach(([cur, byMonth]) => {
+      result[cur] = Object.entries(byMonth)
+        .map(([date, v]) => ({ date, ...v }))
+        .sort((a, b) => a.date.localeCompare(b.date))
+    })
+    return result
+  }, [filteredIncomes, filteredExpenses, accounts, currency])
+
+  // Per-currency top category — so a USD income card shows its own top USD
+  // category, not one borrowed from a blended, cross-currency ranking.
+  const incomeByCategoryByCurrency = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    filteredIncomes.forEach(r => {
+      const cur = getTransactionCurrency(r)
+      const cat = r.category || 'Other'
+      if (!map[cur]) map[cur] = {}
+      map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
+    })
+    const result: Record<string, { name: string; value: number }[]> = {}
+    Object.entries(map).forEach(([cur, byCat]) => {
+      result[cur] = Object.entries(byCat).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+    })
+    return result
+  }, [filteredIncomes, accounts, currency])
+
+  const expenseByCategoryByCurrency = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    filteredExpenses.forEach(r => {
+      const cur = getTransactionCurrency(r)
+      const cat = r.category || 'Other'
+      if (!map[cur]) map[cur] = {}
+      map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
+    })
+    const result: Record<string, { name: string; value: number }[]> = {}
+    Object.entries(map).forEach(([cur, byCat]) => {
+      result[cur] = Object.entries(byCat).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+    })
+    return result
+  }, [filteredExpenses, accounts, currency])
+
   const currencyBreakdown = useMemo(() =>
     Object.entries(incomeByCurrency)
       .map(([name, value]) => ({ name, value }))
@@ -346,6 +584,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     const cur = a.currency || 'GHS'
     totalAccountBalanceByCurrency[cur] = (totalAccountBalanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
+
+  // Days actually covered by an explicit From/To filter — used for Net Balance's
+  // "average per day" so it's never a fake "÷30" applied to an arbitrary range.
+  const daysInRange = isFiltered && localFrom && localTo
+    ? Math.max(1, Math.round((new Date(localTo).getTime() - new Date(localFrom).getTime()) / 86_400_000) + 1)
+    : null
 
   const hour      = new Date().getHours()
   const greeting  = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
@@ -446,11 +690,21 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         {Object.entries(incomeByCurrency)
           .sort(([a], [b]) => a === currency ? -1 : b === currency ? 1 : 0)
           .map(([cur, amt]) => {
-            const txnCount = filteredIncomes.filter(r => getTransactionCurrency(r) === cur).length
+            const txnCount  = filteredIncomes.filter(r => getTransactionCurrency(r) === cur).length
+            const series    = monthlyByCurrency[cur] || []
+            const prevMonth = series.length > 1 ? series[series.length - 2] : null
+            const topCat    = incomeByCategoryByCurrency[cur]?.[0]
             return (
               <KPICard key={`inc-${cur}`} label={`Total Income (${cur})`} colorClass="kpi-green" icon={TrendingUp}
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
+                accentColor="#22c55e"
+                prevValue={prevMonth ? formatCurrency(prevMonth.income, cur) : undefined}
+                prevLabel="Last month"
+                txnCount={`${txnCount} transaction${txnCount === 1 ? '' : 's'}`}
+                avgValue={txnCount > 0 ? formatCurrency(amt / txnCount, cur) : undefined}
+                topSource={topCat ? `${topCat.name} (${formatCurrency(topCat.value, cur)})` : undefined}
+                sparkData={series.length > 1 ? series.slice(-8).map(d => d.income) : undefined}
                 tooltip={`Exact: ${formatCurrency(amt, cur)}\n${txnCount} transaction(s) in ${cur}`}
               />
             )
@@ -459,28 +713,73 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         {Object.entries(expenseByCurrency)
           .sort(([a], [b]) => a === currency ? -1 : b === currency ? 1 : 0)
           .map(([cur, amt]) => {
-            const txnCount = filteredExpenses.filter(r => getTransactionCurrency(r) === cur).length
+            const txnCount  = filteredExpenses.filter(r => getTransactionCurrency(r) === cur).length
+            const series    = monthlyByCurrency[cur] || []
+            const prevMonth = series.length > 1 ? series[series.length - 2] : null
+            const topCat    = expenseByCategoryByCurrency[cur]?.[0]
             return (
               <KPICard key={`exp-${cur}`} label={`Total Expenses (${cur})`} colorClass="kpi-red" icon={TrendingDown}
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
+                accentColor="#ef4444"
+                prevValue={prevMonth ? formatCurrency(prevMonth.expense, cur) : undefined}
+                prevLabel="Last month"
+                txnCount={`${txnCount} transaction${txnCount === 1 ? '' : 's'}`}
+                avgValue={txnCount > 0 ? formatCurrency(amt / txnCount, cur) : undefined}
+                topSource={topCat ? `${topCat.name} (${formatCurrency(topCat.value, cur)})` : undefined}
+                sparkData={series.length > 1 ? series.slice(-8).map(d => d.expense) : undefined}
                 tooltip={`Exact: ${formatCurrency(amt, cur)}\n${txnCount} transaction(s) in ${cur}`}
               />
             )
           })}
 
-        <KPICard label="Net Balance" colorClass="kpi-blue" icon={Wallet}
-          value={fmt(net)}
-          sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}
-          tooltip={`Income − Expenses across all accounts (not tied to one wallet)\n${hasMixedIncome || hasMixedExpense
-            ? `Primary currency (${currency}) only\n${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`
-            : `${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`}`}
-        />
-        <KPICard label="Savings Rate" colorClass="kpi-purple" icon={Target}
-          value={`${savingsRate}%`}
-          sub="Of income saved"
-          tooltip={`${savingsRate}% saved · Net ${fmt(net)} ÷ Income ${fmt(totalIncome)}\nPrimary currency (${currency}) only`}
-        />
+        {(() => {
+          const prevMonth = chartData.length > 1 ? chartData[chartData.length - 2] : null
+          const prevNet   = prevMonth ? prevMonth.income - prevMonth.expense : null
+          const totalTxns = filteredIncomes.length + filteredExpenses.length
+          return (
+            <KPICard label="Net Balance" colorClass="kpi-blue" icon={Wallet}
+              value={fmt(net)}
+              sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}
+              accentColor="#3b82f6"
+              prevValue={prevMonth ? fmt(prevNet as number) : undefined}
+              prevLabel="Last month"
+              txnCount={`${totalTxns} total`}
+              avgValue={daysInRange ? `${fmt(net / daysInRange)}/day` : undefined}
+              topSource={net >= 0 ? 'Income exceeded expenses' : 'Expenses exceeded income'}
+              sparkData={chartData.length > 1 ? chartData.slice(-8).map(d => d.income - d.expense) : undefined}
+              tooltip={`Income − Expenses across all accounts (not tied to one wallet)\n${hasMixedIncome || hasMixedExpense
+                ? `Primary currency (${currency}) only\n${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`
+                : `${fmt(totalIncome)} − ${fmt(totalExpense)} = ${fmt(net)}`}`}
+            />
+          )
+        })()}
+
+        {(() => {
+          const prevMonth = chartData.length > 1 ? chartData[chartData.length - 2] : null
+          const prevRate  = prevMonth && prevMonth.income > 0
+            ? Math.round(((prevMonth.income - prevMonth.expense) / prevMonth.income) * 100)
+            : null
+          return (
+            <KPICard label="Savings Rate" colorClass="kpi-purple" icon={Target}
+              value={`${savingsRate}%`}
+              sub="Of income saved"
+              accentColor="#a855f7"
+              prevValue={prevRate !== null ? `${prevRate}%` : undefined}
+              prevLabel="Last month"
+              topSource={
+                savingsRate >= 50 ? 'Strong savings habit'
+                  : savingsRate >= 20 ? 'On track with the typical 20% guideline'
+                  : savingsRate >= 0 ? 'Below the typical 20% guideline'
+                  : 'Spending more than you earn'
+              }
+              sparkData={chartData.length > 1
+                ? chartData.slice(-8).map(d => d.income > 0 ? Math.round(((d.income - d.expense) / d.income) * 100) : 0)
+                : undefined}
+              tooltip={`${savingsRate}% saved · Net ${fmt(net)} ÷ Income ${fmt(totalIncome)}\nPrimary currency (${currency}) only`}
+            />
+          )
+        })()}
       </div>
 
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
