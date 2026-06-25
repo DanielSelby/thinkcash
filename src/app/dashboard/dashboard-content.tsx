@@ -481,7 +481,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               <KPICard key={`inc-${cur}`} label={`Total Income (${cur})`} colorClass="kpi-green" icon={TrendingUp}
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
-                accentColor="#22c55e"
+                accentColor={cur === currency ? undefined : '#22c55e'}
                 variant={cur === currency ? 'solid' : 'default'}
                 prevValue={prevMonth ? formatCurrency(prevMonth.income, cur) : undefined}
                 prevLabel="Last month"
