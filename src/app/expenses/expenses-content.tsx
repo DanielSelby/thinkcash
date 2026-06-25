@@ -40,6 +40,7 @@ interface Props {
   initialExpenses: Expense[]
   accounts: UserAccount[]
   userId: string
+  budgets?: any[]
 }
 
 const shortFmt = (v: number) => {
@@ -141,7 +142,7 @@ function CurrencyTotal({ byCurrency, colorClass }: {
   )
 }
 
-export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
+export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [] }: Props) {
   const { expenseCategories } = useCategories()
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -281,6 +282,49 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const grandTotalFiltered = useMemo(() =>
     expenseByCategory.reduce((s, c) => s + c.value, 0), [expenseByCategory])
 
+  // Budget vs Actual — pairs each budget with what's actually been spent in that
+  // category, but ONLY for one month/year at a time: budgets are month-scoped
+  // (budget_month / budget_year), so comparing "actual" against every budget
+  // ever created would duplicate categories across months and show the same
+  // total next to each of them. We use the active month/year slicer when set,
+  // otherwise default to the current calendar month — same default the
+  // Budgets page uses. If no budgets exist for that period, falls back to
+  // showing actual spend per category (budget = 0) so the chart still renders
+  // something useful instead of an empty state.
+  const now = useMemo(() => new Date(), [])
+  const budgetPeriod = useMemo(() => ({
+    month: monthFilter !== 'all' ? monthFilter : String(now.getMonth() + 1).padStart(2, '0'),
+    year:  yearFilter  !== 'all' ? yearFilter  : String(now.getFullYear()),
+  }), [monthFilter, yearFilter, now])
+
+  const periodBudgets = useMemo(() =>
+    budgets.filter(b => {
+      const bMonth = String(b.budget_month ?? now.getMonth() + 1).padStart(2, '0')
+      const bYear  = String(b.budget_year  ?? now.getFullYear())
+      return bMonth === budgetPeriod.month && bYear === budgetPeriod.year
+    }), [budgets, budgetPeriod, now])
+
+  const budgetVsActual = useMemo(() => {
+    if (!periodBudgets.length) return expenseByCategory.map(c => ({
+      name: c.name,
+      budget: 0,
+      actual: c.value,
+      pct: 0,
+    }))
+    return periodBudgets.map(b => {
+      const actual = filtered
+        .filter(e => e.category === b.category)
+        .reduce((s, e) => s + Number(e.amount), 0)
+      const budget = Number(b.monthly_limit ?? b.amount ?? 0)
+      return {
+        name: b.budget_name || b.category,
+        budget,
+        actual,
+        pct: budget > 0 ? Math.round((actual / budget) * 100) : 0,
+      }
+    }).sort((a, b) => b.actual - a.actual)
+  }, [periodBudgets, filtered, expenseByCategory])
+
   return (
     <div className="space-y-5 animate-fade-in">
 
@@ -392,81 +436,167 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         </CardContent>
       </Card>
 
-      {/* Charts — both bar and donut are click-to-zoom and share the same selection,
-          so clicking a bar or a slice highlights the matching item in the other
-          chart. Colors come from chartColors (theme-derived), not a fixed palette,
-          so switching the app's theme re-colors these without a reload. */}
-      {expenseByCategory.length > 0 && (
+      {/* Budget vs Actual combo chart + Category Share donut */}
+      {(expenseByCategory.length > 0 || budgets.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          {/* ── Budget vs Actual ── */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Expenses by Category</CardTitle>
-              {activeCategoryIndex !== null && expenseByCategory[activeCategoryIndex] ? (
+              <CardTitle className="text-sm font-semibold">Budget vs Actual</CardTitle>
+              <p className="text-[10px] text-muted-foreground/70">
+                {MONTH_NAMES[Number(budgetPeriod.month) - 1]} {budgetPeriod.year}
+                {monthFilter === 'all' && yearFilter === 'all' ? ' · current month' : ''}
+              </p>
+              {activeCategoryIndex !== null && budgetVsActual[activeCategoryIndex] ? (
                 <p className="text-xs font-semibold mt-0.5"
                   style={{ color: chartColors[activeCategoryIndex % chartColors.length] }}>
-                  {expenseByCategory[activeCategoryIndex].name}: {formatCurrency(expenseByCategory[activeCategoryIndex].value)}
-                  {grandTotalFiltered > 0 && (
-                    ` · ${Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)}% of total`
+                  {budgetVsActual[activeCategoryIndex].name}:&nbsp;
+                  Spent {formatCurrency(budgetVsActual[activeCategoryIndex].actual)} of&nbsp;
+                  {formatCurrency(budgetVsActual[activeCategoryIndex].budget)} budget
+                  {budgetVsActual[activeCategoryIndex].budget > 0 && (
+                    ` · ${Math.round((budgetVsActual[activeCategoryIndex].actual / budgetVsActual[activeCategoryIndex].budget) * 100)}% used`
                   )}
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {expenseByCategory.length} categor{expenseByCategory.length === 1 ? 'y' : 'ies'}
-                  {hasMixedExpenseCurrency ? ' · blended for chart display' : ''} · Click a bar to zoom in
+                  {budgetVsActual.length} categor{budgetVsActual.length === 1 ? 'y' : 'ies'} · Click a bar to zoom
                 </p>
               )}
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={Math.max(200, expenseByCategory.length * 36)}>
-                <BarChart data={expenseByCategory} layout="vertical" margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
-                  <Bar
-                    dataKey="value"
-                    radius={[0, 4, 4, 0]}
-                    cursor="pointer"
-                    animationDuration={500}
-                    onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
-                  >
-                    {expenseByCategory.map((_, i) => (
-                      <Cell
-                        key={i}
-                        fill={activeCategoryIndex !== null && activeCategoryIndex !== i
-                          ? chartColors[i % chartColors.length] + '55'
-                          : chartColors[i % chartColors.length]}
-                        style={{ transition: 'opacity 0.2s' }}
+              {budgetVsActual.length === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                  <TrendingDown className="w-8 h-8 opacity-20" />
+                  <p className="text-sm">No budgets set — create budgets to compare</p>
+                </div>
+              ) : (
+                <>
+                  {/* Legend */}
+                  <div className="flex gap-4 mb-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: theme.colors.primaryLight || theme.colors.primary + 'aa' }} />
+                      Budget limit
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block bg-destructive" />
+                      Actual spent
+                    </span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={Math.max(200, budgetVsActual.length * 52)}>
+                    <BarChart
+                      data={budgetVsActual}
+                      layout="vertical"
+                      margin={{ top: 4, right: 60, left: 0, bottom: 0 }}
+                      barGap={2}
+                      barCategoryGap="30%"
+                    >
+                      <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+                      <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        formatter={(v: any, name: string) => [formatCurrency(Number(v)), name === 'budget' ? 'Budget limit' : 'Actual spent']}
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null
+                          const budget = payload.find(p => p.dataKey === 'budget')?.value as number
+                          const actual = payload.find(p => p.dataKey === 'actual')?.value as number
+                          const pct = budget > 0 ? Math.round((actual / budget) * 100) : 0
+                          const over = actual > budget
+                          return (
+                            <div className="glass-card rounded-xl p-3 shadow-lg text-xs space-y-1 min-w-[180px]">
+                              <p className="font-semibold text-sm">{label}</p>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-muted-foreground">Budget</span>
+                                <span className="font-medium">{formatCurrency(budget)}</span>
+                              </div>
+                              <div className="flex justify-between gap-4">
+                                <span className="text-muted-foreground">Actual</span>
+                                <span className={`font-medium ${over ? 'text-destructive' : 'text-success'}`}>{formatCurrency(actual)}</span>
+                              </div>
+                              <div className="h-px bg-border" />
+                              <div className="flex justify-between gap-4">
+                                <span className="text-muted-foreground">{over ? 'Over by' : 'Remaining'}</span>
+                                <span className={`font-semibold ${over ? 'text-destructive' : 'text-success'}`}>
+                                  {formatCurrency(Math.abs(budget - actual))}
+                                </span>
+                              </div>
+                              <div className="mt-1">
+                                <div className="flex justify-between text-xs mb-0.5">
+                                  <span className="text-muted-foreground">Used</span>
+                                  <span className={over ? 'text-destructive font-semibold' : 'font-medium'}>{pct}%</span>
+                                </div>
+                                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all"
+                                    style={{ width: `${Math.min(pct, 100)}%`, background: over ? '#ef4444' : '#22c55e' }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        }}
                       />
-                    ))}
-                    <LabelList
-                      dataKey="value"
-                      position="right"
-                      content={(props: any) => {
-                        const { x, y, width, height, index, value } = props
-                        if (index == null) return null
-                        const isActive = activeCategoryIndex === index
-                        const pct = grandTotalFiltered > 0 ? Math.round((value / grandTotalFiltered) * 100) : 0
-                        return (
-                          <text
-                            x={x + width + 6}
-                            y={y + height / 2}
-                            dy={4}
-                            fontSize={11}
-                            fontWeight={isActive ? 700 : 500}
-                            fill={isActive ? chartColors[index % chartColors.length] : 'currentColor'}
-                            className={isActive ? '' : 'text-muted-foreground'}
-                          >
-                            {pct}%
-                          </text>
-                        )
-                      }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                      {/* Budget bar — background reference */}
+                      <Bar
+                        dataKey="budget"
+                        name="Budget limit"
+                        radius={[0, 4, 4, 0]}
+                        cursor="pointer"
+                        animationDuration={500}
+                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                      >
+                        {budgetVsActual.map((row, i) => (
+                          <Cell
+                            key={i}
+                            fill={activeCategoryIndex !== null && activeCategoryIndex !== i
+                              ? (theme.colors.primaryLight || theme.colors.primary + 'aa') + '55'
+                              : (theme.colors.primaryLight || theme.colors.primary + 'aa')}
+                          />
+                        ))}
+                        <LabelList
+                          dataKey="budget"
+                          position="right"
+                          content={(props: any) => {
+                            const { x, y, width, height, index, value } = props
+                            if (index == null) return null
+                            return (
+                              <text x={x + width + 6} y={y + height / 2} dy={4}
+                                fontSize={10} fill="var(--color-text-secondary, #888)">
+                                {formatCurrency(value)}
+                              </text>
+                            )
+                          }}
+                        />
+                      </Bar>
+                      {/* Actual bar — overlaid */}
+                      <Bar
+                        dataKey="actual"
+                        name="Actual spent"
+                        radius={[0, 4, 4, 0]}
+                        cursor="pointer"
+                        animationDuration={500}
+                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                      >
+                        {budgetVsActual.map((row, i) => {
+                          const over = row.actual > row.budget && row.budget > 0
+                          const dimmed = activeCategoryIndex !== null && activeCategoryIndex !== i
+                          return (
+                            <Cell
+                              key={i}
+                              fill={dimmed
+                                ? (over ? '#ef4444' : '#22c55e') + '55'
+                                : (over ? '#ef4444' : '#22c55e')}
+                            />
+                          )
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </>
+              )}
             </CardContent>
           </Card>
 
+          {/* ── Category Share donut ── */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Category Share</CardTitle>
@@ -502,14 +632,11 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                       ))}
                     </Pie>
                     <Tooltip formatter={(v: any, name: any) => [formatCurrency(Number(v)), name]} />
-                    <Legend
-                      layout="horizontal" align="center" verticalAlign="bottom"
-                      iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
-                    />
+                    <Legend layout="horizontal" align="center" verticalAlign="bottom"
+                      iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
                   </PieChart>
                 </ResponsiveContainer>
 
-                {/* Centre label */}
                 <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
                   style={{ top: 0, height: 'calc(100% - 40px)' }}>
                   <div className="text-center leading-tight">
