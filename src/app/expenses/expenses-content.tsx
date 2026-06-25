@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { Plus, Search, Edit2, Trash2, TrendingDown, Loader2 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, LabelList,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -153,7 +153,11 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const [search,         setSearch]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [accountFilter,  setAccountFilter]  = useState('all')
-  const [activeDonutIndex, setActiveDonutIndex] = useState<number | null>(null)
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null)
+  const [dateFrom,  setDateFrom]  = useState('')
+  const [dateTo,    setDateTo]    = useState('')
+  const [monthFilter, setMonthFilter] = useState('all')
+  const [yearFilter,  setYearFilter]  = useState('all')
 
   // Regenerates whenever the active theme changes, so switching themes
   // re-colors these charts without needing a page reload.
@@ -228,13 +232,32 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
     }
   }
 
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+  const availableYears = useMemo(() =>
+    Array.from(new Set(expenses.map(e => e.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a)),
+    [expenses])
+
+  const clearDateFilters = () => {
+    setDateFrom(''); setDateTo('')
+    setMonthFilter('all'); setYearFilter('all')
+  }
+  const hasActiveDateFilters = !!dateFrom || !!dateTo || monthFilter !== 'all' || yearFilter !== 'all'
+
+  const getAccountName = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.name ?? '—'
+
   const filtered = useMemo(() =>
     expenses.filter(e => {
       const matchSearch  = e.title.toLowerCase().includes(search.toLowerCase())
       const matchCat     = categoryFilter === 'all' || e.category === categoryFilter
       const matchAccount = accountFilter  === 'all' || e.account_id === accountFilter
-      return matchSearch && matchCat && matchAccount
-    }), [expenses, search, categoryFilter, accountFilter])
+      const matchFrom    = !dateFrom || e.date >= dateFrom
+      const matchTo      = !dateTo   || e.date <= dateTo
+      const matchMonth   = monthFilter === 'all' || e.date.slice(5, 7) === monthFilter
+      const matchYear    = yearFilter  === 'all' || e.date.slice(0, 4) === yearFilter
+      return matchSearch && matchCat && matchAccount && matchFrom && matchTo && matchMonth && matchYear
+    }), [expenses, search, categoryFilter, accountFilter, dateFrom, dateTo, monthFilter, yearFilter])
 
   const totalByCurrency    = useMemo(() => groupByCurrency(expenses, accounts), [expenses, accounts])
   const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
@@ -257,9 +280,6 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
 
   const grandTotalFiltered = useMemo(() =>
     expenseByCategory.reduce((s, c) => s + c.value, 0), [expenseByCategory])
-
-  const getAccountName = (id?: string | null) =>
-    accounts.find(a => a.id === id)?.name ?? '—'
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -323,29 +343,124 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         )}
       </div>
 
-      {/* Charts — bar chart + click-to-zoom donut, both driven by the filters above.
-          Colors come from chartColors (theme-derived), not a fixed palette, so
-          switching the app's theme re-colors these without a reload. */}
+      {/* Date / Month / Year slicer */}
+      <Card className="bg-white rounded-xl shadow-sm border border-border">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter by Date</p>
+            {hasActiveDateFilters && (
+              <button onClick={clearDateFilters}
+                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  {MONTH_NAMES.map((m, i) => (
+                    <SelectItem key={i} value={String(i + 1).padStart(2, '0')}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Year</label>
+              <Select value={yearFilter} onValueChange={setYearFilter}>
+                <SelectTrigger className="w-28 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Years</SelectItem>
+                  {availableYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Charts — both bar and donut are click-to-zoom and share the same selection,
+          so clicking a bar or a slice highlights the matching item in the other
+          chart. Colors come from chartColors (theme-derived), not a fixed palette,
+          so switching the app's theme re-colors these without a reload. */}
       {expenseByCategory.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Expenses by Category</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {expenseByCategory.length} categor{expenseByCategory.length === 1 ? 'y' : 'ies'}
-                {hasMixedExpenseCurrency ? ' · blended for chart display' : ''}
-              </p>
+              {activeCategoryIndex !== null && expenseByCategory[activeCategoryIndex] ? (
+                <p className="text-xs font-semibold mt-0.5"
+                  style={{ color: chartColors[activeCategoryIndex % chartColors.length] }}>
+                  {expenseByCategory[activeCategoryIndex].name}: {formatCurrency(expenseByCategory[activeCategoryIndex].value)}
+                  {grandTotalFiltered > 0 && (
+                    ` · ${Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)}% of total`
+                  )}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {expenseByCategory.length} categor{expenseByCategory.length === 1 ? 'y' : 'ies'}
+                  {hasMixedExpenseCurrency ? ' · blended for chart display' : ''} · Click a bar to zoom in
+                </p>
+              )}
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={Math.max(200, expenseByCategory.length * 36)}>
-                <BarChart data={expenseByCategory} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                <BarChart data={expenseByCategory} layout="vertical" margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                   <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
                   <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  <Bar
+                    dataKey="value"
+                    radius={[0, 4, 4, 0]}
+                    cursor="pointer"
+                    animationDuration={500}
+                    onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                  >
                     {expenseByCategory.map((_, i) => (
-                      <Cell key={i} fill={chartColors[i % chartColors.length]} />
+                      <Cell
+                        key={i}
+                        fill={activeCategoryIndex !== null && activeCategoryIndex !== i
+                          ? chartColors[i % chartColors.length] + '55'
+                          : chartColors[i % chartColors.length]}
+                        style={{ transition: 'opacity 0.2s' }}
+                      />
                     ))}
+                    <LabelList
+                      dataKey="value"
+                      position="right"
+                      content={(props: any) => {
+                        const { x, y, width, height, index, value } = props
+                        if (index == null) return null
+                        const isActive = activeCategoryIndex === index
+                        const pct = grandTotalFiltered > 0 ? Math.round((value / grandTotalFiltered) * 100) : 0
+                        return (
+                          <text
+                            x={x + width + 6}
+                            y={y + height / 2}
+                            dy={4}
+                            fontSize={11}
+                            fontWeight={isActive ? 700 : 500}
+                            fill={isActive ? chartColors[index % chartColors.length] : 'currentColor'}
+                            className={isActive ? '' : 'text-muted-foreground'}
+                          >
+                            {pct}%
+                          </text>
+                        )
+                      }}
+                    />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -370,13 +485,15 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                       innerRadius="55%"
                       outerRadius="80%"
                       paddingAngle={2}
+                      labelLine={false}
+                      label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
                       animationDuration={500}
-                      onClick={(_, i) => setActiveDonutIndex(p => p === i ? null : i)}
+                      onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
                     >
                       {expenseByCategory.map((_, i) => (
                         <Cell
                           key={i}
-                          fill={activeDonutIndex !== null && activeDonutIndex !== i
+                          fill={activeCategoryIndex !== null && activeCategoryIndex !== i
                             ? chartColors[i % chartColors.length] + '55'
                             : chartColors[i % chartColors.length]}
                           stroke="#fff" strokeWidth={2}
@@ -397,17 +514,17 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                   style={{ top: 0, height: 'calc(100% - 40px)' }}>
                   <div className="text-center leading-tight">
                     <p className="text-[10px] sm:text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                      {activeDonutIndex !== null ? expenseByCategory[activeDonutIndex]?.name : 'Total'}
+                      {activeCategoryIndex !== null ? expenseByCategory[activeCategoryIndex]?.name : 'Total'}
                     </p>
                     <p className="text-lg sm:text-xl font-bold tabular-nums mt-0.5 text-destructive">
-                      {activeDonutIndex !== null
-                        ? formatCurrency(expenseByCategory[activeDonutIndex]?.value ?? 0)
+                      {activeCategoryIndex !== null
+                        ? formatCurrency(expenseByCategory[activeCategoryIndex]?.value ?? 0)
                         : formatCurrency(grandTotalFiltered)}
                     </p>
-                    {activeDonutIndex !== null ? (
+                    {activeCategoryIndex !== null ? (
                       <p className="text-[10px] text-muted-foreground mt-0.5">
                         {grandTotalFiltered > 0
-                          ? Math.round((expenseByCategory[activeDonutIndex].value / grandTotalFiltered) * 100)
+                          ? Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)
                           : 0}% of total
                       </p>
                     ) : hasMixedExpenseCurrency ? (
