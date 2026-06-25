@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Search, Download, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react'
+import { Search, Download, TrendingUp, TrendingDown, ArrowUpDown, Receipt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
@@ -115,7 +115,7 @@ export function TransactionsContent({ transactions, accounts }: Props) {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-success flex-shrink-0" />
@@ -140,6 +140,13 @@ export function TransactionsContent({ transactions, accounts }: Props) {
           }`}>
             {formatCurrency(totals.income - totals.expenses)}
           </p>
+        </Card>
+        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden">
+          <div className="flex items-center gap-2 mb-1">
+            <Receipt className="w-4 h-4 text-orange-500 flex-shrink-0" />
+            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Total Transactions</p>
+          </div>
+          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{filtered.length}</p>
         </Card>
       </div>
 
