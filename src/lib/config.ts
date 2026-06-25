@@ -127,6 +127,37 @@ export const THEMES = {
     },
     topbar: { background: '#412234', text: '#FFFFFF' },
   },
+
+  // Theme 5 — Eclipse (Sage & Forest Green)
+  eclipse: {
+    name: 'Eclipse',
+    colors: {
+      primary:        '#1b4332',
+      primaryMid:     '#2d6a4f',
+      primaryLight:   '#40916c',
+      primaryPale:    '#eef5f0',
+      accent:         '#95b8a0',
+      accentLight:    'rgba(149,184,160,0.20)',
+      background:     '#F3F6F4',
+      surface:        '#FFFFFF',
+      text:           '#0E2A1F',
+      textMuted:      '#4A6B57',
+      success:        '#0A7A45',
+      danger:         '#C0392B',
+      warning:        '#C87A0A',
+      info:           '#1565C0',
+    },
+    sidebar: {
+      background:       '#95b8a0',
+      text:             '#0E2A1F',
+      textMuted:        'rgba(14,42,31,0.6)',
+      activeBackground: 'rgba(27,67,50,0.18)',
+      activeText:       '#1b4332',
+      borderColor:      'rgba(14,42,31,0.12)',
+      hoverBackground:  'rgba(14,42,31,0.08)',
+    },
+    topbar: { background: '#1b4332', text: '#FFFFFF' },
+  },
 }
 
 export type ThemeKey = keyof typeof THEMES

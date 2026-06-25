@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
 import { useCategories } from '@/hooks/useCategories'
+import { useAppStore } from '@/store'
+import { THEMES } from '@/lib/config'
 import type { Expense, UserAccount } from '@/types'
 
 const schema = z.object({
@@ -40,13 +42,69 @@ interface Props {
   userId: string
 }
 
-// Category palette for the bar/donut charts
-const DONUT_COLORS = ['#dc2626','#f97316','#7c3aed','#2563eb','#0d9488','#db2777','#65a30d','#ca8a04','#16a34a','#0891b2']
-
 const shortFmt = (v: number) => {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
   if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
   return String(Math.round(v))
+}
+
+// ── Theme-derived chart palette ──────────────────────────────────────
+// Categories still need visually distinct colors (that's the whole point
+// of a categorical chart), but the *set* of colors should feel like it
+// belongs to the app's current theme rather than an arbitrary fixed
+// rainbow. We take the theme's primary color, convert it to HSL, and
+// rotate the hue evenly around the color wheel to generate N distinct
+// but theme-anchored colors — same saturation/lightness family, so they
+// read as "a palette," just like the original DONUT_COLORS did, but tied
+// to whichever theme is currently active.
+function hexToHsl(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.slice(0, 2), 16) / 255
+  const g = parseInt(clean.slice(2, 4), 16) / 255
+  const b = parseInt(clean.slice(4, 6), 16) / 255
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let h = 0
+  const l = (max + min) / 2
+  const d = max - min
+  let s = 0
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1))
+    switch (max) {
+      case r: h = ((g - b) / d) % 6; break
+      case g: h = (b - r) / d + 2; break
+      default: h = (r - g) / d + 4
+    }
+    h *= 60
+    if (h < 0) h += 360
+  }
+  return [h, s * 100, l * 100]
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1))
+  const m = l - c / 2
+  let r = 0, g = 0, b = 0
+  if (h < 60)       { r = c; g = x; b = 0 }
+  else if (h < 120) { r = x; g = c; b = 0 }
+  else if (h < 180) { r = 0; g = c; b = x }
+  else if (h < 240) { r = 0; g = x; b = c }
+  else if (h < 300) { r = x; g = 0; b = c }
+  else              { r = c; g = 0; b = x }
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`
+}
+
+function buildThemedPalette(baseHex: string, count: number): string[] {
+  let h = 0, s = 65, l = 48
+  try {
+    const hsl = hexToHsl(baseHex)
+    h = hsl[0]
+    s = Math.min(Math.max(hsl[1], 55), 75)
+    l = Math.min(Math.max(hsl[2], 38), 55)
+  } catch { /* fall back to the defaults above if baseHex is unparsable */ }
+  return Array.from({ length: count }, (_, i) => hslToHex((h + (360 / count) * i) % 360, s, l))
 }
 
 function groupByCurrency(items: any[], accounts: UserAccount[]) {
@@ -85,6 +143,8 @@ function CurrencyTotal({ byCurrency, colorClass }: {
 
 export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const { expenseCategories } = useCategories()
+  const { activeTheme } = useAppStore()
+  const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [expenses,       setExpenses]       = useState(initialExpenses)
   const [open,           setOpen]           = useState(false)
@@ -94,6 +154,10 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [accountFilter,  setAccountFilter]  = useState('all')
   const [activeDonutIndex, setActiveDonutIndex] = useState<number | null>(null)
+
+  // Regenerates whenever the active theme changes, so switching themes
+  // re-colors these charts without needing a page reload.
+  const chartColors = useMemo(() => buildThemedPalette(theme.colors.primary, 10), [theme.colors.primary])
 
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -259,7 +323,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
         )}
       </div>
 
-      {/* Charts — bar chart + click-to-zoom donut, both driven by the filters above */}
+      {/* Charts — bar chart + click-to-zoom donut, both driven by the filters above.
+          Colors come from chartColors (theme-derived), not a fixed palette, so
+          switching the app's theme re-colors these without a reload. */}
       {expenseByCategory.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card className="rounded-xl shadow-sm bg-white">
@@ -278,7 +344,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                   <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                     {expenseByCategory.map((_, i) => (
-                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                      <Cell key={i} fill={chartColors[i % chartColors.length]} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -311,8 +377,8 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                         <Cell
                           key={i}
                           fill={activeDonutIndex !== null && activeDonutIndex !== i
-                            ? DONUT_COLORS[i % DONUT_COLORS.length] + '55'
-                            : DONUT_COLORS[i % DONUT_COLORS.length]}
+                            ? chartColors[i % chartColors.length] + '55'
+                            : chartColors[i % chartColors.length]}
                           stroke="#fff" strokeWidth={2}
                           style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
                         />
