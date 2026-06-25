@@ -482,6 +482,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
                 accentColor="#22c55e"
+                variant={cur === currency ? 'solid' : 'default'}
                 prevValue={prevMonth ? formatCurrency(prevMonth.income, cur) : undefined}
                 prevLabel="Last month"
                 txnCount={`${txnCount} transaction${txnCount === 1 ? '' : 's'}`}
@@ -585,6 +586,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
               value={formatCurrency(bal, cur)}
               sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).length} account(s)`}
+              variant={cur === currency ? 'solid' : 'default'}
               tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
           ))}
