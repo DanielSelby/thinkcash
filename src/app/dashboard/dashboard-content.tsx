@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
   ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
-  Eye, EyeOff,
+  Eye, EyeOff, Bookmark,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -355,6 +355,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
   const [showAccBalances,     setShowAccBalances]     = useState(true)
+  const [showDonutView,       setShowDonutView]       = useState(false)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -978,18 +979,213 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </CardContent>
       </Card>
 
-      {/* Multi-Currency & Category Income Breakdown — Decomposition Tree */}
+      {/* Multi-Currency & Category Income Breakdown — Donut chart or Decomposition Tree, toggled with the bookmark button */}
       <Card className="rounded-xl shadow-sm bg-white">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Multi-Currency & Category Income Breakdown</CardTitle>
-          <p className="text-xs text-muted-foreground">Decomposition view — explore income by currency and category</p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm font-semibold">Multi-Currency & Category Income Breakdown</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                {showDonutView
+                  ? (incomeByCategory.length === 0 ? 'No income yet'
+                      : `${incomeByCategory.length} categor${incomeByCategory.length === 1 ? 'y' : 'ies'} · ${currencyBreakdown.length} currenc${currencyBreakdown.length === 1 ? 'y' : 'ies'} · click outer slice to zoom`)
+                  : 'Decomposition view — explore income by currency and category'}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowDonutView(v => !v)}
+              title={showDonutView ? 'Switch to decomposition tree' : 'Switch to donut chart'}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-colors flex-shrink-0 ${
+                showDonutView ? 'border-transparent text-white' : 'border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40'
+              }`}
+              style={showDonutView ? { background: theme.colors.primary } : {}}
+            >
+              <Bookmark className="w-3.5 h-3.5" fill={showDonutView ? 'currentColor' : 'none'} />
+              {showDonutView ? 'Donut View' : 'Tree View'}
+            </button>
+          </div>
         </CardHeader>
         <CardContent>
-          <IncomeDecompositionTree
-            filteredIncomes={filteredIncomes}
-            getTransactionCurrency={getTransactionCurrency}
-            themePrimary={theme.colors.primary}
-          />
+          {showDonutView ? (
+            incomeByCategory.length === 0 ? (
+              <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <TrendingUp className="w-8 h-8 opacity-20" />
+                <p className="text-sm">Add income to see the breakdown</p>
+              </div>
+            ) : (
+              <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:gap-10 items-center">
+
+                {/* ── Nested donut — responsive sizing ── */}
+                <div className="relative w-full mx-auto" style={{ maxWidth: 480 }}>
+                  <ResponsiveContainer width="100%" height={440}>
+                    <PieChart margin={{ top: 32, right: 48, bottom: 44, left: 48 }}>
+
+                      {/* Outer ring — categories */}
+                      <Pie
+                        data={incomeByCategory}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="48%"
+                        innerRadius="58%"
+                        outerRadius="82%"
+                        paddingAngle={2}
+                        labelLine={false}
+                        label={CategoryOuterLabel}
+                        animationDuration={500}
+                        onClick={(_, i) => setActiveDonutIndex(p => p === i ? null : i)}
+                      >
+                        {incomeByCategory.map((_, i) => (
+                          <Cell key={i}
+                            fill={activeDonutIndex !== null && activeDonutIndex !== i
+                              ? DONUT_COLORS[i % DONUT_COLORS.length] + '55'
+                              : DONUT_COLORS[i % DONUT_COLORS.length]}
+                            stroke="#fff" strokeWidth={3}
+                            style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+                          />
+                        ))}
+                      </Pie>
+
+                      {/* Inner ring — currencies. No on-slice label here anymore (it was
+                          the "₵ GHS / 13,000" text crowding small slices) — the legend
+                          below and the matrix table to the right already carry that
+                          same information without cluttering the ring itself. */}
+                      <Pie
+                        data={currencyBreakdown}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="48%"
+                        innerRadius="35%"
+                        outerRadius="54%"
+                        paddingAngle={2}
+                        animationDuration={500}
+                        isAnimationActive
+                      >
+                        {currencyBreakdown.map((c, i) => (
+                          <Cell key={c.name}
+                            fill={getCurrencyColor(c.name, i)}
+                            stroke="#fff" strokeWidth={2}
+                          />
+                        ))}
+                      </Pie>
+
+                      <Tooltip
+                        formatter={(v: any, name: any) => [
+                          `${getCurrencySymbol(name)} ${Math.round(Number(v)).toLocaleString()}`,
+                          name,
+                        ]}
+                      />
+                      <Legend
+                        layout="horizontal" align="center" verticalAlign="bottom"
+                        iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                        payload={incomeByCategory.map((c, i) => ({
+                          value: `${c.name} (${grandTotalIncomeRaw > 0 ? Math.round((c.value / grandTotalIncomeRaw) * 100) : 0}%)`,
+                          type:  'square' as const,
+                          color: DONUT_COLORS[i % DONUT_COLORS.length],
+                        }))}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* Centre label */}
+                  <div
+                    className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
+                    style={{ top: 0, height: 'calc(100% - 52px)' }}
+                  >
+                    <div className="text-center leading-tight" style={{ maxWidth: 110 }}>
+                      <p className="text-[9px] sm:text-[11px] text-muted-foreground font-semibold uppercase tracking-wide">
+                        {activeDonutIndex !== null ? incomeByCategory[activeDonutIndex]?.name : 'Total Income'}
+                      </p>
+                      {currencyBreakdown.length > 1 && activeDonutIndex === null && (
+                        <p className="text-[8px] sm:text-[10px] text-muted-foreground">Multi-currency</p>
+                      )}
+                      <p className="text-base sm:text-xl font-bold tabular-nums mt-0.5"
+                        style={{ color: theme.colors.primary }}>
+                        {activeDonutIndex !== null
+                          ? Math.round(incomeByCategory[activeDonutIndex]?.value ?? 0).toLocaleString()
+                          : Math.round(grandTotalIncomeRaw).toLocaleString()}
+                      </p>
+                      {currencyBreakdown.length > 1 && activeDonutIndex === null && (
+                        <p className="text-[7px] sm:text-[9px] text-muted-foreground mt-0.5">Combined, all currencies</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Matrix table */}
+                <div className="overflow-x-auto w-full">
+                  <table className="w-full text-[10px] sm:text-xs border-collapse min-w-[260px]">
+                    <thead>
+                      <tr>
+                        <th className="text-left align-bottom pb-2 pr-2 font-semibold text-muted-foreground">Category</th>
+                        {currencyBreakdown.map((c, i) => (
+                          <th key={c.name}
+                            className="text-center pb-2 px-2 font-semibold whitespace-nowrap"
+                            style={{ background: getCurrencyColor(c.name, i) + '90', borderRadius: '4px 4px 0 0' }}>
+                            {getCurrencySymbol(c.name)} {c.name}
+                          </th>
+                        ))}
+                        <th className="text-center pb-2 px-2 font-semibold text-muted-foreground bg-muted/40"
+                          style={{ borderRadius: '4px 4px 0 0' }}>
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {incomeByCategory.map((cat, idx) => (
+                        <tr key={cat.name} className="border-t border-border/60">
+                          <td className="py-2 pr-2 font-medium whitespace-nowrap">
+                            <span className="inline-block w-2.5 h-2.5 rounded-sm mr-1.5 align-middle"
+                              style={{ background: DONUT_COLORS[idx % DONUT_COLORS.length] }} />
+                            {cat.name}
+                          </td>
+                          {currencyBreakdown.map((c, i) => {
+                            const v = incomeMatrix[cat.name]?.[c.name] ?? 0
+                            return (
+                              <td key={c.name} className="text-center py-2 px-2 tabular-nums"
+                                style={{ background: getCurrencyColor(c.name, i) + '22' }}>
+                                {v > 0
+                                  ? <span className="font-medium">{Math.round(v).toLocaleString()}</span>
+                                  : <span className="text-muted-foreground/40">—</span>}
+                              </td>
+                            )
+                          })}
+                          <td className="text-center py-2 px-2 font-semibold tabular-nums bg-muted/30 whitespace-nowrap">
+                            {Math.round(cat.value).toLocaleString()}
+                            <span className="text-muted-foreground font-normal ml-1 text-[9px]">
+                              ({grandTotalIncomeRaw > 0 ? Math.round((cat.value / grandTotalIncomeRaw) * 100) : 0}%)
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-border">
+                        <td className="py-2 pr-2 font-bold">Total</td>
+                        {currencyBreakdown.map((c, i) => (
+                          <td key={c.name} className="text-center py-2 px-2 font-bold tabular-nums"
+                            style={{ background: getCurrencyColor(c.name, i) + '44' }}>
+                            {Math.round(c.value).toLocaleString()}
+                          </td>
+                        ))}
+                        <td className="text-center py-2 px-2 font-bold tabular-nums bg-muted/50">
+                          {Math.round(grandTotalIncomeRaw).toLocaleString()}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-2 italic">
+                    Amounts shown per currency — not converted or combined.
+                  </p>
+                </div>
+              </div>
+            )
+          ) : (
+            <IncomeDecompositionTree
+              filteredIncomes={filteredIncomes}
+              getTransactionCurrency={getTransactionCurrency}
+              themePrimary={theme.colors.primary}
+            />
+          )}
         </CardContent>
       </Card>
 
