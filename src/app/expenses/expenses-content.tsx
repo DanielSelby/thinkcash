@@ -40,6 +40,7 @@ interface Props {
   initialExpenses: Expense[]
   accounts: UserAccount[]
   userId: string
+  budgets?: any[]
 }
 
 const shortFmt = (v: number) => {
@@ -141,7 +142,7 @@ function CurrencyTotal({ byCurrency, colorClass }: {
   )
 }
 
-export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
+export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [] }: Props) {
   const { expenseCategories } = useCategories()
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -474,11 +475,11 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                   {/* Legend */}
                   <div className="flex gap-4 mb-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: theme.colors.primary }} />
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: theme.colors.primaryLight || theme.colors.primary + 'aa' }} />
                       Budget limit
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: theme.colors.accent }} />
+                      <span className="w-3 h-3 rounded-sm inline-block bg-destructive" />
                       Actual spent
                     </span>
                   </div>
@@ -547,8 +548,8 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                           <Cell
                             key={i}
                             fill={activeCategoryIndex !== null && activeCategoryIndex !== i
-                              ? theme.colors.primary + '55'
-                              : theme.colors.primary}
+                              ? (theme.colors.primaryLight || theme.colors.primary + 'aa') + '55'
+                              : (theme.colors.primaryLight || theme.colors.primary + 'aa')}
                           />
                         ))}
                         <LabelList
@@ -576,11 +577,14 @@ export function ExpensesContent({ initialExpenses, accounts, userId }: Props) {
                         onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
                       >
                         {budgetVsActual.map((row, i) => {
+                          const over = row.actual > row.budget && row.budget > 0
                           const dimmed = activeCategoryIndex !== null && activeCategoryIndex !== i
                           return (
                             <Cell
                               key={i}
-                              fill={dimmed ? theme.colors.accent + '55' : theme.colors.accent}
+                              fill={dimmed
+                                ? (over ? '#ef4444' : '#22c55e') + '55'
+                                : (over ? '#ef4444' : '#22c55e')}
                             />
                           )
                         })}

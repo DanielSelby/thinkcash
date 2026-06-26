@@ -82,24 +82,6 @@ const CategoryOuterLabel = (props: any) => {
   )
 }
 
-// ── Inner label: "€ EUR / 4700" stacked two lines ────────────────────
-const CurrencyInnerLabel = (props: any) => {
-  const { cx, cy, midAngle, innerRadius, outerRadius, percent, name, value, viewBox } = props
-  if (percent < 0.08) return null
-  const RAD   = Math.PI / 180
-  const r     = innerRadius + (outerRadius - innerRadius) * 0.5
-  const x     = cx + r * Math.cos(-midAngle * RAD)
-  const y     = cy + r * Math.sin(-midAngle * RAD)
-  const fs    = (viewBox?.width ?? 400) < 340 ? 8 : 10
-  return (
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
-      fontSize={fs} fontWeight={700} fill="#1f2937">
-      <tspan x={x} dy="-0.55em">{getCurrencySymbol(name)} {name}</tspan>
-      <tspan x={x} dy="1.2em">{Math.round(value).toLocaleString()}</tspan>
-    </text>
-  )
-}
-
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -740,8 +722,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Bar dataKey="budget" fill={theme.colors.primaryLight} name="Budget" radius={[0,4,4,0]} />
-                <Bar dataKey="spent"  fill={theme.colors.accent}       name="Spent"  radius={[0,4,4,0]} />
+                <Bar dataKey="budget" fill={theme.colors.primary + '40'} name="Budget" radius={[0,4,4,0]} />
+                <Bar dataKey="spent"  fill={theme.colors.primary}        name="Spent"  radius={[0,4,4,0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -767,9 +749,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             <div className="flex flex-col lg:grid lg:grid-cols-2 gap-4 lg:gap-10 items-center">
 
               {/* ── Nested donut — responsive sizing ── */}
-              <div className="relative w-full mx-auto" style={{ maxWidth: 420 }}>
-                <ResponsiveContainer width="100%" height={380}>
-                  <PieChart margin={{ top: 28, right: 40, bottom: 40, left: 40 }}>
+              <div className="relative w-full mx-auto" style={{ maxWidth: 480 }}>
+                <ResponsiveContainer width="100%" height={440}>
+                  <PieChart margin={{ top: 32, right: 48, bottom: 44, left: 48 }}>
 
                     {/* Outer ring — categories */}
                     <Pie
@@ -778,8 +760,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       nameKey="name"
                       cx="50%"
                       cy="48%"
-                      innerRadius="56%"
-                      outerRadius="76%"
+                      innerRadius="58%"
+                      outerRadius="82%"
                       paddingAngle={2}
                       labelLine={false}
                       label={CategoryOuterLabel}
@@ -797,18 +779,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       ))}
                     </Pie>
 
-                    {/* Inner ring — currencies */}
+                    {/* Inner ring — currencies. No on-slice label here anymore (it was
+                        the "₵ GHS / 13,000" text crowding small slices) — the legend
+                        below and the matrix table to the right already carry that
+                        same information without cluttering the ring itself. */}
                     <Pie
                       data={currencyBreakdown}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
                       cy="48%"
-                      innerRadius="33%"
-                      outerRadius="50%"
+                      innerRadius="35%"
+                      outerRadius="54%"
                       paddingAngle={2}
-                      labelLine={false}
-                      label={CurrencyInnerLabel}
                       animationDuration={500}
                       isAnimationActive
                     >
