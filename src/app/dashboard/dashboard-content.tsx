@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
   ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
-  Eye, EyeOff, Bookmark,
+  Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
+  Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -104,8 +105,20 @@ function IncomeDecompositionTree({
   getTransactionCurrency: (r: any) => string
   themePrimary: string
 }) {
-  const [expandedCurrency, setExpandedCurrency] = useState<string | null>(null)
-  const [selectedNode, setSelectedNode] = useState<DecompNode | null>(null)
+  const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<{ currency: string; category: string } | null>(null)
+  const [sortMode,    setSortMode]    = useState<'amount' | 'name'>('amount')
+  const [zoomedIn,    setZoomedIn]    = useState(false)
+  const [expandedView, setExpandedView] = useState(false)
+
+  // Live-measured curved connectors — root → each currency, and each
+  // currency → its own categories — recomputed from actual DOM positions
+  // so the curves always line up with the rendered cards, not a guessed layout.
+  const containerRef    = useRef<HTMLDivElement>(null)
+  const rootRef          = useRef<HTMLDivElement>(null)
+  const currencyElsRef   = useRef<Map<string, HTMLDivElement>>(new Map())
+  const categoryElsRef   = useRef<Map<string, HTMLDivElement>>(new Map())
+  const [connectors, setConnectors] = useState<{ d: string; color: string }[]>([])
 
   const grandTotal = useMemo(() =>
     filteredIncomes.reduce((s, r) => s + Number(r.amount), 0), [filteredIncomes])
@@ -122,7 +135,11 @@ function IncomeDecompositionTree({
       byCurrency[cur].categories[cat].rows.push(r)
     })
 
-    const currencyEntries = Object.entries(byCurrency).sort((a, b) => b[1].total - a[1].total)
+    const comparator = sortMode === 'amount'
+      ? (a: [string, { total: number }], b: [string, { total: number }]) => b[1].total - a[1].total
+      : (a: [string, { total: number }], b: [string, { total: number }]) => a[0].localeCompare(b[0])
+
+    const currencyEntries = Object.entries(byCurrency).sort(comparator)
     return currencyEntries.map(([cur, data], i): DecompNode => ({
       key: cur,
       label: cur,
@@ -132,7 +149,7 @@ function IncomeDecompositionTree({
       type: 'currency',
       currency: cur,
       children: Object.entries(data.categories)
-        .sort((a, b) => b[1].total - a[1].total)
+        .sort(comparator)
         .map(([cat, catData], j): DecompNode => ({
           key: `${cur}-${cat}`,
           label: cat,
@@ -144,19 +161,95 @@ function IncomeDecompositionTree({
           category: cat,
         })),
     }))
-  }, [filteredIncomes, grandTotal, getTransactionCurrency])
+  }, [filteredIncomes, grandTotal, getTransactionCurrency, sortMode])
 
   const currencyCount = tree.length
   const categoryCount = useMemo(() =>
     new Set(filteredIncomes.map(r => r.category || 'Other')).size, [filteredIncomes])
   const txnCount = filteredIncomes.length
 
+  const selectedCurrencyNode = useMemo(() =>
+    selectedCurrency ? tree.find(t => t.key === selectedCurrency) ?? null : null,
+    [tree, selectedCurrency])
+
+  const selectedCategoryNode = useMemo(() =>
+    selectedCategory
+      ? tree.find(t => t.key === selectedCategory.currency)?.children?.find(c => c.category === selectedCategory.category) ?? null
+      : null,
+    [tree, selectedCategory])
+
   const detailRows = useMemo(() => {
-    if (!selectedNode || selectedNode.type !== 'category') return []
+    if (!selectedCategoryNode) return []
     return filteredIncomes
-      .filter(r => getTransactionCurrency(r) === selectedNode.currency && (r.category || 'Other') === selectedNode.category)
+      .filter(r => getTransactionCurrency(r) === selectedCategoryNode.currency && (r.category || 'Other') === selectedCategoryNode.category)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [selectedNode, filteredIncomes, getTransactionCurrency])
+  }, [selectedCategoryNode, filteredIncomes, getTransactionCurrency])
+
+  const selectCurrency = (key: string) => {
+    setSelectedCategory(null)
+    setSelectedCurrency(p => p === key ? null : key)
+  }
+  const selectCategory = (node: DecompNode) => {
+    setSelectedCurrency(node.currency ?? null)
+    setSelectedCategory(p =>
+      p?.category === node.category && p?.currency === node.currency
+        ? null
+        : { currency: node.currency!, category: node.category! })
+  }
+  const resetView = () => {
+    setSelectedCurrency(null)
+    setSelectedCategory(null)
+    setZoomedIn(false)
+    setExpandedView(false)
+  }
+
+  useLayoutEffect(() => {
+    function recompute() {
+      const containerEl = containerRef.current
+      const rootEl = rootRef.current
+      if (!containerEl || !rootEl) return
+      const containerRect = containerEl.getBoundingClientRect()
+      const rootRect = rootEl.getBoundingClientRect()
+      const next: { d: string; color: string }[] = []
+
+      const curve = (fx: number, fy: number, tx: number, ty: number) => {
+        const mx = (fx + tx) / 2
+        return `M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`
+      }
+
+      tree.forEach(currencyNode => {
+        const curEl = currencyElsRef.current.get(currencyNode.key)
+        if (!curEl) return
+        const curRect = curEl.getBoundingClientRect()
+        next.push({
+          d: curve(
+            rootRect.right - containerRect.left, rootRect.top + rootRect.height / 2 - containerRect.top,
+            curRect.left   - containerRect.left, curRect.top  + curRect.height  / 2 - containerRect.top,
+          ),
+          color: currencyNode.color,
+        })
+        currencyNode.children?.forEach(cat => {
+          const catEl = categoryElsRef.current.get(cat.key)
+          if (!catEl) return
+          const catRect = catEl.getBoundingClientRect()
+          next.push({
+            d: curve(
+              curRect.right - containerRect.left, curRect.top + curRect.height / 2 - containerRect.top,
+              catRect.left  - containerRect.left, catRect.top + catRect.height / 2 - containerRect.top,
+            ),
+            color: currencyNode.color,
+          })
+        })
+      })
+      setConnectors(next)
+    }
+
+    recompute()
+    const ro = new ResizeObserver(recompute)
+    if (containerRef.current) ro.observe(containerRef.current)
+    window.addEventListener('resize', recompute)
+    return () => { ro.disconnect(); window.removeEventListener('resize', recompute) }
+  }, [tree, zoomedIn, expandedView, selectedCurrency, selectedCategory])
 
   if (tree.length === 0) {
     return (
@@ -172,24 +265,36 @@ function IncomeDecompositionTree({
       {/* Summary KPI row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="rounded-lg border border-border p-2.5">
-          <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total Income</p>
+          <div className="flex items-center gap-1.5">
+            <Coins className="w-3 h-3 text-muted-foreground" />
+            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total Income</p>
+          </div>
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5" style={{ color: themePrimary }}>
             {Math.round(grandTotal).toLocaleString()}
           </p>
           <p className="text-[9px] sm:text-[10px] text-muted-foreground">All currencies</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
-          <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Currencies</p>
+          <div className="flex items-center gap-1.5">
+            <Globe className="w-3 h-3 text-muted-foreground" />
+            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Currencies</p>
+          </div>
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5">{currencyCount}</p>
           <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{tree.map(t => t.key).join(', ')}</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
-          <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Categories</p>
+          <div className="flex items-center gap-1.5">
+            <Tag className="w-3 h-3 text-muted-foreground" />
+            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Categories</p>
+          </div>
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5">{categoryCount}</p>
           <p className="text-[9px] sm:text-[10px] text-muted-foreground">Income categories</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
-          <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Transactions</p>
+          <div className="flex items-center gap-1.5">
+            <Receipt className="w-3 h-3 text-muted-foreground" />
+            <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Transactions</p>
+          </div>
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5">{txnCount}</p>
           <p className="text-[9px] sm:text-[10px] text-muted-foreground">Total entries</p>
         </div>
@@ -198,82 +303,144 @@ function IncomeDecompositionTree({
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4">
         {/* Tree */}
         <div className="rounded-xl border border-border p-3 sm:p-4 overflow-x-auto">
-          <p className="text-[10px] text-muted-foreground mb-3">Click a currency to expand · click a category for transaction detail</p>
-          <div className="flex items-stretch gap-3 min-w-[460px]">
+
+          {/* Toolbar */}
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <select
+                  value={sortMode}
+                  onChange={e => setSortMode(e.target.value as 'amount' | 'name')}
+                  className="appearance-none text-xs font-medium pl-2.5 pr-6 py-1.5 rounded-lg border border-border bg-white text-foreground focus:outline-none focus:ring-1 cursor-pointer"
+                >
+                  <option value="amount">Decomposition by Amount</option>
+                  <option value="name">Decomposition by Name</option>
+                </select>
+                <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+              </div>
+              <p className="text-[10px] text-muted-foreground hidden md:block">Click any node to drill down</p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setExpandedView(v => !v)} title="Toggle expanded layout"
+                className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${
+                  expandedView ? 'border-transparent text-white' : 'border-border bg-white text-muted-foreground hover:text-foreground'
+                }`}
+                style={expandedView ? { background: themePrimary } : {}}>
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={() => setZoomedIn(v => !v)} title="Zoom in"
+                className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-colors ${
+                  zoomedIn ? 'border-transparent text-white' : 'border-border bg-white text-muted-foreground hover:text-foreground'
+                }`}
+                style={zoomedIn ? { background: themePrimary } : {}}>
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={resetView} title="Reset view"
+                className="w-7 h-7 rounded-lg flex items-center justify-center border border-border bg-white text-muted-foreground hover:text-foreground transition-colors">
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground mb-3 md:hidden">Click any node to drill down</p>
+
+          <div
+            ref={containerRef}
+            className="relative flex items-center gap-6 transition-transform duration-200"
+            style={{
+              minWidth: expandedView ? 640 : 460,
+              transform: zoomedIn ? 'scale(1.08)' : 'scale(1)',
+              transformOrigin: 'left center',
+            }}
+          >
+            {/* Curved connectors — drawn from live-measured node positions */}
+            <svg className="absolute inset-0 pointer-events-none overflow-visible" width="100%" height="100%">
+              {connectors.map((c, i) => (
+                <path key={i} d={c.d} stroke={c.color} strokeWidth={1.5} fill="none" opacity={0.55} />
+              ))}
+            </svg>
+
             {/* Root node */}
-            <div className="flex items-center">
-              <div className="rounded-xl border-2 px-3 py-2.5 text-center" style={{ borderColor: themePrimary, background: themePrimary + '0d' }}>
+            <div ref={rootRef} className="flex-shrink-0 relative z-10">
+              <button
+                onClick={resetView}
+                className="rounded-xl border-2 px-3 py-2.5 text-center flex flex-col items-center gap-1"
+                style={{ borderColor: themePrimary, background: themePrimary + '0d' }}
+              >
+                <span className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: themePrimary }}>
+                  <Wallet className="w-3.5 h-3.5 text-white" />
+                </span>
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total Income</p>
                 <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
                 <p className="text-[9px] text-muted-foreground">100%</p>
-              </div>
+              </button>
             </div>
 
-            {/* Connector */}
-            <div className="flex flex-col justify-center">
-              <div className="w-4 border-t-2 border-dashed border-border" />
-            </div>
-
-            {/* Currency column */}
-            <div className="flex flex-col gap-2 justify-center">
+            {/* Currency rows — each paired with its own category list, all expanded at once */}
+            <div className="flex flex-col gap-4 relative z-10">
               {tree.map(node => {
-                const isExpanded = expandedCurrency === node.key
+                const isCurSelected = selectedCurrency === node.key
                 return (
-                  <button
-                    key={node.key}
-                    onClick={() => setExpandedCurrency(p => p === node.key ? null : node.key)}
-                    className="rounded-xl border-2 px-3 py-2 text-left transition-all"
-                    style={{
-                      borderColor: isExpanded ? node.color : 'var(--border)',
-                      background: isExpanded ? node.color + '12' : '#fff',
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: node.color }} />
-                      <div>
-                        <p className="text-xs font-bold">{node.label}</p>
-                        <p className="text-xs font-semibold tabular-nums">{Math.round(node.amount).toLocaleString()}</p>
-                        <p className="text-[9px] text-muted-foreground">{node.pct.toFixed(0)}%</p>
-                      </div>
+                  <div key={node.key} className="flex items-start gap-6">
+                    <div
+                      ref={el => { if (el) currencyElsRef.current.set(node.key, el); else currencyElsRef.current.delete(node.key) }}
+                      className="flex-shrink-0"
+                    >
+                      <button
+                        onClick={() => selectCurrency(node.key)}
+                        className="rounded-xl border-2 px-3 py-2 text-left transition-all flex items-center gap-2.5"
+                        style={{
+                          borderColor: isCurSelected ? node.color : 'var(--border)',
+                          background: isCurSelected ? node.color + '12' : '#fff',
+                        }}
+                      >
+                        <span className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                          style={{ background: node.color }}>
+                          {node.label}
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold">{node.label}</p>
+                          <p className="text-xs font-semibold tabular-nums">{Math.round(node.amount).toLocaleString()}</p>
+                          <p className="text-[9px] text-muted-foreground">{node.pct.toFixed(0)}%</p>
+                        </div>
+                      </button>
                     </div>
-                  </button>
+
+                    <div className="flex flex-col gap-1.5 justify-center">
+                      {node.children?.map(cat => {
+                        const isCatSelected = selectedCategory?.currency === cat.currency && selectedCategory?.category === cat.category
+                        return (
+                          <div
+                            key={cat.key}
+                            ref={el => { if (el) categoryElsRef.current.set(cat.key, el); else categoryElsRef.current.delete(cat.key) }}
+                          >
+                            <button
+                              onClick={() => selectCategory(cat)}
+                              className="rounded-lg border px-2.5 py-1.5 text-left transition-all whitespace-nowrap"
+                              style={{
+                                borderColor: isCatSelected ? cat.color : 'var(--border)',
+                                background: isCatSelected ? cat.color + '14' : '#fff',
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="flex items-center gap-1.5 text-xs font-medium">
+                                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                                  {cat.label}
+                                </span>
+                                <span className="text-xs font-semibold tabular-nums">
+                                  {Math.round(cat.amount).toLocaleString()} <span className="text-muted-foreground font-normal">({cat.pct.toFixed(0)}%)</span>
+                                </span>
+                              </div>
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 )
               })}
             </div>
-
-            {/* Connector + Category column — only when a currency is expanded */}
-            {expandedCurrency && (
-              <>
-                <div className="flex flex-col justify-center">
-                  <div className="w-4 border-t-2 border-dashed border-border" />
-                </div>
-                <div className="flex flex-col gap-1.5 justify-center">
-                  {tree.find(t => t.key === expandedCurrency)?.children?.map(cat => {
-                    const isSelected = selectedNode?.key === cat.key
-                    return (
-                      <button
-                        key={cat.key}
-                        onClick={() => setSelectedNode(p => p?.key === cat.key ? null : cat)}
-                        className="rounded-lg border px-2.5 py-1.5 text-left transition-all whitespace-nowrap"
-                        style={{
-                          borderColor: isSelected ? cat.color : 'var(--border)',
-                          background: isSelected ? cat.color + '14' : '#fff',
-                        }}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-medium">{cat.label}</span>
-                          <span className="text-xs font-semibold tabular-nums">
-                            {Math.round(cat.amount).toLocaleString()} <span className="text-muted-foreground font-normal">({cat.pct.toFixed(0)}%)</span>
-                          </span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
           </div>
 
           {/* Legend */}
@@ -285,43 +452,156 @@ function IncomeDecompositionTree({
               </span>
             ))}
           </div>
+
+          {/* Breadcrumb + Reset */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border text-xs flex-wrap gap-2">
+            <p className="text-muted-foreground flex items-center gap-1 flex-wrap">
+              <span className="font-semibold text-foreground">Path:</span>
+              <button onClick={resetView} className="font-medium hover:underline" style={{ color: themePrimary }}>Income</button>
+              {selectedCurrencyNode && (
+                <>
+                  <ChevronRight className="w-3 h-3" />
+                  <button onClick={() => setSelectedCategory(null)} className="font-medium hover:underline" style={{ color: themePrimary }}>
+                    {selectedCurrencyNode.label}
+                  </button>
+                </>
+              )}
+              {selectedCategoryNode && (
+                <>
+                  <ChevronRight className="w-3 h-3" />
+                  <span className="font-medium text-foreground">{selectedCategoryNode.label}</span>
+                </>
+              )}
+            </p>
+            <button onClick={resetView} className="flex items-center gap-1 font-semibold hover:underline" style={{ color: themePrimary }}>
+              <RotateCcw className="w-3 h-3" /> Reset View
+            </button>
+          </div>
         </div>
 
         {/* Detail panel */}
         <div className="rounded-xl border border-border p-3 sm:p-4">
-          {selectedNode ? (
+          {selectedCategoryNode ? (
             <>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Details: {selectedNode.currency} {'>'} {selectedNode.category}
+                Details: {selectedCategoryNode.currency} {'>'} {selectedCategoryNode.label}
               </p>
-              <p className="text-sm font-bold mt-0.5" style={{ color: selectedNode.color }}>
-                {Math.round(selectedNode.amount).toLocaleString()} ({selectedNode.pct.toFixed(1)}% of {selectedNode.currency} total)
+              <p className="text-sm font-bold mt-0.5" style={{ color: selectedCategoryNode.color }}>
+                {Math.round(selectedCategoryNode.amount).toLocaleString()} ({selectedCategoryNode.pct.toFixed(1)}% of {selectedCategoryNode.currency} total)
               </p>
-              <div className="mt-3 space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                {detailRows.map((r, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs py-1.5 border-b border-border/50 last:border-0">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{r.title || r.description || selectedNode.category}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: selectedNode.color }}>
-                      {Math.round(Number(r.amount)).toLocaleString()}
+
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                      <th className="text-left pb-1.5 font-semibold">Transaction / Source</th>
+                      <th className="text-left pb-1.5 font-semibold">Date</th>
+                      <th className="text-right pb-1.5 font-semibold">Amount ({selectedCategoryNode.currency})</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRows.map((r, i) => (
+                      <tr key={i} className="border-t border-border/50">
+                        <td className="py-1.5 pr-2 font-medium truncate max-w-[120px]">{r.title || r.description || selectedCategoryNode.label}</td>
+                        <td className="py-1.5 pr-2 text-muted-foreground whitespace-nowrap">
+                          {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-1.5 text-right font-semibold tabular-nums" style={{ color: selectedCategoryNode.color }}>
+                          {Math.round(Number(r.amount)).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-border">
+                      <td className="py-1.5 font-bold" colSpan={2}>Total</td>
+                      <td className="py-1.5 text-right font-bold tabular-nums" style={{ color: selectedCategoryNode.color }}>
+                        {Math.round(detailRows.reduce((s, r) => s + Number(r.amount), 0)).toLocaleString()}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 pt-2 border-t border-border space-y-1.5 text-[11px]">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">About this node</p>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Coins className="w-3 h-3" /> Currency</span>
+                  <span className="font-medium">{selectedCategoryNode.currency}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Tag className="w-3 h-3" /> Category</span>
+                  <span className="font-medium">{selectedCategoryNode.label}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Wallet className="w-3 h-3" /> Amount</span>
+                  <span className="font-medium">{Math.round(selectedCategoryNode.amount).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Percent className="w-3 h-3" /> % of {selectedCategoryNode.currency} Total</span>
+                  <span className="font-medium">{selectedCategoryNode.pct.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Receipt className="w-3 h-3" /> Transactions</span>
+                  <span className="font-medium">{detailRows.length}</span>
+                </div>
+              </div>
+            </>
+          ) : selectedCurrencyNode ? (
+            <>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Details: {selectedCurrencyNode.label}
+              </p>
+              <p className="text-sm font-bold mt-0.5" style={{ color: selectedCurrencyNode.color }}>
+                {Math.round(selectedCurrencyNode.amount).toLocaleString()} ({selectedCurrencyNode.pct.toFixed(1)}% of total income)
+              </p>
+
+              <div className="mt-3 space-y-1">
+                {selectedCurrencyNode.children?.map(cat => (
+                  <button
+                    key={cat.key}
+                    onClick={() => selectCategory(cat)}
+                    className="w-full flex items-center justify-between text-xs py-1.5 border-b border-border/50 last:border-0 hover:bg-muted/30 rounded px-1 transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: cat.color }} />
+                      {cat.label}
                     </span>
-                  </div>
+                    <span className="font-semibold tabular-nums">
+                      {Math.round(cat.amount).toLocaleString()} <span className="text-muted-foreground font-normal">({cat.pct.toFixed(0)}%)</span>
+                    </span>
+                  </button>
                 ))}
               </div>
-              <div className="mt-3 pt-2 border-t border-border space-y-1 text-[11px]">
-                <div className="flex justify-between"><span className="text-muted-foreground">Currency</span><span className="font-medium">{selectedNode.currency}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Category</span><span className="font-medium">{selectedNode.category}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Transactions</span><span className="font-medium">{detailRows.length}</span></div>
+
+              <div className="mt-3 pt-2 border-t border-border space-y-1.5 text-[11px]">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">About this node</p>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Coins className="w-3 h-3" /> Currency</span>
+                  <span className="font-medium">{selectedCurrencyNode.label}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Tag className="w-3 h-3" /> Categories</span>
+                  <span className="font-medium">{selectedCurrencyNode.children?.length ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Wallet className="w-3 h-3" /> Amount</span>
+                  <span className="font-medium">{Math.round(selectedCurrencyNode.amount).toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Percent className="w-3 h-3" /> % of Total Income</span>
+                  <span className="font-medium">{selectedCurrencyNode.pct.toFixed(1)}%</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground"><Receipt className="w-3 h-3" /> Transactions</span>
+                  <span className="font-medium">
+                    {filteredIncomes.filter(r => getTransactionCurrency(r) === selectedCurrencyNode.currency).length}
+                  </span>
+                </div>
               </div>
             </>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center gap-2 py-10 text-muted-foreground">
               <Wallet className="w-7 h-7 opacity-20" />
-              <p className="text-xs">Expand a currency, then click a category<br />to see its transactions here</p>
+              <p className="text-xs">Click a currency or category node<br />to see its details here</p>
             </div>
           )}
         </div>
