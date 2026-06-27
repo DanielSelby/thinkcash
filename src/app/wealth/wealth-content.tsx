@@ -11,6 +11,8 @@ import {
   ArrowUpRight, ArrowDownRight, PiggyBank, MoreVertical,
   Tag, MapPin, Calendar, ShieldCheck, DollarSign,
   TrendingDown as DepIcon, CheckCircle2, XCircle, Clock,
+  Banknote, Wallet2, Coins, Smartphone as PhoneIcon,
+  RefreshCw,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -30,11 +32,22 @@ const fmt = (n: number) => formatCurrency(n, 'GHS')
 
 // ── Constants ─────────────────────────────────────────────────────────
 const ASSET_TYPES = [
-  { value: 'property',    label: 'Property',    icon: Building2  },
-  { value: 'vehicle',     label: 'Vehicle',     icon: Car        },
-  { value: 'electronics', label: 'Electronics', icon: Smartphone },
-  { value: 'jewelry',     label: 'Jewelry',     icon: Gem        },
-  { value: 'other',       label: 'Other',       icon: Landmark   },
+  { value: 'property',    label: 'Property',         icon: Building2 },
+  { value: 'vehicle',     label: 'Vehicle',          icon: Car       },
+  { value: 'electronics', label: 'Electronics',      icon: Smartphone},
+  { value: 'jewelry',     label: 'Jewelry',          icon: Gem       },
+  { value: 'cash',        label: 'Cash & Liquid',    icon: Banknote  },
+  { value: 'other',       label: 'Other',            icon: Landmark  },
+]
+
+const LIQUID_ASSET_SUBTYPES = [
+  { value: 'cash_in_hand',   label: 'Cash in Hand',     icon: Banknote  },
+  { value: 'bank_account',   label: 'Bank Account',     icon: Building2 },
+  { value: 'mobile_money',   label: 'Mobile Money',     icon: PhoneIcon },
+  { value: 'savings',        label: 'Savings Account',  icon: PiggyBank },
+  { value: 'fixed_deposit',  label: 'Fixed Deposit',    icon: Coins     },
+  { value: 'treasury_bill',  label: 'Treasury Bill',    icon: Landmark  },
+  { value: 'other_liquid',   label: 'Other Liquid',     icon: Wallet2   },
 ]
 
 const INVESTMENT_TYPES = [
@@ -270,6 +283,10 @@ function AssetActionsMenu({ onView, onEdit, onSell, onDispose, onDelete }: {
 const assetSchema = z.object({
   name:                     z.string().min(1, 'Name required'),
   asset_type:               z.string().min(1, 'Type required'),
+  is_liquid:                z.boolean().optional(),
+  liquid_subtype:           z.string().optional(),
+  currency:                 z.string().optional(),
+  account_id:               z.string().optional(),
   description:              z.string().optional(),
   asset_tag:                z.string().optional(),
   current_value:            z.coerce.number().min(0),
@@ -341,14 +358,16 @@ interface Props {
   initialInvestments: Investment[]
   initialDebts:       Debt[]
   initialLoans:       Loan[]
-  userId: string
+  initialAccounts:    any[]
+  userId:             string
 }
 
-export function WealthContent({ initialAssets, initialInvestments, initialDebts, initialLoans, userId }: Props) {
+export function WealthContent({ initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts, userId }: Props) {
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [assets,      setAssets]      = useState<any[]>(initialAssets)
+  const [accounts]                    = useState<any[]>(initialAccounts)
   const [investments, setInvestments] = useState<any[]>(initialInvestments)
   const [debts,       setDebts]       = useState<any[]>(initialDebts)
   const [loans,       setLoans]       = useState<any[]>(initialLoans)
@@ -380,6 +399,8 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   // ── Totals ────────────────────────────────────────────────────────
   const activeAssets     = useMemo(() => assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated'), [assets])
   const totalAssets      = useMemo(() => activeAssets.reduce((s, a) => s + Number(a.current_value ?? 0), 0), [activeAssets])
+  const totalLiquid      = useMemo(() => activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').reduce((s, a) => s + Number(a.current_value ?? 0), 0), [activeAssets])
+  const totalPhysical    = useMemo(() => activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').reduce((s, a) => s + Number(a.current_value ?? 0), 0), [activeAssets])
   const totalInvested    = useMemo(() => investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), [investments])
   const totalDebts       = useMemo(() => debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), [debts])
   const totalLoans       = useMemo(() => loans.reduce((s, l) => s + Number(l.remaining ?? 0), 0), [loans])
@@ -421,7 +442,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
     setEditingId(null); setDialogType(type); setActiveTab('basic')
-    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
+    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', is_liquid: false, liquid_subtype: '', currency: 'GHS', account_id: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
     if (type === 'investment') investmentForm.reset({ name: '', investment_type: '', invested_amount: 0, current_value: 0, institution: '', notes: '' })
     if (type === 'debt') debtForm.reset({ name: '', debt_type: '', total_amount: 0, remaining: 0, interest_rate: 0, due_date: '', notes: '' })
     if (type === 'loan') loanForm.reset({ name: '', loan_type: '', principal: 0, remaining: 0, interest_rate: 0, monthly_payment: 0, start_date: '', end_date: '', institution: '', notes: '' })
@@ -621,11 +642,54 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KPI label="Physical Assets"  value={fmt(totalAssets)}   sub={`${activeAssets.length} active`} bg={SECTION_COLORS.asset.bg}      icon={Landmark}   />
+        <KPI label="Physical Assets"  value={fmt(totalPhysical)} sub={`${activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').length} items`} bg={SECTION_COLORS.asset.bg} icon={Landmark} />
+        <KPI label="Cash & Liquid"    value={fmt(totalLiquid)}   sub={`${activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').length} items`}  bg="#059669"                 icon={Banknote}  />
         <KPI label="Investments"      value={fmt(totalInvested)} sub={investmentGain >= 0 ? `+${fmt(investmentGain)} gain` : `${fmt(investmentGain)} loss`} bg={SECTION_COLORS.investment.bg} icon={TrendingUp} />
         <KPI label="Debts"            value={fmt(totalDebts)}    sub={`${debts.length} account(s)`}    bg={SECTION_COLORS.debt.bg}       icon={CreditCard}  />
         <KPI label="Loans"            value={fmt(totalLoans)}    sub={`${loans.length} loan(s)`}       bg={SECTION_COLORS.loan.bg}       icon={Building2}   />
       </div>
+
+      {/* Liquid Assets Summary */}
+      {assets.filter(a => a.is_liquid || a.asset_type === 'cash').length > 0 && (() => {
+        const liquidAssets = assets.filter(a => (a.is_liquid || a.asset_type === 'cash') && a.status === 'active')
+        const liquidByCurrency: Record<string, number> = {}
+        liquidAssets.forEach(a => {
+          const cur = a.currency || 'GHS'
+          liquidByCurrency[cur] = (liquidByCurrency[cur] || 0) + Number(a.current_value ?? 0)
+        })
+        return (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Banknote className="w-4 h-4 text-emerald-600" />
+              <p className="text-sm font-semibold text-emerald-800">Cash & Liquid Assets</p>
+              <span className="ml-auto text-xs text-emerald-600">{liquidAssets.length} item(s)</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {Object.entries(liquidByCurrency).map(([cur, amt]) => (
+                <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                  <p className="text-xs text-muted-foreground">{cur}</p>
+                  <p className="font-bold tabular-nums text-emerald-700">{formatCurrency(amt, cur)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 space-y-1.5">
+              {liquidAssets.map(a => {
+                const subtype = LIQUID_ASSET_SUBTYPES.find(s => s.value === a.liquid_subtype)
+                const Icon = subtype?.icon ?? Banknote
+                return (
+                  <div key={a.id} className="flex items-center gap-2 text-sm">
+                    <Icon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                    <span className="flex-1 truncate">{a.name}</span>
+                    <span className="font-semibold tabular-nums text-emerald-700">
+                      {formatCurrency(Number(a.current_value ?? 0), a.currency || 'GHS')}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Analytics row */}
       {analytics && (
@@ -719,15 +783,26 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                   {/* Badges */}
                   <div className="flex gap-1.5 flex-wrap">
                     <StatusBadge status={a.status ?? 'active'} />
-                    {a.condition && <ConditionBadge condition={a.condition} />}
+                    {a.condition && !a.is_liquid && <ConditionBadge condition={a.condition} />}
+                    {(a.is_liquid || a.asset_type === 'cash') && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                        <Banknote className="w-2.5 h-2.5 mr-0.5" />
+                        {LIQUID_ASSET_SUBTYPES.find(s => s.value === a.liquid_subtype)?.label || 'Liquid'}
+                      </span>
+                    )}
+                    {a.currency && a.currency !== 'GHS' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700">
+                        {a.currency}
+                      </span>
+                    )}
                   </div>
 
                   {/* Values */}
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-muted-foreground">Current Value</p>
-                      <p className="font-bold text-sm" style={{ color: SECTION_COLORS.asset.bg }}>
-                        {fmt(Number(a.current_value ?? 0))}
+                      <p className="font-bold text-sm" style={{ color: (a.is_liquid || a.asset_type === 'cash') ? '#059669' : SECTION_COLORS.asset.bg }}>
+                        {formatCurrency(Number(a.current_value ?? 0), a.currency || 'GHS')}
                       </p>
                     </div>
                     <div>
@@ -1005,6 +1080,81 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                   </Select>
                   {assetForm.formState.errors.asset_type && <p className="text-xs text-destructive">{assetForm.formState.errors.asset_type.message}</p>}
                 </div>
+
+
+                {/* Liquid asset toggle — appears when category = cash */}
+                {assetForm.watch('asset_type') === 'cash' && (
+                  <div className="space-y-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1">
+                      <Banknote className="w-3.5 h-3.5" /> Cash & Liquid Asset Details
+                    </p>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Liquid Asset Type</Label>
+                      <Select
+                        onValueChange={v => {
+                          assetForm.setValue('liquid_subtype', v, { shouldValidate: true })
+                          assetForm.setValue('is_liquid', true)
+                          // Auto-fill name if empty
+                          const sub = LIQUID_ASSET_SUBTYPES.find(s => s.value === v)
+                          if (!assetForm.getValues('name') && sub) assetForm.setValue('name', sub.label)
+                        }}
+                        defaultValue={assetForm.getValues('liquid_subtype') || ''}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Select liquid type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LIQUID_ASSET_SUBTYPES.map(s => (
+                            <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Currency</Label>
+                        <Select
+                          onValueChange={v => assetForm.setValue('currency', v)}
+                          defaultValue={assetForm.getValues('currency') || 'GHS'}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {['GHS','USD','EUR','GBP','NGN','KES','ZAR','AED'].map(c => (
+                              <SelectItem key={c} value={c}>{c}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Linked Account <span className="text-muted-foreground">(optional)</span></Label>
+                        <Select
+                          onValueChange={v => assetForm.setValue('account_id', v === 'none' ? '' : v)}
+                          defaultValue={assetForm.getValues('account_id') || 'none'}
+                        >
+                          <SelectTrigger className="bg-white">
+                            <SelectValue placeholder="Link account" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">No account</SelectItem>
+                            {accounts.map(a => (
+                              <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-emerald-600 bg-emerald-100/50 rounded-lg px-3 py-2">
+                      💡 Tip: Enter the <strong>Current Value</strong> as the cash amount available. This will count toward your net worth as a liquid asset.
+                    </div>
+                  </div>
+                )}
+
+                 {/* Description */}
                 <div className="space-y-1.5">
                   <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input placeholder="Brief description…" {...assetForm.register('description')} />
