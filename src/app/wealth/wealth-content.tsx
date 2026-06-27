@@ -286,7 +286,7 @@ const assetSchema = z.object({
   is_liquid:                z.boolean().optional(),
   liquid_subtype:           z.string().optional(),
   currency:                 z.string().optional(),
-  account_id:               z.string().optional(),
+  account_id:               z.string().nullish(),
   description:              z.string().optional(),
   asset_tag:                z.string().optional(),
   current_value:            z.coerce.number().min(0),
@@ -442,7 +442,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
     setEditingId(null); setDialogType(type); setActiveTab('basic')
-    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', is_liquid: false, liquid_subtype: '', currency: 'GHS', account_id: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
+    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', is_liquid: false, liquid_subtype: '', currency: 'GHS', account_id: undefined, description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
     if (type === 'investment') investmentForm.reset({ name: '', investment_type: '', invested_amount: 0, current_value: 0, institution: '', notes: '' })
     if (type === 'debt') debtForm.reset({ name: '', debt_type: '', total_amount: 0, remaining: 0, interest_rate: 0, due_date: '', notes: '' })
     if (type === 'loan') loanForm.reset({ name: '', loan_type: '', principal: 0, remaining: 0, interest_rate: 0, monthly_payment: 0, start_date: '', end_date: '', institution: '', notes: '' })
@@ -480,7 +480,19 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   const onSubmitAsset = async (data: AssetFormData) => {
     setLoading(true)
     const supabase = createClient()
-    const payload = { ...data, updated_at: new Date().toISOString() }
+    const payload = {
+      ...data,
+      account_id:  data.account_id  || null,
+      liquid_subtype: data.liquid_subtype || null,
+      currency:    data.currency    || 'GHS',
+      updated_at:  new Date().toISOString(),
+    }
+
+    // For cash assets, purchase_value = current_value (no original cost concept)
+    if (data.asset_type === 'cash') {
+      payload.purchase_value = payload.current_value
+    }
+
     if (editingId) {
       const { data: updated, error } = await supabase.from('assets').update(payload).eq('id', editingId).select().single()
       if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
@@ -1194,63 +1206,133 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
               </div>
             )}
 
-            {/* ── Financial Tab ── */}
+           {/* ── Financial Tab ── */}
             {activeTab === 'financial' && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label>Purchase Price *</Label>
-                    <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('purchase_value')} />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Current Market Value *</Label>
-                    <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('current_value')} />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Purchase Date</Label>
-                  <Input type="date" {...assetForm.register('purchase_date')} />
-                </div>
-
-                {/* Depreciation */}
-                <div className="pt-2 border-t border-border space-y-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                    <DepIcon className="w-3.5 h-3.5" /> Depreciation
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <Label>Method</Label>
-                      <Select onValueChange={v => assetForm.setValue('depreciation_method', v)}
-                        defaultValue={assetForm.getValues('depreciation_method') || 'none'}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>{DEPRECIATION_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
-                      </Select>
+                {assetForm.watch('asset_type') === 'cash' ? (
+                  /* ── Cash / Liquid financial fields ── */
+                  <div className="space-y-4">
+                    <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">
+                        Cash / Liquid Asset
+                      </p>
+                      <p className="text-xs text-emerald-600">
+                        Enter the amount currently available. No depreciation applies to cash assets.
+                      </p>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Annual Rate %</Label>
-                      <Input type="number" step="0.1" placeholder="e.g. 20" {...assetForm.register('annual_depreciation_rate')} />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Useful Life (years)</Label>
-                    <Input type="number" placeholder="e.g. 5" {...assetForm.register('useful_life_years')} />
-                  </div>
 
-                  {/* Live depreciation preview */}
-                  {(() => {
-                    const vals = assetForm.watch()
-                    const dep  = calcDepreciation(vals)
-                    if (!vals.annual_depreciation_rate || vals.depreciation_method === 'none') return null
-                    return (
-                      <div className="bg-orange-50 rounded-xl p-3 space-y-1 text-xs">
-                        <p className="font-semibold text-orange-700">Depreciation Preview</p>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Purchase Price</span><span className="font-medium">{fmt(Number(vals.purchase_value ?? 0))}</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Annual Depr.</span><span className="font-medium text-orange-600">-{fmt(dep.annualAmount)}</span></div>
-                        <div className="flex justify-between"><span className="text-muted-foreground">Current Depr. Value</span><span className="font-semibold">{fmt(dep.currentDepreciatedValue)}</span></div>
+                    <div className="space-y-1.5">
+                      <Label>Current Balance / Amount *</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">
+                          {assetForm.watch('currency') || 'GHS'}
+                        </span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          className="pl-14"
+                          {...assetForm.register('current_value')}
+                        />
                       </div>
-                    )
-                  })()}
-                </div>
+                      <p className="text-xs text-muted-foreground">
+                        This is the exact amount of cash or liquid funds available right now.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label>Date Recorded</Label>
+                      <Input type="date" {...assetForm.register('purchase_date')} />
+                      <p className="text-xs text-muted-foreground">
+                        When was this cash balance recorded or last updated?
+                      </p>
+                    </div>
+
+                    {/* Hidden — set purchase_value = current_value for cash */}
+                    <input type="hidden" {...assetForm.register('purchase_value')} />
+
+                    <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 text-xs text-blue-700 space-y-1">
+                      <p className="font-semibold">How cash assets work in Think-Shika PA:</p>
+                      <p>• Cash is added to your <strong>Total Assets</strong> and <strong>Net Worth</strong></p>
+                      <p>• Shown separately in the <strong>Cash & Liquid Assets</strong> summary</p>
+                      <p>• No depreciation is calculated for liquid assets</p>
+                      <p>• Update the balance manually when it changes</p>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── Standard physical asset financial fields ── */
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Purchase Price *</Label>
+                        <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('purchase_value')} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Current Market Value *</Label>
+                        <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('current_value')} />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Purchase Date</Label>
+                      <Input type="date" {...assetForm.register('purchase_date')} />
+                    </div>
+
+                    {/* Depreciation */}
+                    <div className="pt-2 border-t border-border space-y-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                        <DepIcon className="w-3.5 h-3.5" /> Depreciation
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label>Method</Label>
+                          <Select
+                            onValueChange={v => assetForm.setValue('depreciation_method', v)}
+                            defaultValue={assetForm.getValues('depreciation_method') || 'none'}
+                          >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {DEPRECIATION_METHODS.map(m => (
+                                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Annual Rate %</Label>
+                          <Input type="number" step="0.1" placeholder="e.g. 20" {...assetForm.register('annual_depreciation_rate')} />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Useful Life (years)</Label>
+                        <Input type="number" placeholder="e.g. 5" {...assetForm.register('useful_life_years')} />
+                      </div>
+
+                      {/* Live depreciation preview */}
+                      {(() => {
+                        const vals = assetForm.watch()
+                        const dep  = calcDepreciation(vals)
+                        if (!vals.annual_depreciation_rate || vals.depreciation_method === 'none') return null
+                        return (
+                          <div className="bg-orange-50 rounded-xl p-3 space-y-1 text-xs">
+                            <p className="font-semibold text-orange-700">Depreciation Preview</p>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Purchase Price</span>
+                              <span className="font-medium">{fmt(Number(vals.purchase_value ?? 0))}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Annual Depr.</span>
+                              <span className="font-medium text-orange-600">-{fmt(dep.annualAmount)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Current Depr. Value</span>
+                              <span className="font-semibold">{fmt(dep.currentDepreciatedValue)}</span>
+                            </div>
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

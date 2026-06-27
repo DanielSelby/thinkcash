@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { notify } from '@/lib/notify'
 import type { SavingsGoal } from '@/types'
 
 const schema = z.object({
@@ -71,6 +72,21 @@ export function SavingsContent({ initialGoals, userId }: Props) {
     setOpen(true)
   }
 
+  // Fires a "goal reached" notification once the saved goal's current_amount
+  // meets or exceeds its target. Deduped for 30 days so repeat edits to an
+  // already-completed goal (e.g. updating notes) don't re-spam the alert.
+  const checkGoalNotification = async (savedGoal: SavingsGoal) => {
+    if (savedGoal.target_amount > 0 && savedGoal.current_amount >= savedGoal.target_amount) {
+      await notify({
+        userId,
+        type: 'goal',
+        title: `Goal reached: ${savedGoal.goal_name}`,
+        message: `Congratulations! You've reached your savings goal of ${formatCurrency(savedGoal.target_amount)} for "${savedGoal.goal_name}".`,
+        dedupeWindowHours: 24 * 30,
+      })
+    }
+  }
+
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
@@ -78,11 +94,21 @@ export function SavingsContent({ initialGoals, userId }: Props) {
     if (editing) {
       const { data: updated, error } = await supabase.from('savings_goals').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editing.id).select().single()
       if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
-      else { setGoals(prev => prev.map(g => g.id === editing.id ? updated : g)); toast({ title: 'Goal updated', variant: 'success' }); setOpen(false) }
+      else {
+        setGoals(prev => prev.map(g => g.id === editing.id ? updated : g))
+        toast({ title: 'Goal updated', variant: 'success' })
+        setOpen(false)
+        checkGoalNotification(updated)
+      }
     } else {
       const { data: created, error } = await supabase.from('savings_goals').insert({ ...payload, user_id: userId }).select().single()
       if (error) toast({ title: 'Failed to create', description: error.message, variant: 'destructive' })
-      else { setGoals(prev => [created, ...prev]); toast({ title: 'Goal created!', variant: 'success' }); setOpen(false) }
+      else {
+        setGoals(prev => [created, ...prev])
+        toast({ title: 'Goal created!', variant: 'success' })
+        setOpen(false)
+        checkGoalNotification(created)
+      }
     }
     setLoading(false)
   }

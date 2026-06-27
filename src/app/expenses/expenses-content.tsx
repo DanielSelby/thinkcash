@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
+import { notify } from '@/lib/notify'
 import { useCategories } from '@/hooks/useCategories'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
@@ -192,6 +193,44 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
     setOpen(true)
   }
 
+  const checkBudgetNotification = async (savedExpense: Expense) => {
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const year  = String(now.getFullYear())
+    const matchingBudget = budgets.find(b =>
+      b.category === savedExpense.category &&
+      String(b.budget_month ?? now.getMonth() + 1).padStart(2, '0') === month &&
+      String(b.budget_year  ?? now.getFullYear()) === year
+    )
+    if (!matchingBudget) return
+
+    const spentSoFar = [...expenses.filter(e => e.id !== savedExpense.id), savedExpense]
+      .filter(e => e.category === savedExpense.category && e.date.slice(0, 7) === `${year}-${month}`)
+      .reduce((s, e) => s + Number(e.amount), 0)
+
+    const limit = Number(matchingBudget.monthly_limit ?? matchingBudget.amount ?? 0)
+    if (limit <= 0) return
+    const pct = (spentSoFar / limit) * 100
+
+    if (pct >= 100) {
+      await notify({
+        userId,
+        type: 'budget',
+        title: `Budget exceeded: ${matchingBudget.budget_name || savedExpense.category}`,
+        message: `You've spent ${formatCurrency(spentSoFar)} of your ${formatCurrency(limit)} budget for ${savedExpense.category} this month (${Math.round(pct)}%).`,
+        dedupeWindowHours: 20,
+      })
+    } else if (pct >= 80) {
+      await notify({
+        userId,
+        type: 'budget',
+        title: `Budget warning: ${matchingBudget.budget_name || savedExpense.category}`,
+        message: `You've used ${Math.round(pct)}% of your ${savedExpense.category} budget this month.`,
+        dedupeWindowHours: 20,
+      })
+    }
+  }
+
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
@@ -206,6 +245,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         setExpenses(prev => prev.map(e => e.id === editing.id ? updated : e))
         toast({ title: 'Expense updated', variant: 'success' })
         setOpen(false)
+        checkBudgetNotification(updated)
       }
     } else {
       const { data: created, error } = await supabase
@@ -217,6 +257,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         setExpenses(prev => [created, ...prev])
         toast({ title: 'Expense added', variant: 'success' })
         setOpen(false)
+        checkBudgetNotification(created)
       }
     }
     setLoading(false)

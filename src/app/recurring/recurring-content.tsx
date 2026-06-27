@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Plus, Edit2, Trash2, RefreshCcw, Loader2, Power, PowerOff } from 'lucide-react'
+import { differenceInDays, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate, FREQUENCIES, CATEGORY_COLORS } from '@/lib/utils'
+import { notify } from '@/lib/notify'
 import { useCategories } from '@/hooks/useCategories'
 import type { RecurringTransaction } from '@/types'
 
@@ -49,6 +51,33 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
 
   const watchType  = watch('type', 'expense')
   const categories = watchType === 'income' ? incomeCategories : expenseCategories
+
+  // Checks a single recurring transaction and fires a "due soon" notification
+  // if its next_date falls within the next 0–3 days. Deduped for 24h so it
+  // won't re-fire on every page load within the same day.
+  const checkDueSoon = async (item: RecurringTransaction) => {
+    if (!item.is_active) return
+    const daysUntil = differenceInDays(parseISO(item.next_date), new Date())
+    if (daysUntil >= 0 && daysUntil <= 3) {
+      await notify({
+        userId,
+        type: 'recurring',
+        title: `Upcoming: ${item.title}`,
+        message: `${item.title} (${formatCurrency(item.amount)}) is due ${
+          daysUntil === 0 ? 'today' : `in ${daysUntil} day${daysUntil > 1 ? 's' : ''}`
+        }.`,
+        dedupeWindowHours: 24,
+      })
+    }
+  }
+
+  // Date-based check, not action-based — runs once when the page loads
+  // against the server-fetched list, so "due soon" alerts show up even if
+  // the user never touches the form that day.
+  useEffect(() => {
+    initialRecurring.forEach(item => { checkDueSoon(item) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const openCreate = () => {
     setEditing(null)
@@ -90,6 +119,7 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
           setItems(prev => prev.map(i => i.id === editing.id ? updated : i))
           toast({ title: 'Updated', variant: 'success' })
           setOpen(false)
+          checkDueSoon(updated)
         }
       } else {
         const { data: created, error } = await supabase
@@ -101,6 +131,7 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
           setItems(prev => [...prev, created])
           toast({ title: 'Recurring transaction created', variant: 'success' })
           setOpen(false)
+          checkDueSoon(created)
         }
       }
     } catch (e: any) {
@@ -125,7 +156,14 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
       .from('recurring_transactions')
       .update({ is_active: !current }).eq('id', id)
     if (error) toast({ title: 'Failed', variant: 'destructive' })
-    else setItems(prev => prev.map(i => i.id === id ? { ...i, is_active: !current } : i))
+    else {
+      setItems(prev => prev.map(i => i.id === id ? { ...i, is_active: !current } : i))
+      if (!current) {
+        // Just reactivated — check if it's already due soon
+        const reactivated = items.find(i => i.id === id)
+        if (reactivated) checkDueSoon({ ...reactivated, is_active: true })
+      }
+    }
   }
 
   const handleDelete = async (id: string) => {

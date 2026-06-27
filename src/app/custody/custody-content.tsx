@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -8,6 +8,7 @@ import {
   Plus, Edit2, Trash2, Loader2, ArrowDownToLine, ArrowUpFromLine,
   Users, ChevronDown, ChevronUp, Wallet, HandCoins,
 } from 'lucide-react'
+import { differenceInDays, parseISO } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { notify } from '@/lib/notify'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { CustodyTransaction } from '@/types'
@@ -40,6 +42,10 @@ interface Props {
   accounts: AccountLite[]
   userId: string
 }
+
+// Custody balances don't "trigger" the way budgets/goals do — they go stale.
+// Anything held (or owed) for this many days without fresh activity gets a nudge.
+const CUSTODY_STALE_DAYS = 14
 
 export function CustodyContent({ initialTransactions, accounts, userId }: Props) {
   const { activeTheme, currency: appCurrency } = useAppStore()
@@ -67,6 +73,66 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
       date:      new Date().toISOString().split('T')[0],
     },
   })
+
+  // ── Custody balance reminder ────────────────────────────────────
+  // Given a person's full transaction history (unfiltered), computes their
+  // balance per currency + most recent activity date, then fires a reminder
+  // if a non-zero balance has gone CUSTODY_STALE_DAYS without any movement.
+  // Dedupe window means each person gets nagged at most once a week.
+  const checkCustodyReminder = async (
+    personName: string,
+    balanceByCurrency: Record<string, number>,
+    lastDate: string
+  ) => {
+    const daysSinceActivity = differenceInDays(new Date(), parseISO(lastDate))
+    if (daysSinceActivity < CUSTODY_STALE_DAYS) return
+
+    for (const [cur, bal] of Object.entries(balanceByCurrency)) {
+      if (Math.abs(bal) < 0.01) continue
+      const isHolding = bal > 0
+      await notify({
+        userId,
+        type: 'system',
+        title: `Custody reminder: ${personName}`,
+        message: isHolding
+          ? `You're still holding ${formatCurrency(bal, cur)} for ${personName} — last activity ${daysSinceActivity} days ago. Consider settling up.`
+          : `${personName} still owes you ${formatCurrency(Math.abs(bal), cur)} — last activity ${daysSinceActivity} days ago.`,
+        dedupeWindowHours: 24 * 7,
+      })
+    }
+  }
+
+  // Recomputes one person's balance + last activity date from a given
+  // transaction list (defaults to live state) and runs the reminder check.
+  // Accepts an override list so post-save checks can include a not-yet-committed
+  // create/update without waiting on setState to flush.
+  const checkCustodyReminderForPerson = async (
+    personName: string,
+    txnsOverride?: CustodyTransaction[]
+  ) => {
+    const source = txnsOverride ?? transactions
+    const personTxns = source.filter(t => t.person_name === personName)
+    if (personTxns.length === 0) return
+
+    const sorted = [...personTxns].sort((a, b) => a.date.localeCompare(b.date))
+    const lastDate = sorted[sorted.length - 1].date
+    const balanceByCurrency: Record<string, number> = {}
+    sorted.forEach(t => {
+      const delta = t.direction === 'received' ? Number(t.amount) : -Number(t.amount)
+      balanceByCurrency[t.currency] = (balanceByCurrency[t.currency] || 0) + delta
+    })
+
+    await checkCustodyReminder(personName, balanceByCurrency, lastDate)
+  }
+
+  // Date-based sweep, not action-based — runs once on page load against the
+  // server-fetched snapshot, so stale balances surface even if the user
+  // never opens the create/edit form that day.
+  useEffect(() => {
+    const people = Array.from(new Set(initialTransactions.map(t => t.person_name)))
+    people.forEach(p => checkCustodyReminderForPerson(p, initialTransactions))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Available people for the Person slicer (derived from ALL transactions, not filtered ones) ──
   const allPeople = useMemo(() =>
@@ -187,6 +253,10 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
         setTransactions(prev => prev.map(t => t.id === editing.id ? updated : t))
         toast({ title: 'Transaction updated', variant: 'success' })
         setOpen(false)
+        checkCustodyReminderForPerson(
+          updated.person_name,
+          [...transactions.filter(t => t.id !== editing.id), updated]
+        )
       }
     } else {
       const { data: created, error } = await supabase
@@ -198,6 +268,10 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
         setTransactions(prev => [created, ...prev])
         toast({ title: 'Transaction recorded', variant: 'success' })
         setOpen(false)
+        checkCustodyReminderForPerson(
+          created.person_name,
+          [...transactions, created]
+        )
       }
     }
     setLoading(false)
