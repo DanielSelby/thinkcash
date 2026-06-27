@@ -8,9 +8,14 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 
 interface Props {
-  incomes:  any[]
-  expenses: any[]
-  accounts: any[]
+  incomes:      any[]
+  expenses:     any[]
+  accounts:     any[]
+  assets:       any[]
+  investments:  any[]
+  debts:        any[]
+  loans:        any[]
+  goals:        any[]
 }
 
 const REPORT_VIEWS = [
@@ -18,7 +23,10 @@ const REPORT_VIEWS = [
   { value: 'pl',       label: 'P&L Statement' },
 ]
 
-export function ReportsContent({ incomes, expenses, accounts }: Props) {
+export function ReportsContent({
+  incomes, expenses, accounts,
+  assets, investments, debts, loans, goals,
+}: Props) {
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -34,7 +42,6 @@ export function ReportsContent({ incomes, expenses, accounts }: Props) {
 
   return (
     <div className="space-y-5">
-
       <div className="flex items-center gap-4 flex-wrap">
         <div className="relative">
           <button
@@ -48,7 +55,7 @@ export function ReportsContent({ incomes, expenses, accounts }: Props) {
             />
           </button>
 
-          {dropOpen ? (
+          {dropOpen && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setDropOpen(false)} />
               <div className="absolute top-11 left-0 z-50 w-48 bg-white border border-border rounded-xl shadow-lg overflow-hidden">
@@ -68,7 +75,7 @@ export function ReportsContent({ incomes, expenses, accounts }: Props) {
                 ))}
               </div>
             </>
-          ) : null}
+          )}
         </div>
 
         <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
@@ -76,11 +83,28 @@ export function ReportsContent({ incomes, expenses, accounts }: Props) {
         </h1>
       </div>
 
-      {view === 'overview'
-        ? <ReportsOverview incomes={incomes} expenses={expenses} accounts={accounts} />
-        : <PLContent       incomes={incomes} expenses={expenses} accounts={accounts} />
-      }
-
+      {view === 'overview' ? (
+        <ReportsOverview
+          incomes={incomes}
+          expenses={expenses}
+          accounts={accounts}
+          assets={assets}
+          investments={investments}
+          debts={debts}
+          loans={loans}
+          goals={goals}
+        />
+      ) : (
+        <PLContent
+          incomes={incomes}
+          expenses={expenses}
+          accounts={accounts}
+          assets={assets}
+          investments={investments}
+          debts={debts}
+          loans={loans}
+        />
+      )}
     </div>
   )
 }

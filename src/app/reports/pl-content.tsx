@@ -11,9 +11,13 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 
 interface Props {
-  incomes:  any[]
-  expenses: any[]
-  accounts: any[]
+  incomes:      any[]
+  expenses:     any[]
+  accounts:     any[]
+  assets?:      any[]
+  investments?: any[]
+  debts?:       any[]
+  loans?:       any[]
 }
 
 const MONTHS = ['January','February','March','April','May','June',
@@ -64,7 +68,7 @@ function resolveAccount(cat: string, accounts: typeof INCOME_ACCOUNTS) {
   return accounts.find(a => a.cats.includes(lower)) ?? { code: accounts[accounts.length - 1].code, name: accounts[accounts.length - 1].name }
 }
 
-export function PLContent({ incomes, expenses, accounts }: Props) {
+export function PLContent({ incomes, expenses, accounts, assets = [], investments = [], debts = [], loans = [] }: Props) {
   const { activeTheme, currency: primaryCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -194,6 +198,20 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
   const totalExpenses = expenseByCurrency[primaryCurrency] ?? 0
   const netSurplus    = netSurplusByCurrency[primaryCurrency] ?? 0
   const savingsRate   = totalIncome > 0 ? ((netSurplus / totalIncome) * 100).toFixed(1) : '0.0'
+
+  // ── Net Worth ────────────────────────────────────────────────────
+  const totalAssets = useMemo(() =>
+    assets.reduce((s, a) => s + Number(a.current_value ?? 0), 0) +
+    investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0),
+    [assets, investments])
+
+  const totalLiabilities = useMemo(() =>
+    debts.reduce((s, d) => s + Number(d.remaining ?? d.total_amount ?? 0), 0) +
+    loans.reduce((s, l) => s + Number(l.remaining ?? l.principal ?? 0), 0),
+    [debts, loans])
+
+  const netWorth    = totalAssets - totalLiabilities
+  const hasNetWorth = assets.length > 0 || investments.length > 0 || debts.length > 0 || loans.length > 0
 
   // ── P&L rows — per currency, grouped by account code ───────────
   // Structure: { currency: { code: { code, name, amount } } }
@@ -386,6 +404,35 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
         doc.setPage(i); doc.setFontSize(9); doc.setTextColor(150, 150, 150)
         doc.text(`${APP_NAME} — P&L Statement | Page ${i} of ${pageCount}`, 14, doc.internal.pageSize.height - 10)
       }
+
+      if (hasNetWorth) {
+        const y3 = (doc as any).lastAutoTable.finalY + 12
+        doc.setFontSize(12); doc.setTextColor(37, 99, 235)
+        doc.text('NET WORTH STATEMENT', 14, y3)
+        autoTable(doc, {
+          startY: y3 + 4,
+          head: [['Type', 'Name', 'Category', 'Amount']],
+          body: [
+            ...assets.map(a => ['Asset', a.name, a.asset_type, exportFmt(Number(a.current_value ?? 0), primaryCurrency)]),
+            ...investments.map(i => ['Investment', i.name, i.investment_type, exportFmt(Number(i.current_value ?? 0), primaryCurrency)]),
+            ['', 'TOTAL ASSETS', '', exportFmt(totalAssets, primaryCurrency)],
+            ...debts.map(d => ['Debt', d.name, d.debt_type, `(${exportFmt(Number(d.remaining ?? d.total_amount ?? 0), primaryCurrency)})`]),
+            ...loans.map(l => ['Loan', l.name, l.loan_type, `(${exportFmt(Number(l.remaining ?? l.principal ?? 0), primaryCurrency)})`]),
+            ['', 'TOTAL LIABILITIES', '', `(${exportFmt(totalLiabilities, primaryCurrency)})`],
+            ['', 'NET WORTH', '', netWorth >= 0 ? exportFmt(netWorth, primaryCurrency) : `(${exportFmt(Math.abs(netWorth), primaryCurrency)})`],
+          ],
+          theme: 'striped',
+          headStyles: { fillColor: [37, 99, 235] },
+          columnStyles: { 3: { halign: 'right' } },
+          didParseCell: (data) => {
+            const lbl = data.row.raw[1]
+            if (lbl === 'TOTAL ASSETS' || lbl === 'TOTAL LIABILITIES' || lbl === 'NET WORTH') {
+              data.cell.styles.fontStyle = 'bold'
+            }
+          },
+        })
+      }
+      
       doc.save(`think-shika-pl-${slug}.pdf`)
       toast({ title: 'P&L exported as PDF', variant: 'success' })
     } catch (err) {
@@ -730,6 +777,89 @@ export function PLContent({ incomes, expenses, accounts }: Props) {
               )
             })}
           </div>
+
+          {/* NET WORTH STATEMENT */}
+          {hasNetWorth && (
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="h-1 w-4 rounded-full bg-blue-500" />
+                <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Net Worth Statement</p>
+              </div>
+
+              {(assets.length > 0 || investments.length > 0) && (
+                <div className="bg-blue-50/50 rounded-xl px-4 py-1">
+                  {assets.map(a => (
+                    <div key={a.id} className="flex items-center py-2.5 border-b border-border/50 last:border-0">
+                      <span className="w-14 text-xs font-mono text-muted-foreground flex-shrink-0">ASSET</span>
+                      <span className="flex-1 text-sm capitalize">{a.name}
+                        <span className="text-muted-foreground text-xs ml-1">({a.asset_type})</span>
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums text-blue-600">
+                        {formatCurrency(Number(a.current_value ?? 0), primaryCurrency)}
+                      </span>
+                    </div>
+                  ))}
+                  {investments.map(i => (
+                    <div key={i.id} className="flex items-center py-2.5 border-b border-border/50 last:border-0">
+                      <span className="w-14 text-xs font-mono text-muted-foreground flex-shrink-0">INVEST</span>
+                      <span className="flex-1 text-sm capitalize">{i.name}
+                        <span className="text-muted-foreground text-xs ml-1">({i.investment_type})</span>
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums text-blue-600">
+                        {formatCurrency(Number(i.current_value ?? 0), primaryCurrency)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center py-2 mt-1">
+                    <span className="text-sm font-bold text-blue-700">Total Assets</span>
+                    <span className="text-sm font-bold tabular-nums text-blue-600">{formatCurrency(totalAssets, primaryCurrency)}</span>
+                  </div>
+                </div>
+              )}
+
+              {(debts.length > 0 || loans.length > 0) && (
+                <div className="bg-red-50/50 rounded-xl px-4 py-1">
+                  {debts.map(d => (
+                    <div key={d.id} className="flex items-center py-2.5 border-b border-border/50 last:border-0">
+                      <span className="w-14 text-xs font-mono text-muted-foreground flex-shrink-0">DEBT</span>
+                      <span className="flex-1 text-sm capitalize">{d.name}
+                        <span className="text-muted-foreground text-xs ml-1">({d.debt_type})</span>
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums text-red-500">
+                        ({formatCurrency(Number(d.remaining ?? d.total_amount ?? 0), primaryCurrency)})
+                      </span>
+                    </div>
+                  ))}
+                  {loans.map(l => (
+                    <div key={l.id} className="flex items-center py-2.5 border-b border-border/50 last:border-0">
+                      <span className="w-14 text-xs font-mono text-muted-foreground flex-shrink-0">LOAN</span>
+                      <span className="flex-1 text-sm capitalize">{l.name}
+                        <span className="text-muted-foreground text-xs ml-1">({l.loan_type})</span>
+                      </span>
+                      <span className="text-sm font-semibold tabular-nums text-red-500">
+                        ({formatCurrency(Number(l.remaining ?? l.principal ?? 0), primaryCurrency)})
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center py-2 mt-1">
+                    <span className="text-sm font-bold text-red-700">Total Liabilities</span>
+                    <span className="text-sm font-bold tabular-nums text-red-500">({formatCurrency(totalLiabilities, primaryCurrency)})</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between px-4 py-3 rounded-xl"
+                style={{ background: netWorth >= 0 ? '#dbeafe' : '#fee2e2' }}>
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wide text-blue-800">Net Worth</p>
+                  <p className="text-xs text-blue-600 mt-0.5">Assets − Liabilities · {primaryCurrency} only</p>
+                </div>
+                <p className={`text-2xl font-bold tabular-nums ${netWorth >= 0 ? 'text-blue-700' : 'text-red-500'}`}>
+                  {netWorth < 0 ? '(' : ''}{formatCurrency(Math.abs(netWorth), primaryCurrency)}{netWorth < 0 ? ')' : ''}
+                </p>
+              </div>
+            </div>
+          )}
 
         </CardContent>
       </Card>

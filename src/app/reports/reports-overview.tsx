@@ -11,9 +11,14 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 
 interface Props {
-  incomes:  any[]
-  expenses: any[]
-  accounts: any[]
+  incomes:      any[]
+  expenses:     any[]
+  accounts:     any[]
+  assets?:      any[]
+  investments?: any[]
+  debts?:       any[]
+  loans?:       any[]
+  goals?:       any[]
 }
 
 type ReportPeriod = 'monthly' | 'quarterly' | 'annual'
@@ -22,11 +27,9 @@ const APP_NAME = 'Think-Shika PA'
 
 const exportFmt = (n: number, cur = 'GHS') =>
   `${cur} ` + new Intl.NumberFormat('en-GH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(n)
 
-// Sort currencies: primary first, rest alphabetically
 function sortCurrencies(currencies: string[], primary: string): string[] {
   return [...currencies].sort((a, b) => {
     if (a === primary) return -1
@@ -35,22 +38,23 @@ function sortCurrencies(currencies: string[], primary: string): string[] {
   })
 }
 
-export function ReportsOverview({ incomes, expenses, accounts }: Props) {
+export function ReportsOverview({
+  incomes, expenses, accounts,
+  assets = [], investments = [], debts = [], loans = [], goals = [],
+}: Props) {
   const { activeTheme, currency: primaryCurrency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
-  const [period,        setPeriod]        = useState<ReportPeriod>('monthly')
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'))
-  const [customFrom,    setCustomFrom]    = useState('')
-  const [customTo,      setCustomTo]      = useState('')
+  const [period,         setPeriod]         = useState<ReportPeriod>('monthly')
+  const [selectedMonth,  setSelectedMonth]  = useState(format(new Date(), 'yyyy-MM'))
+  const [customFrom,     setCustomFrom]     = useState('')
+  const [customTo,       setCustomTo]       = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [currencyFilter, setCurrencyFilter] = useState('All')
 
-  // ── Resolve account currency for a transaction ──────────────────
   const getTxCurrency = (r: any): string =>
     accounts.find((a: any) => a.id === r.account_id)?.currency || primaryCurrency
 
-  // ── Available filter options, derived from the full unfiltered dataset ──
   const allCategories = useMemo(() =>
     Array.from(new Set([...incomes.map(i => i.category), ...expenses.map(e => e.category)].filter(Boolean))).sort(),
     [incomes, expenses])
@@ -68,7 +72,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   }
   const hasActiveFilters = !!customFrom || !!customTo || categoryFilter !== 'All' || currencyFilter !== 'All'
 
-  // ── Period bounds — custom From/To takes priority over the quick-period buttons ──
   const dateRange = useMemo(() => {
     if (customFrom || customTo) {
       return {
@@ -108,33 +111,24 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       i.date >= dateRange.start && i.date <= dateRange.end &&
       (categoryFilter === 'All' || i.category === categoryFilter) &&
       (currencyFilter === 'All' || getTxCurrency(i) === currencyFilter)
-    ),
-    [incomes, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
+    ), [incomes, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
 
   const filteredExpenses = useMemo(() =>
     expenses.filter(e =>
       e.date >= dateRange.start && e.date <= dateRange.end &&
       (categoryFilter === 'All' || e.category === categoryFilter) &&
       (currencyFilter === 'All' || getTxCurrency(e) === currencyFilter)
-    ),
-    [expenses, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
+    ), [expenses, dateRange, categoryFilter, currencyFilter, accounts, primaryCurrency])
 
-  // ── Totals by currency ──────────────────────────────────────────
   const incomeByCurrency = useMemo(() => {
     const map: Record<string, number> = {}
-    filteredIncomes.forEach(r => {
-      const cur = getTxCurrency(r)
-      map[cur] = (map[cur] || 0) + Number(r.amount)
-    })
+    filteredIncomes.forEach(r => { const cur = getTxCurrency(r); map[cur] = (map[cur] || 0) + Number(r.amount) })
     return map
   }, [filteredIncomes, accounts, primaryCurrency])
 
   const expenseByCurrency = useMemo(() => {
     const map: Record<string, number> = {}
-    filteredExpenses.forEach(r => {
-      const cur = getTxCurrency(r)
-      map[cur] = (map[cur] || 0) + Number(r.amount)
-    })
+    filteredExpenses.forEach(r => { const cur = getTxCurrency(r); map[cur] = (map[cur] || 0) + Number(r.amount) })
     return map
   }, [filteredExpenses, accounts, primaryCurrency])
 
@@ -142,19 +136,15 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   const expenseCurrencies = sortCurrencies(Object.keys(expenseByCurrency), primaryCurrency)
   const hasMixedCurrency  = incomeCurrencies.length > 1 || expenseCurrencies.length > 1
 
-  // Primary-currency totals for Net/Savings
   const totalIncomePrimary   = incomeByCurrency[primaryCurrency]  ?? 0
   const totalExpensesPrimary = expenseByCurrency[primaryCurrency] ?? 0
   const netSavings           = totalIncomePrimary - totalExpensesPrimary
   const savingsRate          = totalIncomePrimary > 0 ? (netSavings / totalIncomePrimary) * 100 : 0
 
-  // ── Category breakdown — per currency per category ──────────────
-  // Structure: { currency: { category: amount } }
   const incomeCatByCurrency = useMemo(() => {
     const map: Record<string, Record<string, number>> = {}
     filteredIncomes.forEach(r => {
-      const cur = getTxCurrency(r)
-      const cat = r.category || 'Other'
+      const cur = getTxCurrency(r); const cat = r.category || 'Other'
       if (!map[cur]) map[cur] = {}
       map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
     })
@@ -164,15 +154,13 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   const expenseCatByCurrency = useMemo(() => {
     const map: Record<string, Record<string, number>> = {}
     filteredExpenses.forEach(r => {
-      const cur = getTxCurrency(r)
-      const cat = r.category || 'Other'
+      const cur = getTxCurrency(r); const cat = r.category || 'Other'
       if (!map[cur]) map[cur] = {}
       map[cur][cat] = (map[cur][cat] || 0) + Number(r.amount)
     })
     return map
   }, [filteredExpenses, accounts, primaryCurrency])
 
-  // Sorted category entries per currency: [currency, [cat, amt][]][]
   const incomeCatEntries = useMemo(() =>
     incomeCurrencies.map(cur => ({
       currency: cur,
@@ -187,6 +175,20 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       total: expenseByCurrency[cur] || 0,
     })), [expenseCatByCurrency, expenseCurrencies, expenseByCurrency])
 
+  // ── Net Worth calculations ───────────────────────────────────────
+  const totalAssets = useMemo(() =>
+    assets.reduce((s, a) => s + Number(a.current_value ?? 0), 0) +
+    investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0),
+    [assets, investments])
+
+  const totalLiabilities = useMemo(() =>
+    debts.reduce((s, d) => s + Number(d.remaining ?? d.total_amount ?? 0), 0) +
+    loans.reduce((s, l) => s + Number(l.remaining ?? l.principal ?? 0), 0),
+    [debts, loans])
+
+  const netWorth    = totalAssets - totalLiabilities
+  const hasNetWorth = assets.length > 0 || investments.length > 0 || debts.length > 0 || loans.length > 0
+
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => {
     const d = new Date(new Date().getFullYear(), i, 1)
     return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy') }
@@ -194,7 +196,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
 
   const slug = dateRange.label.replace(/\s/g, '-').toLowerCase()
 
-  // ── CSV Export ──────────────────────────────────────────────────
+  // ── CSV Export ───────────────────────────────────────────────────
   const handleExportCSV = () => {
     const rows: any[][] = [
       [`${APP_NAME} Financial Report`],
@@ -208,10 +210,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       ['INCOME BY CATEGORY'],
       ['Currency', 'Category', 'Amount', '% of Currency Total'],
       ...incomeCatEntries.flatMap(({ currency, rows, total }) =>
-        rows.map(([cat, amt]) => [
-          currency, cat, exportFmt(amt, currency),
-          `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
-        ])
+        rows.map(([cat, amt]) => [currency, cat, exportFmt(amt, currency), `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`])
       ),
       [],
       ['EXPENSE TOTALS BY CURRENCY'],
@@ -221,104 +220,96 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       ['EXPENSES BY CATEGORY'],
       ['Currency', 'Category', 'Amount', '% of Currency Total'],
       ...expenseCatEntries.flatMap(({ currency, rows, total }) =>
-        rows.map(([cat, amt]) => [
-          currency, cat, exportFmt(amt, currency),
-          `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
-        ])
+        rows.map(([cat, amt]) => [currency, cat, exportFmt(amt, currency), `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`])
       ),
       [],
       [`NET SAVINGS (${primaryCurrency} only)`, exportFmt(netSavings, primaryCurrency)],
       ['SAVINGS RATE', `${savingsRate.toFixed(1)}%`],
+      ...(hasNetWorth ? [
+        [],
+        ['NET WORTH STATEMENT'],
+        ['Type', 'Name', 'Category', 'Amount'],
+        ...assets.map(a => ['Asset', a.name, a.asset_type, exportFmt(Number(a.current_value ?? 0), primaryCurrency)]),
+        ...investments.map(i => ['Investment', i.name, i.investment_type, exportFmt(Number(i.current_value ?? 0), primaryCurrency)]),
+        ['', 'TOTAL ASSETS', '', exportFmt(totalAssets, primaryCurrency)],
+        ...debts.map(d => ['Debt', d.name, d.debt_type, exportFmt(Number(d.remaining ?? d.total_amount ?? 0), primaryCurrency)]),
+        ...loans.map(l => ['Loan', l.name, l.loan_type, exportFmt(Number(l.remaining ?? l.principal ?? 0), primaryCurrency)]),
+        ['', 'TOTAL LIABILITIES', '', exportFmt(totalLiabilities, primaryCurrency)],
+        ['', 'NET WORTH', '', exportFmt(netWorth, primaryCurrency)],
+      ] : []),
     ]
     const csv  = rows.map(r => r.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url  = URL.createObjectURL(blob)
-    const a    = document.createElement('a')
-    a.href = url; a.download = `think-shika-pa-report-${slug}.csv`; a.click()
+    const a    = document.createElement('a'); a.href = url; a.download = `think-shika-pa-report-${slug}.csv`; a.click()
     URL.revokeObjectURL(url)
     toast({ title: 'CSV report exported', variant: 'success' })
   }
 
-  // ── Excel Export ────────────────────────────────────────────────
+  // ── Excel Export ─────────────────────────────────────────────────
   const handleExportExcel = async () => {
     try {
       const XLSX = await import('xlsx')
       const wb   = XLSX.utils.book_new()
-
-      // Summary sheet
       const summaryData = [
-        [`${APP_NAME} Financial Report`],
-        [`Period: ${dateRange.label}`],
-        [`Generated: ${format(new Date(), 'PPP')}`],
-        [],
-        ['INCOME BY CURRENCY'],
-        ['Currency', 'Amount'],
+        [`${APP_NAME} Financial Report`], [`Period: ${dateRange.label}`], [`Generated: ${format(new Date(), 'PPP')}`], [],
+        ['INCOME BY CURRENCY'], ['Currency', 'Amount'],
         ...incomeCurrencies.map(cur => [cur, incomeByCurrency[cur]]),
         [],
-        ['INCOME BY CATEGORY'],
-        ['Currency', 'Category', 'Amount', '%'],
+        ['INCOME BY CATEGORY'], ['Currency', 'Category', 'Amount', '%'],
         ...incomeCatEntries.flatMap(({ currency, rows, total }) =>
-          rows.map(([cat, amt]) => [
-            currency, cat, amt,
-            total > 0 ? +((amt / total) * 100).toFixed(1) : 0,
-          ])
+          rows.map(([cat, amt]) => [currency, cat, amt, total > 0 ? +((amt / total) * 100).toFixed(1) : 0])
         ),
         [],
-        ['EXPENSE BY CURRENCY'],
-        ['Currency', 'Amount'],
+        ['EXPENSE BY CURRENCY'], ['Currency', 'Amount'],
         ...expenseCurrencies.map(cur => [cur, expenseByCurrency[cur]]),
         [],
-        ['EXPENSES BY CATEGORY'],
-        ['Currency', 'Category', 'Amount', '%'],
+        ['EXPENSES BY CATEGORY'], ['Currency', 'Category', 'Amount', '%'],
         ...expenseCatEntries.flatMap(({ currency, rows, total }) =>
-          rows.map(([cat, amt]) => [
-            currency, cat, amt,
-            total > 0 ? +((amt / total) * 100).toFixed(1) : 0,
-          ])
+          rows.map(([cat, amt]) => [currency, cat, amt, total > 0 ? +((amt / total) * 100).toFixed(1) : 0])
         ),
         [],
         [`Net Savings (${primaryCurrency})`, netSavings],
         ['Savings Rate', `${savingsRate.toFixed(1)}%`],
+        ...(hasNetWorth ? [
+          [],
+          ['NET WORTH STATEMENT'], ['Type', 'Name', 'Category', 'Amount'],
+          ...assets.map(a => ['Asset', a.name, a.asset_type, Number(a.current_value ?? 0)]),
+          ...investments.map(i => ['Investment', i.name, i.investment_type, Number(i.current_value ?? 0)]),
+          ['', 'TOTAL ASSETS', '', totalAssets],
+          ...debts.map(d => ['Debt', d.name, d.debt_type, Number(d.remaining ?? d.total_amount ?? 0)]),
+          ...loans.map(l => ['Loan', l.name, l.loan_type, Number(l.remaining ?? l.principal ?? 0)]),
+          ['', 'TOTAL LIABILITIES', '', totalLiabilities],
+          ['', 'NET WORTH', '', netWorth],
+        ] : []),
       ]
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary')
-
-      // Income detail sheet
-      const incomeData = [
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
         ['Title', 'Category', 'Amount', 'Currency', 'Date', 'Notes'],
-        ...filteredIncomes.map(i => [
-          i.title || i.description || '',
-          i.category || 'Other',
-          Number(i.amount),
-          getTxCurrency(i),
-          i.date,
-          i.notes || '',
-        ]),
-      ]
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(incomeData), 'Income')
-
-      // Expenses detail sheet
-      const expData = [
+        ...filteredIncomes.map(i => [i.title || '', i.category || 'Other', Number(i.amount), getTxCurrency(i), i.date, i.notes || '']),
+      ]), 'Income')
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
         ['Title', 'Category', 'Amount', 'Currency', 'Date', 'Payment Method', 'Notes'],
-        ...filteredExpenses.map(e => [
-          e.title || e.description || '',
-          e.category || 'Other',
-          Number(e.amount),
-          getTxCurrency(e),
-          e.date,
-          e.payment_method || '',
-          e.notes || '',
-        ]),
-      ]
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expData), 'Expenses')
-
+        ...filteredExpenses.map(e => [e.title || '', e.category || 'Other', Number(e.amount), getTxCurrency(e), e.date, e.payment_method || '', e.notes || '']),
+      ]), 'Expenses')
+      if (hasNetWorth) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+          ['Type', 'Name', 'Category', 'Current Value'],
+          ...assets.map(a => ['Asset', a.name, a.asset_type, Number(a.current_value ?? 0)]),
+          ...investments.map(i => ['Investment', i.name, i.investment_type, Number(i.current_value ?? 0)]),
+          [], ['', 'TOTAL ASSETS', '', totalAssets],
+          ...debts.map(d => ['Debt', d.name, d.debt_type, Number(d.remaining ?? d.total_amount ?? 0)]),
+          ...loans.map(l => ['Loan', l.name, l.loan_type, Number(l.remaining ?? l.principal ?? 0)]),
+          [], ['', 'TOTAL LIABILITIES', '', totalLiabilities],
+          [], ['', 'NET WORTH', '', netWorth],
+        ]), 'Net Worth')
+      }
       XLSX.writeFile(wb, `think-shika-pa-report-${slug}.xlsx`)
       toast({ title: 'Excel report exported', variant: 'success' })
-    } catch {
-      toast({ title: 'Excel export failed', variant: 'destructive' })
-    }
+    } catch { toast({ title: 'Excel export failed', variant: 'destructive' }) }
   }
 
-  // ── PDF Export ──────────────────────────────────────────────────
+  // ── PDF Export ───────────────────────────────────────────────────
   const handleExportPDF = async () => {
     try {
       const { default: jsPDF }     = await import('jspdf')
@@ -331,7 +322,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
       doc.text(`Period: ${dateRange.label}`, 14, 30)
       doc.text(`Generated: ${format(new Date(), 'PPP')}`, 14, 37)
 
-      // Summary
       doc.setFontSize(13); doc.setTextColor(0, 75, 35)
       doc.text('Summary', 14, 50)
       autoTable(doc, {
@@ -340,15 +330,14 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         body: [
           ...incomeCurrencies.map(cur  => ['Total Income',   cur, exportFmt(incomeByCurrency[cur],  cur)]),
           ...expenseCurrencies.map(cur => ['Total Expenses', cur, exportFmt(expenseByCurrency[cur], cur)]),
-          [`Net Savings`,  primaryCurrency, exportFmt(netSavings, primaryCurrency)],
-          ['Savings Rate', '',              `${savingsRate.toFixed(1)}%`],
+          ['Net Savings', primaryCurrency, exportFmt(netSavings, primaryCurrency)],
+          ['Savings Rate', '', `${savingsRate.toFixed(1)}%`],
         ],
         theme: 'striped',
-        headStyles:   { fillColor: [0, 75, 35] },
+        headStyles: { fillColor: [0, 75, 35] },
         columnStyles: { 2: { halign: 'right' } },
       })
 
-      // Income by category
       const y1 = (doc as any).lastAutoTable.finalY + 15
       doc.setFontSize(13); doc.setTextColor(22, 163, 74)
       doc.text('Income by Category', 14, y1)
@@ -356,18 +345,13 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         startY: y1 + 5,
         head: [['Currency', 'Category', 'Amount', '%']],
         body: incomeCatEntries.flatMap(({ currency, rows, total }) =>
-          rows.map(([cat, amt]) => [
-            currency, cat,
-            exportFmt(amt, currency),
-            `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
-          ])
+          rows.map(([cat, amt]) => [currency, cat, exportFmt(amt, currency), `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`])
         ),
         theme: 'striped',
-        headStyles:   { fillColor: [22, 163, 74] },
+        headStyles: { fillColor: [22, 163, 74] },
         columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } },
       })
 
-      // Expenses by category
       const y2 = (doc as any).lastAutoTable.finalY + 15
       doc.setFontSize(13); doc.setTextColor(220, 38, 38)
       doc.text('Expenses by Category', 14, y2)
@@ -375,16 +359,40 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         startY: y2 + 5,
         head: [['Currency', 'Category', 'Amount', '%']],
         body: expenseCatEntries.flatMap(({ currency, rows, total }) =>
-          rows.map(([cat, amt]) => [
-            currency, cat,
-            exportFmt(amt, currency),
-            `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`,
-          ])
+          rows.map(([cat, amt]) => [currency, cat, exportFmt(amt, currency), `${total > 0 ? ((amt / total) * 100).toFixed(1) : 0}%`])
         ),
         theme: 'striped',
-        headStyles:   { fillColor: [220, 38, 38] },
+        headStyles: { fillColor: [220, 38, 38] },
         columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' } },
       })
+
+      if (hasNetWorth) {
+        const y3 = (doc as any).lastAutoTable.finalY + 15
+        doc.setFontSize(13); doc.setTextColor(37, 99, 235)
+        doc.text('Net Worth Statement', 14, y3)
+        autoTable(doc, {
+          startY: y3 + 5,
+          head: [['Type', 'Name', 'Category', 'Amount']],
+          body: [
+            ...assets.map(a => ['Asset', a.name, a.asset_type, exportFmt(Number(a.current_value ?? 0), primaryCurrency)]),
+            ...investments.map(i => ['Investment', i.name, i.investment_type, exportFmt(Number(i.current_value ?? 0), primaryCurrency)]),
+            ['', 'TOTAL ASSETS', '', exportFmt(totalAssets, primaryCurrency)],
+            ...debts.map(d => ['Debt', d.name, d.debt_type, `(${exportFmt(Number(d.remaining ?? d.total_amount ?? 0), primaryCurrency)})`]),
+            ...loans.map(l => ['Loan', l.name, l.loan_type, `(${exportFmt(Number(l.remaining ?? l.principal ?? 0), primaryCurrency)})`]),
+            ['', 'TOTAL LIABILITIES', '', `(${exportFmt(totalLiabilities, primaryCurrency)})`],
+            ['', 'NET WORTH', '', netWorth >= 0 ? exportFmt(netWorth, primaryCurrency) : `(${exportFmt(Math.abs(netWorth), primaryCurrency)})`],
+          ],
+          theme: 'striped',
+          headStyles: { fillColor: [37, 99, 235] },
+          columnStyles: { 3: { halign: 'right' } },
+          didParseCell: (data) => {
+            const label = data.row.raw[1]
+            if (label === 'TOTAL ASSETS' || label === 'TOTAL LIABILITIES' || label === 'NET WORTH') {
+              data.cell.styles.fontStyle = 'bold'
+            }
+          },
+        })
+      }
 
       const pageCount = (doc as any).internal.getNumberOfPages()
       for (let i = 1; i <= pageCount; i++) {
@@ -402,7 +410,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
   return (
     <div className="space-y-6">
 
-      {/* ── Period selector + Export buttons ── */}
+      {/* ── Period selector + Export ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="py-4 px-5">
           <div className="flex items-center gap-3 flex-wrap">
@@ -417,22 +425,17 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
                 </button>
               ))}
             </div>
-
             {period === 'monthly' && !customFrom && !customTo && (
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                 <SelectTrigger className="w-44 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {months.map(m => (
-                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                  ))}
+                  {months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
-
             <span className="text-sm font-semibold ml-auto" style={{ color: theme.colors.primary }}>
               {dateRange.label}
             </span>
-
             <div className="flex gap-2 flex-shrink-0">
               <button onClick={handleExportCSV}
                 className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors">
@@ -450,13 +453,11 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
             </div>
           </div>
 
-          {/* ── Filter Transactions row — From/To date, Category, Currency ── */}
           <div className="mt-4 pt-4 border-t border-border">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter Transactions</p>
               {hasActiveFilters && (
-                <button onClick={clearAllFilters}
-                  className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+                <button onClick={clearAllFilters} className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
                   Clear filters
                 </button>
               )}
@@ -497,9 +498,8 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
         </CardContent>
       </Card>
 
-      {/* ── KPI Cards — one per currency for income/expenses ── */}
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
-
         {incomeCurrencies.length === 0 ? (
           <Card className="kpi-green bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border">
             <div className="flex items-center gap-2 mb-2">
@@ -554,9 +554,7 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
           <p className={`kpi-value font-display text-sm sm:text-xl font-bold tabular-nums break-all ${netSavings < 0 ? 'text-red-500' : ''}`}>
             {formatCurrency(Math.abs(netSavings), primaryCurrency)}
           </p>
-          {hasMixedCurrency && (
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">{primaryCurrency} only</p>
-          )}
+          {hasMixedCurrency && <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">{primaryCurrency} only</p>}
         </Card>
 
         <Card className="kpi-purple bg-white p-3 sm:p-5 overflow-hidden rounded-xl shadow-sm border border-border">
@@ -564,19 +562,13 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
             <BarChart3 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
             <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">Savings Rate</p>
           </div>
-          <p className="kpi-value font-display text-sm sm:text-xl font-bold tabular-nums">
-            {savingsRate.toFixed(1)}%
-          </p>
-          {hasMixedCurrency && (
-            <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">{primaryCurrency} only</p>
-          )}
+          <p className="kpi-value font-display text-sm sm:text-xl font-bold tabular-nums">{savingsRate.toFixed(1)}%</p>
+          {hasMixedCurrency && <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5">{primaryCurrency} only</p>}
         </Card>
       </div>
 
-      {/* ── Category Breakdowns — grouped per currency ── */}
+      {/* ── Category Breakdowns ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-        {/* Income by Category */}
         <Card className="bg-white rounded-xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -590,7 +582,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
               <div className="space-y-5">
                 {incomeCatEntries.map(({ currency, rows, total }) => (
                   <div key={currency}>
-                    {/* Currency header — only shown when multi-currency */}
                     {hasMixedCurrency && (
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{currency}</p>
@@ -617,7 +608,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
                         )
                       })}
                     </div>
-                    {/* Divider between currency groups */}
                     {hasMixedCurrency && incomeCatEntries.indexOf(incomeCatEntries.find(e => e.currency === currency)!) < incomeCatEntries.length - 1 && (
                       <div className="border-t border-border/50 mt-3" />
                     )}
@@ -628,7 +618,6 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
           </CardContent>
         </Card>
 
-        {/* Expenses by Category */}
         <Card className="bg-white rounded-xl shadow-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -677,8 +666,141 @@ export function ReportsOverview({ incomes, expenses, accounts }: Props) {
             )}
           </CardContent>
         </Card>
-
       </div>
+
+      {/* ── Net Worth Summary ── */}
+      {hasNetWorth && (
+        <Card className="bg-white rounded-xl shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-blue-600" />Net Worth Summary
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{primaryCurrency} only · as of today</p>
+          </CardHeader>
+          <CardContent className="space-y-5">
+
+            {/* Summary tiles */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-blue-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide mb-1">Total Assets</p>
+                <p className="text-base sm:text-lg font-bold tabular-nums text-blue-700">
+                  {formatCurrency(totalAssets, primaryCurrency)}
+                </p>
+                <p className="text-xs text-blue-500 mt-0.5">{assets.length + investments.length} items</p>
+              </div>
+              <div className="bg-red-50 rounded-xl p-3 text-center">
+                <p className="text-xs text-red-600 font-semibold uppercase tracking-wide mb-1">Total Liabilities</p>
+                <p className="text-base sm:text-lg font-bold tabular-nums text-red-600">
+                  {formatCurrency(totalLiabilities, primaryCurrency)}
+                </p>
+                <p className="text-xs text-red-400 mt-0.5">{debts.length + loans.length} items</p>
+              </div>
+              <div className={`rounded-xl p-3 text-center ${netWorth >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${netWorth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  Net Worth
+                </p>
+                <p className={`text-base sm:text-lg font-bold tabular-nums ${netWorth >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  {netWorth < 0 ? '-' : ''}{formatCurrency(Math.abs(netWorth), primaryCurrency)}
+                </p>
+                <p className={`text-xs mt-0.5 ${netWorth >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                  {netWorth >= 0 ? 'Positive' : 'Negative'}
+                </p>
+              </div>
+            </div>
+
+            {/* Assets & Investments */}
+            {(assets.length > 0 || investments.length > 0) && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Assets & Investments</p>
+                <div className="space-y-1.5">
+                  {[
+                    ...assets.map(a => ({ name: a.name, type: a.asset_type, value: Number(a.current_value ?? 0) })),
+                    ...investments.map(i => ({ name: i.name, type: i.investment_type, value: Number(i.current_value ?? 0) })),
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-sm py-1.5 border-b border-border/40 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                        <span className="capitalize font-medium">{item.name}</span>
+                        <span className="text-xs text-muted-foreground capitalize">({item.type})</span>
+                      </div>
+                      <span className="font-semibold tabular-nums text-blue-600">{formatCurrency(item.value, primaryCurrency)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-border">
+                  <span className="text-sm font-bold text-blue-700">Total Assets</span>
+                  <span className="font-bold tabular-nums text-blue-600">{formatCurrency(totalAssets, primaryCurrency)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Debts & Loans */}
+            {(debts.length > 0 || loans.length > 0) && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Debts & Loans</p>
+                <div className="space-y-1.5">
+                  {[
+                    ...debts.map(d => ({ name: d.name, type: d.debt_type, value: Number(d.remaining ?? d.total_amount ?? 0) })),
+                    ...loans.map(l => ({ name: l.name, type: l.loan_type, value: Number(l.remaining ?? l.principal ?? 0) })),
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-sm py-1.5 border-b border-border/40 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />
+                        <span className="capitalize font-medium">{item.name}</span>
+                        <span className="text-xs text-muted-foreground capitalize">({item.type})</span>
+                      </div>
+                      <span className="font-semibold tabular-nums text-red-500">({formatCurrency(item.value, primaryCurrency)})</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between items-center mt-2 pt-2 border-t border-border">
+                  <span className="text-sm font-bold text-red-700">Total Liabilities</span>
+                  <span className="font-bold tabular-nums text-red-500">({formatCurrency(totalLiabilities, primaryCurrency)})</span>
+                </div>
+              </div>
+            )}
+
+            {/* Savings Goals */}
+            {goals.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Savings Goals Progress</p>
+                <div className="space-y-3">
+                  {goals.map((g: any) => {
+                    const pct = g.target_amount > 0 ? Math.min(100, Math.round((g.current_amount / g.target_amount) * 100)) : 0
+                    return (
+                      <div key={g.id}>
+                        <div className="flex justify-between text-xs mb-1.5">
+                          <span className="font-medium">{g.goal_name}</span>
+                          <span className="text-muted-foreground tabular-nums">
+                            {formatCurrency(g.current_amount, primaryCurrency)} / {formatCurrency(g.target_amount, primaryCurrency)} · {pct}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, background: theme.colors.primary }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Net Worth final line */}
+            <div className="flex items-center justify-between px-4 py-3 rounded-xl border-t-2 border-border"
+              style={{ background: netWorth >= 0 ? '#dbeafe' : '#fee2e2' }}>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-blue-800">Net Worth</p>
+                <p className="text-xs text-blue-600 mt-0.5">Assets − Liabilities · {primaryCurrency} only</p>
+              </div>
+              <p className={`text-xl sm:text-2xl font-bold tabular-nums ${netWorth >= 0 ? 'text-blue-700' : 'text-red-500'}`}>
+                {netWorth < 0 ? '(' : ''}{formatCurrency(Math.abs(netWorth), primaryCurrency)}{netWorth < 0 ? ')' : ''}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
     </div>
   )
 }

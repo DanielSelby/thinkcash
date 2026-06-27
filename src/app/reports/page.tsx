@@ -13,26 +13,40 @@ export default async function ReportsPage() {
   if (!user) redirect('/auth/login')
 
   const { data: profile } = await supabase
-    .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
+    .from('profiles').select('role, allowed_pages, is_active').eq('id', user.id).single()
   requirePageAccess(profile, 'reports')
 
-  const [{ data: incomes }, { data: expenses }, { data: accounts }] = await Promise.all([
-    supabase.from('incomes').select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: true }),
-    supabase.from('expenses').select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: true }),
-    supabase.from('user_accounts').select('*')
-      .eq('user_id', user.id),
+  const [
+    { data: incomes },
+    { data: expenses },
+    { data: accounts },
+    { data: assets },
+    { data: investments },
+    { data: debts },
+    { data: loans },
+    { data: goals },
+  ] = await Promise.all([
+    supabase.from('incomes').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+    supabase.from('expenses').select('*').eq('user_id', user.id).order('date', { ascending: true }),
+    supabase.from('user_accounts').select('*').eq('user_id', user.id),
+    supabase.from('assets').select('*').eq('user_id', user.id),
+    supabase.from('investments').select('*').eq('user_id', user.id),
+    supabase.from('debts').select('*').eq('user_id', user.id),
+    supabase.from('loans').select('*').eq('user_id', user.id),
+    supabase.from('savings_goals').select('*').eq('user_id', user.id),
   ])
 
   return (
     <AppShell>
       <ReportsContent
-        incomes={incomes   ?? []}
-        expenses={expenses ?? []}
-        accounts={accounts ?? []}
+        incomes={incomes         ?? []}
+        expenses={expenses       ?? []}
+        accounts={accounts       ?? []}
+        assets={assets           ?? []}
+        investments={investments ?? []}
+        debts={debts             ?? []}
+        loans={loans             ?? []}
+        goals={goals             ?? []}
       />
     </AppShell>
   )
