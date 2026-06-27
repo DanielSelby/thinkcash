@@ -24,6 +24,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { Asset, Investment, Debt, Loan } from '@/types'
+import { AssetDetailPanel } from './wealth-asset-detail'
 
 const fmt = (n: number) => formatCurrency(n, 'GHS')
 
@@ -228,8 +229,8 @@ function Section({ title, count, color, children, onAdd, icon: Icon }: {
 }
 
 // ── Actions dropdown ──────────────────────────────────────────────────
-function AssetActionsMenu({ onEdit, onSell, onDispose, onDelete }: {
-  onEdit: () => void; onSell: () => void; onDispose: () => void; onDelete: () => void
+function AssetActionsMenu({ onView, onEdit, onSell, onDispose, onDelete }: {
+  onView: () => void; onEdit: () => void; onSell: () => void; onDispose: () => void; onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -246,7 +247,8 @@ function AssetActionsMenu({ onEdit, onSell, onDispose, onDelete }: {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-8 z-50 w-40 bg-white border border-border rounded-xl shadow-lg overflow-hidden">
             {[
-              { label: 'Edit',    fn: onEdit,    cls: '' },
+              { label: 'View Details', fn: onView,    cls: '' },
+            { label: 'Edit',         fn: onEdit,    cls: '' },
               { label: 'Sell',    fn: onSell,    cls: 'text-blue-600' },
               { label: 'Dispose', fn: onDispose, cls: 'text-orange-500' },
               { label: 'Delete',  fn: onDelete,  cls: 'text-destructive' },
@@ -357,6 +359,8 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   const [editingId,  setEditingId]  = useState<string | null>(null)
   const [loading,    setLoading]    = useState(false)
   const [activeTab,  setActiveTab]  = useState<'basic' | 'financial' | 'details'>('basic')
+
+  const [detailAsset, setDetailAsset] = useState<any | null>(null)
 
   // search/filter
   const [search,       setSearch]       = useState('')
@@ -688,7 +692,13 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                         <Icon className="w-4 h-4" style={{ color: SECTION_COLORS.asset.bg }} />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-sm truncate">{a.name}</p>
+                        <button
+  onClick={() => setDetailAsset(a)}
+  className="font-semibold text-sm truncate hover:underline text-left"
+  style={{ color: SECTION_COLORS.asset.bg }}
+>
+  {a.name}
+</button>
                         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                           <span className="text-xs text-muted-foreground capitalize">{typeInfo?.label}</span>
                           {a.asset_tag && (
@@ -698,6 +708,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                       </div>
                     </div>
                     <AssetActionsMenu
+                      onView={() => setDetailAsset(a)}
                       onEdit={() => openEdit('asset', a)}
                       onSell={() => openSell(a)}
                       onDispose={() => openDispose(a)}
@@ -1332,6 +1343,18 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Asset Detail Panel ── */}
+      {detailAsset && (
+        <AssetDetailPanel
+          asset={detailAsset}
+          onClose={() => setDetailAsset(null)}
+          onUpdate={updated => {
+            setAssets(p => p.map(a => a.id === updated.id ? updated : a))
+            setDetailAsset(updated)
+          }}
+        />
+      )}
     </div>
   )
 }
