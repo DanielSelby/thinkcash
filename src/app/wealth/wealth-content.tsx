@@ -192,16 +192,16 @@ function KPI({ label, value, sub, bg, icon: Icon }: {
   return (
     <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
       <div className="h-1" style={{ background: bg }} />
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-3 sm:p-5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">{label}</p>
-            <p className="text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate">{value}</p>
-            {sub && <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
+            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">{label}</p>
+            <p className="text-sm sm:text-2xl font-bold tabular-nums mt-1 break-all leading-tight">{value}</p>
+            {sub && <p className="text-[9px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+          <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
             style={{ background: bg + '18' }}>
-            <Icon className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: bg }} />
+            <Icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" style={{ color: bg }} />
           </div>
         </div>
       </CardContent>
@@ -244,17 +244,20 @@ function Section({ title, count, color, children, onAdd, icon: Icon }: {
   )
 }
 
-function AssetActionsMenu({ type, onView, onEdit, onSell, onDispose, onDelete, onUpdateBalance }: {
+function AssetActionsMenu({ type, isForeignCurrency, onView, onEdit, onSell, onDispose, onDelete, onUpdateBalance, onSetRate }: {
   type: 'physical' | 'cash'
+  isForeignCurrency?: boolean
   onView?: () => void; onEdit: () => void; onSell?: () => void
   onDispose?: () => void; onDelete: () => void; onUpdateBalance?: () => void
+  onSetRate?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const cashActions = [
-    { label: 'View Details',   fn: onView,          cls: ''                 },
-    { label: 'Update Balance', fn: onUpdateBalance, cls: 'text-emerald-600' },
-    { label: 'Edit',           fn: onEdit,          cls: ''                 },
-    { label: 'Delete',         fn: onDelete,        cls: 'text-destructive' },
+    { label: 'View Details', fn: onView,          cls: ''                 },
+    { label: 'Add Value',    fn: onUpdateBalance, cls: 'text-emerald-600' },
+    ...(isForeignCurrency ? [{ label: 'Set Exchange Rate', fn: onSetRate, cls: 'text-blue-600' }] : []),
+    { label: 'Edit',         fn: onEdit,          cls: ''                 },
+    { label: 'Delete',       fn: onDelete,        cls: 'text-destructive' },
   ]
   const physicalActions = [
     { label: 'View Details', fn: onView,    cls: ''                 },
@@ -411,7 +414,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   type DialogType =
     | 'asset' | 'investment' | 'debt' | 'loan'
     | 'sell' | 'dispose'
-    | 'update_balance' | 'invest_add' | 'debt_payment' | 'loan_payment'
+    | 'update_balance' | 'invest_add' | 'debt_payment' | 'loan_payment' | 'set_rate'
     | null
 
   const [dialogType,       setDialogType]       = useState<DialogType>(null)
@@ -426,6 +429,15 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   const [investDate,       setInvestDate]        = useState(new Date().toISOString().split('T')[0])
   const [investIncomeType, setInvestIncomeType]  = useState('investment')
   const [investAccountId,  setInvestAccountId]   = useState('')
+
+  // cash asset "Add Value" state
+  const [cashAddAmt,       setCashAddAmt]        = useState('')
+  const [cashAddDirection, setCashAddDirection]  = useState<'add' | 'subtract'>('add')
+  const [cashAddAccountId, setCashAddAccountId]  = useState('')
+  const [cashAddDate,      setCashAddDate]       = useState(new Date().toISOString().split('T')[0])
+
+  // exchange rate dialog state
+  const [rateValue, setRateValue] = useState('')
 
   // search / filter
   const [search,       setSearch]       = useState('')
@@ -454,10 +466,17 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   })
 
   // ── Totals ────────────────────────────────────────────────────────
-  const activeAssets     = useMemo(() => assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated'), [assets])
-  const totalPhysical    = useMemo(() => activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').reduce((s, a) => s + Number(a.current_value ?? 0), 0), [activeAssets])
-  const totalLiquid      = useMemo(() => activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').reduce((s, a) => s + Number(a.current_value ?? 0), 0), [activeAssets])
-  const totalAssets      = totalPhysical + totalLiquid
+  const activeAssets = useMemo(() => assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated'), [assets])
+  // Converts any asset to GHS-equivalent for totals: GHS assets use rate 1, foreign-currency
+  // assets are multiplied by their stored exchange_rate (set via "Set Exchange Rate" action).
+  const toGHS = (a: any) => {
+    const cur = a.currency || 'GHS'
+    if (cur === 'GHS') return Number(a.current_value ?? 0)
+    return Number(a.current_value ?? 0) * Number(a.exchange_rate ?? 1)
+  }
+  const totalPhysical = useMemo(() => activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').reduce((s, a) => s + toGHS(a), 0), [activeAssets])
+  const totalLiquid   = useMemo(() => activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').reduce((s, a) => s + toGHS(a), 0), [activeAssets])
+  const totalAssets   = totalPhysical + totalLiquid
   const totalInvested    = useMemo(() => investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), [investments])
   const totalDebts       = useMemo(() => debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), [debts])
   const totalLoans       = useMemo(() => loans.reduce((s, l) => s + Number(l.remaining ?? 0), 0), [loans])
@@ -517,8 +536,16 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   }
 
   const openUpdateBalance = (asset: any) => {
-    setEditingId(asset.id); setNewBalance(String(asset.current_value ?? 0)); setPaymentNote('')
+    setEditingId(asset.id)
+    setCashAddAmt(''); setCashAddDirection('add'); setCashAddAccountId('')
+    setCashAddDate(new Date().toISOString().split('T')[0]); setPaymentNote('')
     setDialogType('update_balance')
+  }
+
+  const openSetRate = (asset: any) => {
+    setEditingId(asset.id)
+    setRateValue(String(asset.exchange_rate ?? 1))
+    setDialogType('set_rate')
   }
 
   const openInvestAdd = (inv: any) => {
@@ -642,15 +669,69 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     setLoading(false)
   }
 
-  const handleUpdateBalance = async () => {
-    if (!editingId || !newBalance) return
+  const handleCashAddValue = async () => {
+    if (!editingId || !cashAddAmt || Number(cashAddAmt) <= 0) {
+      toast({ title: 'Enter a valid amount', variant: 'destructive' }); return
+    }
+    setLoading(true)
+    const supabase = createClient()
+    const asset = assets.find(a => a.id === editingId)
+    if (!asset) { setLoading(false); return }
+    const delta      = Number(cashAddAmt) * (cashAddDirection === 'add' ? 1 : -1)
+    const newBalance = Math.max(0, Number(asset.current_value ?? 0) + delta)
+
+    const { data: updated, error } = await supabase.from('assets')
+      .update({ current_value: newBalance, updated_at: new Date().toISOString() })
+      .eq('id', editingId).select().single()
+    if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
+
+    // Optionally log to/from a linked account as income or expense
+    if (cashAddAccountId) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        if (cashAddDirection === 'add') {
+          await supabase.from('incomes').insert({
+            user_id: user.id,
+            title: `Cash added: ${asset.name}`,
+            amount: Number(cashAddAmt),
+            category: 'other',
+            date: cashAddDate,
+            account_id: cashAddAccountId,
+            notes: paymentNote || `Added to ${asset.name}`,
+          })
+        } else {
+          await supabase.from('expenses').insert({
+            user_id: user.id,
+            title: `Cash withdrawn: ${asset.name}`,
+            amount: Number(cashAddAmt),
+            category: 'other',
+            payment_method: 'cash',
+            date: cashAddDate,
+            account_id: cashAddAccountId,
+            notes: paymentNote || `Withdrawn from ${asset.name}`,
+          })
+        }
+      }
+    }
+
+    setAssets(p => p.map(a => a.id === editingId ? updated : a))
+    toast({ title: `${cashAddDirection === 'add' ? '+' : '-'}${formatCurrency(Number(cashAddAmt), asset.currency || 'GHS')} — new balance ${formatCurrency(newBalance, asset.currency || 'GHS')}`, variant: 'success' })
+    setDialogType(null)
+    setCashAddAmt(''); setCashAddAccountId(''); setPaymentNote('')
+    setLoading(false)
+  }
+
+  const handleSetRate = async () => {
+    if (!editingId || !rateValue || Number(rateValue) <= 0) {
+      toast({ title: 'Enter a valid exchange rate', variant: 'destructive' }); return
+    }
     setLoading(true)
     const supabase = createClient()
     const { data: updated, error } = await supabase.from('assets')
-      .update({ current_value: Number(newBalance), updated_at: new Date().toISOString() })
+      .update({ exchange_rate: Number(rateValue), updated_at: new Date().toISOString() })
       .eq('id', editingId).select().single()
     if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-    else { setAssets(p => p.map(a => a.id === editingId ? updated : a)); toast({ title: 'Balance updated', variant: 'success' }); setDialogType(null) }
+    else { setAssets(p => p.map(a => a.id === editingId ? updated : a)); toast({ title: 'Exchange rate updated', variant: 'success' }); setDialogType(null) }
     setLoading(false)
   }
 
@@ -816,12 +897,18 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
               <span className="ml-auto text-xs text-emerald-600">{liquidAssets.length} item(s)</span>
             </div>
             <div className="flex flex-wrap gap-3 mb-3">
-              {Object.entries(liquidByCurrency).map(([cur, amt]) => (
-                <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                  <p className="text-xs text-muted-foreground">{cur}</p>
-                  <p className="font-bold tabular-nums text-emerald-700">{formatCurrency(amt, cur)}</p>
-                </div>
-              ))}
+              {Object.entries(liquidByCurrency).map(([cur, amt]) => {
+                const rateForCur = liquidAssets.find(a => (a.currency || 'GHS') === cur)?.exchange_rate ?? 1
+                return (
+                  <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
+                    <p className="text-xs text-muted-foreground">{cur}</p>
+                    <p className="font-bold tabular-nums text-emerald-700">{formatCurrency(amt, cur)}</p>
+                    {cur !== 'GHS' && (
+                      <p className="text-[10px] text-muted-foreground">≈ {fmt(amt * Number(rateForCur))} @ rate {rateForCur}</p>
+                    )}
+                  </div>
+                )
+              })}
             </div>
             <div className="space-y-1.5">
               {liquidAssets.map(a => {
@@ -907,12 +994,14 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                     </div>
                     <AssetActionsMenu
                       type={a.asset_type === 'cash' ? 'cash' : 'physical'}
+                      isForeignCurrency={(a.is_liquid || a.asset_type === 'cash') && (a.currency || 'GHS') !== 'GHS'}
                       onView={() => setDetailAsset(a)}
                       onEdit={() => openEdit('asset', a)}
                       onSell={() => openSell(a)}
                       onDispose={() => openDispose(a)}
                       onDelete={() => handleDelete('assets', a.id, setAssets)}
                       onUpdateBalance={() => openUpdateBalance(a)}
+                      onSetRate={() => openSetRate(a)}
                     />
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
@@ -1519,36 +1608,124 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
         </DialogContent>
       </Dialog>
 
-      {/* Update Cash Balance Dialog */}
+      {/* Add Value to Cash Asset Dialog */}
       <Dialog open={dialogType === 'update_balance'} onOpenChange={o => !o && setDialogType(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-emerald-600" /> Update Cash Balance</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-emerald-600" /> Add Value</DialogTitle></DialogHeader>
           {editingId && (() => {
-            const asset = assets.find(a => a.id === editingId)
-            const diff  = Number(newBalance || 0) - Number(asset?.current_value ?? 0)
+            const asset    = assets.find(a => a.id === editingId)
+            const cur      = asset?.currency || 'GHS'
+            const delta    = Number(cashAddAmt || 0) * (cashAddDirection === 'add' ? 1 : -1)
+            const newBal   = Math.max(0, Number(asset?.current_value ?? 0) + delta)
             return (
               <div className="space-y-4">
                 <div className="bg-emerald-50 rounded-xl p-3 text-sm">
                   <p className="font-semibold">{asset?.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Current: <span className="font-semibold text-emerald-700">{formatCurrency(Number(asset?.current_value ?? 0), asset?.currency || 'GHS')}</span></p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Current: <span className="font-semibold text-emerald-700">{formatCurrency(Number(asset?.current_value ?? 0), cur)}</span></p>
                 </div>
+
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setCashAddDirection('add')}
+                    className={`flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors ${cashAddDirection === 'add' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-border text-muted-foreground hover:bg-muted'}`}>
+                    + Add to balance
+                  </button>
+                  <button type="button" onClick={() => setCashAddDirection('subtract')}
+                    className={`flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors ${cashAddDirection === 'subtract' ? 'bg-red-500 text-white border-red-500' : 'border-border text-muted-foreground hover:bg-muted'}`}>
+                    − Subtract from balance
+                  </button>
+                </div>
+
                 <div className="space-y-1.5">
-                  <Label>New Balance ({asset?.currency || 'GHS'})</Label>
-                  <Input type="number" step="0.01" placeholder="0.00" value={newBalance} onChange={e => setNewBalance(e.target.value)} autoFocus />
+                  <Label>Amount ({cur})</Label>
+                  <Input type="number" step="0.01" placeholder="0.00" value={cashAddAmt} onChange={e => setCashAddAmt(e.target.value)} autoFocus />
                 </div>
-                {newBalance && Number(newBalance) !== Number(asset?.current_value ?? 0) && (
-                  <div className={`rounded-xl p-3 text-sm flex justify-between items-center ${diff >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                    <span className="text-muted-foreground">Change</span>
-                    <span className={`font-bold ${diff >= 0 ? 'text-green-600' : 'text-red-500'}`}>{diff >= 0 ? '+' : ''}{formatCurrency(diff, asset?.currency || 'GHS')}</span>
+
+                {cashAddAmt && Number(cashAddAmt) > 0 && (
+                  <div className={`rounded-xl p-3 text-sm space-y-1 ${cashAddDirection === 'add' ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">{cashAddDirection === 'add' ? 'Adding' : 'Subtracting'}</span>
+                      <span className={`font-semibold ${cashAddDirection === 'add' ? 'text-green-600' : 'text-red-500'}`}>
+                        {cashAddDirection === 'add' ? '+' : '-'}{formatCurrency(Number(cashAddAmt), cur)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-border/50 pt-1">
+                      <span className="text-muted-foreground">New Balance</span>
+                      <span className="font-bold">{formatCurrency(newBal, cur)}</span>
+                    </div>
                   </div>
                 )}
+
+                <div className="space-y-1.5">
+                  <Label>Date</Label>
+                  <Input type="date" value={cashAddDate} onChange={e => setCashAddDate(e.target.value)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>{cashAddDirection === 'add' ? 'Coming from account' : 'Going to account'} <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Select value={cashAddAccountId} onValueChange={setCashAddAccountId}>
+                    <SelectTrigger className="bg-white"><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No account</SelectItem>
+                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {cashAddDirection === 'add'
+                      ? 'If selected, records an income entry in that account.'
+                      : 'If selected, records an expense entry in that account.'}
+                  </p>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input placeholder="e.g. Received salary, ATM withdrawal…" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} />
                 </div>
+
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
-                  <Button onClick={handleUpdateBalance} disabled={loading} className="bg-emerald-600 text-white hover:bg-emerald-700">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update Balance'}</Button>
+                  <Button onClick={handleCashAddValue} disabled={loading || !cashAddAmt || Number(cashAddAmt) <= 0}
+                    className={cashAddDirection === 'add' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-500 text-white hover:bg-red-600'}>
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : cashAddDirection === 'add' ? 'Add Value' : 'Subtract Value'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Exchange Rate Dialog */}
+      <Dialog open={dialogType === 'set_rate'} onOpenChange={o => !o && setDialogType(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5 text-blue-600" /> Set Exchange Rate</DialogTitle></DialogHeader>
+          {editingId && (() => {
+            const asset = assets.find(a => a.id === editingId)
+            const cur   = asset?.currency || 'GHS'
+            const ghsEquivalent = Number(asset?.current_value ?? 0) * Number(rateValue || 0)
+            return (
+              <div className="space-y-4">
+                <div className="bg-blue-50 rounded-xl p-3 text-sm">
+                  <p className="font-semibold">{asset?.name}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Balance: <span className="font-semibold text-blue-700">{formatCurrency(Number(asset?.current_value ?? 0), cur)}</span>
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>1 {cur} = ? GHS</Label>
+                  <Input type="number" step="0.0001" placeholder="e.g. 12.50" value={rateValue} onChange={e => setRateValue(e.target.value)} autoFocus />
+                  <p className="text-xs text-muted-foreground">This rate is used to convert this asset into GHS for Net Worth and total calculations.</p>
+                </div>
+                {rateValue && Number(rateValue) > 0 && (
+                  <div className="rounded-xl p-3 bg-green-50 text-sm flex justify-between">
+                    <span className="text-muted-foreground">GHS Equivalent</span>
+                    <span className="font-bold text-green-700">{fmt(ghsEquivalent)}</span>
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
+                  <Button onClick={handleSetRate} disabled={loading || !rateValue || Number(rateValue) <= 0} className="bg-blue-600 text-white hover:bg-blue-700">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Rate'}
+                  </Button>
                 </div>
               </div>
             )
