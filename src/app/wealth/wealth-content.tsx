@@ -189,6 +189,11 @@ function ConditionBadge({ condition }: { condition: string }) {
 function KPI({ label, value, sub, bg, icon: Icon }: {
   label: string; value: string; sub?: string; bg: string; icon: any
 }) {
+  // Auto-shrink font for long values instead of wrapping mid-number or clipping.
+  const fontSizeClass =
+    value.length > 14 ? 'text-[11px] sm:text-lg' :
+    value.length > 10 ? 'text-xs sm:text-xl'      :
+    'text-sm sm:text-2xl'
   return (
     <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
       <div className="h-1" style={{ background: bg }} />
@@ -196,7 +201,7 @@ function KPI({ label, value, sub, bg, icon: Icon }: {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">{label}</p>
-            <p className="text-sm sm:text-2xl font-bold tabular-nums mt-1 break-all leading-tight">{value}</p>
+            <p className={`font-bold tabular-nums mt-1 leading-tight whitespace-nowrap ${fontSizeClass}`}>{value}</p>
             {sub && <p className="text-[9px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
           </div>
           <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -400,12 +405,12 @@ interface Props {
   userId:             string
 }
 
-export function WealthContent({ initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts, userId }: Props) {
+export function WealthContent({ initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts = [], userId }: Props) {
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [assets,      setAssets]      = useState<any[]>(initialAssets)
-  const [accounts]                    = useState<any[]>(initialAccounts)
+  const [accounts]                    = useState<any[]>(initialAccounts ?? [])
   const [investments, setInvestments] = useState<any[]>(initialInvestments)
   const [debts,       setDebts]       = useState<any[]>(initialDebts)
   const [loans,       setLoans]       = useState<any[]>(initialLoans)
@@ -898,13 +903,13 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
             </div>
             <div className="flex flex-wrap gap-3 mb-3">
               {Object.entries(liquidByCurrency).map(([cur, amt]) => {
-                const rateForCur = liquidAssets.find(a => (a.currency || 'GHS') === cur)?.exchange_rate ?? 1
+                const rateForCur = Number(liquidAssets.find(a => (a.currency || 'GHS') === cur)?.exchange_rate) || 1
                 return (
                   <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
                     <p className="text-xs text-muted-foreground">{cur}</p>
                     <p className="font-bold tabular-nums text-emerald-700">{formatCurrency(amt, cur)}</p>
                     {cur !== 'GHS' && (
-                      <p className="text-[10px] text-muted-foreground">≈ {fmt(amt * Number(rateForCur))} @ rate {rateForCur}</p>
+                      <p className="text-[10px] text-muted-foreground">≈ {fmt(amt * rateForCur)} @ rate {rateForCur}</p>
                     )}
                   </div>
                 )
