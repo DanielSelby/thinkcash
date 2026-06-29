@@ -691,7 +691,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
 
     // Optionally log to/from a linked account as income or expense
-    if (cashAddAccountId) {
+    if (cashAddAccountId && cashAddAccountId !== 'none') {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         if (cashAddDirection === 'add') {
@@ -757,7 +757,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     }).eq('id', editingId).select().single()
     if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
     // Optionally create income record in selected account
-    if (investAccountId) {
+    if (investAccountId && investAccountId !== 'none') {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         await supabase.from('incomes').insert({
@@ -1667,10 +1667,10 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
 
                 <div className="space-y-1.5">
                   <Label>{cashAddDirection === 'add' ? 'Coming from account' : 'Going to account'} <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Select value={cashAddAccountId} onValueChange={setCashAddAccountId}>
+                  <Select value={cashAddAccountId || 'none'} onValueChange={v => setCashAddAccountId(v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-white"><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No account</SelectItem>
+                      <SelectItem value="none">No account</SelectItem>
                       {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -1780,10 +1780,10 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                 </div>
                 <div className="space-y-1.5">
                   <Label>Record income to account <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Select value={investAccountId} onValueChange={setInvestAccountId}>
+                  <Select value={investAccountId || 'none'} onValueChange={v => setInvestAccountId(v === 'none' ? '' : v)}>
                     <SelectTrigger className="bg-white"><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No account</SelectItem>
+                      <SelectItem value="none">No account</SelectItem>
                       {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
                     </SelectContent>
                   </Select>
