@@ -33,7 +33,7 @@ const schema = z.object({
   payment_method: z.string().min(1, 'Payment method is required'),
   date:           z.string().min(1, 'Date is required'),
   notes:          z.string().optional(),
-  account_id:     z.string().optional(),
+  account_id:     z.string().min(1, 'Account is required — every expense must be deducted from a real account'),
 })
 type FormData = z.infer<typeof schema>
 
@@ -832,17 +832,22 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Account <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <Select onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
-                defaultValue={editing?.account_id || 'none'}>
-                <SelectTrigger><SelectValue placeholder="Which account?" /></SelectTrigger>
+              <Label>Account</Label>
+              <Select onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
+                defaultValue={editing?.account_id || undefined}>
+                <SelectTrigger className={errors.account_id ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Which account is this deducted from?" />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No account</SelectItem>
                   {accounts.map(a => (
                     <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
+              {accounts.length === 0 && (
+                <p className="text-xs text-amber-600">You need at least one account — add one in My Accounts first.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Notes (optional)</Label>

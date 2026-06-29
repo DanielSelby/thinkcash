@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -36,7 +36,6 @@ const ASSET_TYPES = [
   { value: 'vehicle',     label: 'Vehicle',       icon: Car        },
   { value: 'electronics', label: 'Electronics',   icon: Smartphone },
   { value: 'jewelry',     label: 'Jewelry',       icon: Gem        },
-  { value: 'cash',        label: 'Cash & Liquid', icon: Banknote   },
   { value: 'other',       label: 'Other',         icon: Landmark   },
 ]
 
@@ -189,7 +188,6 @@ function ConditionBadge({ condition }: { condition: string }) {
 function KPI({ label, value, sub, bg, icon: Icon }: {
   label: string; value: string; sub?: string; bg: string; icon: any
 }) {
-  // Auto-shrink font for long values instead of wrapping mid-number or clipping.
   const fontSizeClass =
     value.length > 14 ? 'text-[11px] sm:text-lg' :
     value.length > 10 ? 'text-xs sm:text-xl'      :
@@ -249,21 +247,12 @@ function Section({ title, count, color, children, onAdd, icon: Icon }: {
   )
 }
 
-function AssetActionsMenu({ type, isForeignCurrency, onView, onEdit, onSell, onDispose, onDelete, onUpdateBalance, onSetRate }: {
-  type: 'physical' | 'cash'
-  isForeignCurrency?: boolean
+function AssetActionsMenu({ type, onView, onEdit, onSell, onDispose, onDelete }: {
+  type: 'physical'
   onView?: () => void; onEdit: () => void; onSell?: () => void
-  onDispose?: () => void; onDelete: () => void; onUpdateBalance?: () => void
-  onSetRate?: () => void
+  onDispose?: () => void; onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const cashActions = [
-    { label: 'View Details', fn: onView,          cls: ''                 },
-    { label: 'Add Value',    fn: onUpdateBalance, cls: 'text-emerald-600' },
-    ...(isForeignCurrency ? [{ label: 'Set Exchange Rate', fn: onSetRate, cls: 'text-blue-600' }] : []),
-    { label: 'Edit',         fn: onEdit,          cls: ''                 },
-    { label: 'Delete',       fn: onDelete,        cls: 'text-destructive' },
-  ]
   const physicalActions = [
     { label: 'View Details', fn: onView,    cls: ''                 },
     { label: 'Edit',         fn: onEdit,    cls: ''                 },
@@ -271,7 +260,6 @@ function AssetActionsMenu({ type, isForeignCurrency, onView, onEdit, onSell, onD
     { label: 'Dispose',      fn: onDispose, cls: 'text-orange-500'  },
     { label: 'Delete',       fn: onDelete,  cls: 'text-destructive' },
   ]
-  const actions = type === 'cash' ? cashActions : physicalActions
   return (
     <div className="relative">
       <button onClick={() => setOpen(v => !v)}
@@ -282,7 +270,7 @@ function AssetActionsMenu({ type, isForeignCurrency, onView, onEdit, onSell, onD
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-8 z-50 w-44 bg-white border border-border rounded-xl shadow-lg overflow-hidden">
-            {actions.filter(a => a.fn).map(item => (
+            {physicalActions.filter(a => a.fn).map(item => (
               <button key={item.label} onClick={() => { setOpen(false); item.fn?.() }}
                 className={`w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors ${item.cls}`}>
                 {item.label}
@@ -325,10 +313,6 @@ function SimpleMenu({ items }: { items: { label: string; fn: () => void; cls?: s
 const assetSchema = z.object({
   name:                     z.string().min(1, 'Name required'),
   asset_type:               z.string().min(1, 'Type required'),
-  is_liquid:                z.boolean().optional(),
-  liquid_subtype:           z.string().optional(),
-  currency:                 z.string().optional(),
-  account_id:               z.string().nullish(),
   description:              z.string().optional(),
   asset_tag:                z.string().optional(),
   current_value:            z.coerce.number().min(0),
@@ -402,10 +386,16 @@ interface Props {
   initialDebts:       Debt[]
   initialLoans:       Loan[]
   initialAccounts:    any[]
+  incomes:            { amount: number; account_id: string | null }[]
+  expenses:           { amount: number; account_id: string | null }[]
+  transfers:          { from_account_id: string; to_account_id: string; amount: number; to_amount?: number | null }[]
   userId:             string
 }
 
-export function WealthContent({ initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts = [], userId }: Props) {
+export function WealthContent({
+  initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts = [],
+  incomes = [], expenses = [], transfers = [], userId,
+}: Props) {
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -416,10 +406,31 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   const [loans,       setLoans]       = useState<any[]>(initialLoans)
   const [detailAsset, setDetailAsset] = useState<any | null>(null)
 
+  // ── Live account balances — the SAME formula My Accounts uses. ──────────
+  // Cash & Liquid is no longer a separately-stored number; it's a read-only
+  // mirror of real user_accounts, computed fresh from income/expense/transfer
+  // history, so it can never drift out of sync with what's actually true.
+  const accountsWithBalance = useMemo(() =>
+    accounts.map(acc => {
+      const totalIncome  = incomes.filter(i => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const transfersOut = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const transfersIn  = transfers.filter(t => t.to_account_id === acc.id).reduce((s, t) => s + Number(t.to_amount ?? t.amount), 0)
+      const balance = Number(acc.opening_balance ?? 0) + totalIncome - totalExpense - transfersOut + transfersIn
+      return { ...acc, balance }
+    }), [accounts, incomes, expenses, transfers])
+
+  // GHS-equivalent of a single account, using its own exchange_rate (defaults to 1 for GHS accounts)
+  const accountToGHS = (acc: any) => {
+    const cur = acc.currency || 'GHS'
+    if (cur === 'GHS') return acc.balance
+    return Number(acc.balance) * Number(acc.exchange_rate ?? 1)
+  }
+
   type DialogType =
     | 'asset' | 'investment' | 'debt' | 'loan'
     | 'sell' | 'dispose'
-    | 'update_balance' | 'invest_add' | 'debt_payment' | 'loan_payment' | 'set_rate'
+    | 'invest_add' | 'debt_payment' | 'loan_payment'
     | null
 
   const [dialogType,       setDialogType]       = useState<DialogType>(null)
@@ -434,15 +445,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   const [investDate,       setInvestDate]        = useState(new Date().toISOString().split('T')[0])
   const [investIncomeType, setInvestIncomeType]  = useState('investment')
   const [investAccountId,  setInvestAccountId]   = useState('')
-
-  // cash asset "Add Value" state
-  const [cashAddAmt,       setCashAddAmt]        = useState('')
-  const [cashAddDirection, setCashAddDirection]  = useState<'add' | 'subtract'>('add')
-  const [cashAddAccountId, setCashAddAccountId]  = useState('')
-  const [cashAddDate,      setCashAddDate]       = useState(new Date().toISOString().split('T')[0])
-
-  // exchange rate dialog state
-  const [rateValue, setRateValue] = useState('')
 
   // search / filter
   const [search,       setSearch]       = useState('')
@@ -471,17 +473,25 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   })
 
   // ── Totals ────────────────────────────────────────────────────────
-  const activeAssets = useMemo(() => assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated'), [assets])
-  // Converts any asset to GHS-equivalent for totals: GHS assets use rate 1, foreign-currency
-  // assets are multiplied by their stored exchange_rate (set via "Set Exchange Rate" action).
+  // Physical assets are still real, separate things (property, vehicles, electronics, jewelry)
+  // with no other home — they keep their own table. Cash assets are retired: any legacy rows
+  // were migrated to real user_accounts by the SQL migration, so we filter them out here even
+  // if old rows are still visible in the table (migrated_to_account flag).
+  const activeAssets = useMemo(() =>
+    assets.filter(a =>
+      a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated' &&
+      !a.is_liquid && a.asset_type !== 'cash' && !a.migrated_to_account
+    ), [assets])
   const toGHS = (a: any) => {
     const cur = a.currency || 'GHS'
     if (cur === 'GHS') return Number(a.current_value ?? 0)
     return Number(a.current_value ?? 0) * Number(a.exchange_rate ?? 1)
   }
-  const totalPhysical = useMemo(() => activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').reduce((s, a) => s + toGHS(a), 0), [activeAssets])
-  const totalLiquid   = useMemo(() => activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').reduce((s, a) => s + toGHS(a), 0), [activeAssets])
-  const totalAssets   = totalPhysical + totalLiquid
+  const totalPhysical = useMemo(() => activeAssets.reduce((s, a) => s + toGHS(a), 0), [activeAssets])
+  // Cash & Liquid total now comes from real accounts, converted to GHS via each
+  // account's own exchange_rate — same live numbers My Accounts shows.
+  const totalLiquid = useMemo(() => accountsWithBalance.reduce((s, a) => s + accountToGHS(a), 0), [accountsWithBalance])
+  const totalAssets = totalPhysical + totalLiquid
   const totalInvested    = useMemo(() => investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), [investments])
   const totalDebts       = useMemo(() => debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), [debts])
   const totalLoans       = useMemo(() => loans.reduce((s, l) => s + Number(l.remaining ?? 0), 0), [loans])
@@ -514,7 +524,7 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
     setEditingId(null); setDialogType(type); setActiveTab('basic')
-    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', is_liquid: false, liquid_subtype: '', currency: 'GHS', account_id: undefined, description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
+    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
     if (type === 'investment') investmentForm.reset({ name: '', investment_type: '', invested_amount: 0, current_value: 0, institution: '', notes: '' })
     if (type === 'debt')  debtForm.reset({ name: '', debt_type: '', total_amount: 0, remaining: 0, interest_rate: 0, due_date: '', notes: '' })
     if (type === 'loan')  loanForm.reset({ name: '', loan_type: '', principal: 0, remaining: 0, interest_rate: 0, monthly_payment: 0, start_date: '', end_date: '', institution: '', notes: '' })
@@ -538,19 +548,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     setEditingId(asset.id)
     disposeForm.reset({ disposal_reason: '', disposal_date: new Date().toISOString().split('T')[0], notes: '' })
     setDialogType('dispose')
-  }
-
-  const openUpdateBalance = (asset: any) => {
-    setEditingId(asset.id)
-    setCashAddAmt(''); setCashAddDirection('add'); setCashAddAccountId('')
-    setCashAddDate(new Date().toISOString().split('T')[0]); setPaymentNote('')
-    setDialogType('update_balance')
-  }
-
-  const openSetRate = (asset: any) => {
-    setEditingId(asset.id)
-    setRateValue(String(asset.exchange_rate ?? 1))
-    setDialogType('set_rate')
   }
 
   const openInvestAdd = (inv: any) => {
@@ -581,12 +578,8 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     const supabase = createClient()
     const payload: any = {
       ...data,
-      account_id:     data.account_id     || null,
-      liquid_subtype: data.liquid_subtype || null,
-      currency:       data.currency       || 'GHS',
-      updated_at:     new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     }
-    if (data.asset_type === 'cash') payload.purchase_value = payload.current_value
     if (editingId) {
       const { data: updated, error } = await supabase.from('assets').update(payload).eq('id', editingId).select().single()
       if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
@@ -674,72 +667,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
     setLoading(false)
   }
 
-  const handleCashAddValue = async () => {
-    if (!editingId || !cashAddAmt || Number(cashAddAmt) <= 0) {
-      toast({ title: 'Enter a valid amount', variant: 'destructive' }); return
-    }
-    setLoading(true)
-    const supabase = createClient()
-    const asset = assets.find(a => a.id === editingId)
-    if (!asset) { setLoading(false); return }
-    const delta      = Number(cashAddAmt) * (cashAddDirection === 'add' ? 1 : -1)
-    const newBalance = Math.max(0, Number(asset.current_value ?? 0) + delta)
-
-    const { data: updated, error } = await supabase.from('assets')
-      .update({ current_value: newBalance, updated_at: new Date().toISOString() })
-      .eq('id', editingId).select().single()
-    if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
-
-    // Optionally log to/from a linked account as income or expense
-    if (cashAddAccountId && cashAddAccountId !== 'none') {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        if (cashAddDirection === 'add') {
-          await supabase.from('incomes').insert({
-            user_id: user.id,
-            title: `Cash added: ${asset.name}`,
-            amount: Number(cashAddAmt),
-            category: 'other',
-            date: cashAddDate,
-            account_id: cashAddAccountId,
-            notes: paymentNote || `Added to ${asset.name}`,
-          })
-        } else {
-          await supabase.from('expenses').insert({
-            user_id: user.id,
-            title: `Cash withdrawn: ${asset.name}`,
-            amount: Number(cashAddAmt),
-            category: 'other',
-            payment_method: 'cash',
-            date: cashAddDate,
-            account_id: cashAddAccountId,
-            notes: paymentNote || `Withdrawn from ${asset.name}`,
-          })
-        }
-      }
-    }
-
-    setAssets(p => p.map(a => a.id === editingId ? updated : a))
-    toast({ title: `${cashAddDirection === 'add' ? '+' : '-'}${formatCurrency(Number(cashAddAmt), asset.currency || 'GHS')} — new balance ${formatCurrency(newBalance, asset.currency || 'GHS')}`, variant: 'success' })
-    setDialogType(null)
-    setCashAddAmt(''); setCashAddAccountId(''); setPaymentNote('')
-    setLoading(false)
-  }
-
-  const handleSetRate = async () => {
-    if (!editingId || !rateValue || Number(rateValue) <= 0) {
-      toast({ title: 'Enter a valid exchange rate', variant: 'destructive' }); return
-    }
-    setLoading(true)
-    const supabase = createClient()
-    const { data: updated, error } = await supabase.from('assets')
-      .update({ exchange_rate: Number(rateValue), updated_at: new Date().toISOString() })
-      .eq('id', editingId).select().single()
-    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-    else { setAssets(p => p.map(a => a.id === editingId ? updated : a)); toast({ title: 'Exchange rate updated', variant: 'success' }); setDialogType(null) }
-    setLoading(false)
-  }
-
   const handleInvestAdd = async () => {
     if (!editingId || !newBalance || Number(newBalance) <= 0) {
       toast({ title: 'Enter the amount to add', variant: 'destructive' }); return
@@ -756,7 +683,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
       updated_at: new Date().toISOString(),
     }).eq('id', editingId).select().single()
     if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
-    // Optionally create income record in selected account
     if (investAccountId && investAccountId !== 'none') {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
@@ -879,31 +805,38 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
 
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KPI label="Physical Assets" value={fmt(totalPhysical)} sub={`${activeAssets.filter(a => !a.is_liquid && a.asset_type !== 'cash').length} items`} bg={SECTION_COLORS.asset.bg} icon={Landmark} />
-        <KPI label="Cash & Liquid"   value={fmt(totalLiquid)}   sub={`${activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').length} items`} bg="#059669" icon={Banknote} />
+        <KPI label="Physical Assets" value={fmt(totalPhysical)} sub={`${activeAssets.length} items`} bg={SECTION_COLORS.asset.bg} icon={Landmark} />
+        <KPI label="Cash & Liquid"   value={fmt(totalLiquid)}   sub={`${accountsWithBalance.length} account(s)`} bg="#059669" icon={Banknote} />
         <KPI label="Investments"     value={fmt(totalInvested)} sub={investmentGain >= 0 ? `+${fmt(investmentGain)} gain` : `${fmt(investmentGain)} loss`} bg={SECTION_COLORS.investment.bg} icon={TrendingUp} />
         <KPI label="Debts"           value={fmt(totalDebts)}    sub={`${debts.length} account(s)`} bg={SECTION_COLORS.debt.bg} icon={CreditCard} />
         <KPI label="Loans"           value={fmt(totalLoans)}    sub={`${loans.length} loan(s)`}    bg={SECTION_COLORS.loan.bg} icon={Building2} />
       </div>
 
-      {/* Cash & Liquid Summary */}
-      {activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash').length > 0 && (() => {
-        const liquidAssets = activeAssets.filter(a => a.is_liquid || a.asset_type === 'cash')
+      {/* Cash & Liquid — live mirror of My Accounts. Read-only here by design:
+          this is a REPORT, not a second place to edit cash. To add income,
+          log an expense, or adjust an opening balance, go to Income/Expenses/
+          My Accounts — those are the only places cash balances ever change. */}
+      {accountsWithBalance.length > 0 && (() => {
         const liquidByCurrency: Record<string, number> = {}
-        liquidAssets.forEach(a => {
+        accountsWithBalance.forEach(a => {
           const cur = a.currency || 'GHS'
-          liquidByCurrency[cur] = (liquidByCurrency[cur] || 0) + Number(a.current_value ?? 0)
+          liquidByCurrency[cur] = (liquidByCurrency[cur] || 0) + Number(a.balance ?? 0)
         })
         return (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Banknote className="w-4 h-4 text-emerald-600" />
-              <p className="text-sm font-semibold text-emerald-800">Cash & Liquid Assets</p>
-              <span className="ml-auto text-xs text-emerald-600">{liquidAssets.length} item(s)</span>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Banknote className="w-4 h-4 text-emerald-600" />
+                <p className="text-sm font-semibold text-emerald-800">Cash & Liquid Assets</p>
+                <span className="text-xs text-emerald-600">{accountsWithBalance.length} account(s)</span>
+              </div>
+              <a href="/user-accounts" className="text-xs font-semibold text-emerald-700 hover:underline">
+                Manage in My Accounts →
+              </a>
             </div>
             <div className="flex flex-wrap gap-3 mb-3">
               {Object.entries(liquidByCurrency).map(([cur, amt]) => {
-                const rateForCur = Number(liquidAssets.find(a => (a.currency || 'GHS') === cur)?.exchange_rate) || 1
+                const rateForCur = Number(accountsWithBalance.find(a => (a.currency || 'GHS') === cur)?.exchange_rate) || 1
                 return (
                   <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
                     <p className="text-xs text-muted-foreground">{cur}</p>
@@ -916,14 +849,19 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
               })}
             </div>
             <div className="space-y-1.5">
-              {liquidAssets.map(a => {
-                const subtype = LIQUID_ASSET_SUBTYPES.find(s => s.value === a.liquid_subtype)
-                const Icon = subtype?.icon ?? Banknote
+              {accountsWithBalance.map(a => {
+                const typeInfo = [
+                  { value: 'bank', icon: Building2 },
+                  { value: 'mobile_money', icon: PhoneIcon },
+                  { value: 'cash', icon: Banknote },
+                  { value: 'investment', icon: TrendingUp },
+                ].find(t => t.value === a.type)
+                const Icon = typeInfo?.icon ?? Banknote
                 return (
                   <div key={a.id} className="flex items-center gap-2 text-sm">
                     <Icon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
                     <span className="flex-1 truncate">{a.name}</span>
-                    <span className="font-semibold tabular-nums text-emerald-700">{formatCurrency(Number(a.current_value ?? 0), a.currency || 'GHS')}</span>
+                    <span className="font-semibold tabular-nums text-emerald-700">{formatCurrency(Number(a.balance ?? 0), a.currency || 'GHS')}</span>
                   </div>
                 )
               })}
@@ -998,26 +936,17 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                       </div>
                     </div>
                     <AssetActionsMenu
-                      type={a.asset_type === 'cash' ? 'cash' : 'physical'}
-                      isForeignCurrency={(a.is_liquid || a.asset_type === 'cash') && (a.currency || 'GHS') !== 'GHS'}
+                      type="physical"
                       onView={() => setDetailAsset(a)}
                       onEdit={() => openEdit('asset', a)}
                       onSell={() => openSell(a)}
                       onDispose={() => openDispose(a)}
                       onDelete={() => handleDelete('assets', a.id, setAssets)}
-                      onUpdateBalance={() => openUpdateBalance(a)}
-                      onSetRate={() => openSetRate(a)}
                     />
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
                     <StatusBadge status={a.status ?? 'active'} />
-                    {a.condition && !a.is_liquid && <ConditionBadge condition={a.condition} />}
-                    {(a.is_liquid || a.asset_type === 'cash') && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-100 text-emerald-700">
-                        <Banknote className="w-2.5 h-2.5 mr-0.5" />
-                        {LIQUID_ASSET_SUBTYPES.find(s => s.value === a.liquid_subtype)?.label || 'Liquid'}
-                      </span>
-                    )}
+                    {a.condition && <ConditionBadge condition={a.condition} />}
                     {a.currency && a.currency !== 'GHS' && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700">{a.currency}</span>
                     )}
@@ -1025,16 +954,14 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-muted-foreground">Current Value</p>
-                      <p className="font-bold text-sm" style={{ color: (a.is_liquid || a.asset_type === 'cash') ? '#059669' : SECTION_COLORS.asset.bg }}>
+                      <p className="font-bold text-sm" style={{ color: SECTION_COLORS.asset.bg }}>
                         {formatCurrency(Number(a.current_value ?? 0), a.currency || 'GHS')}
                       </p>
                     </div>
-                    {a.asset_type !== 'cash' && (
-                      <div>
-                        <p className="text-muted-foreground">Purchase Value</p>
-                        <p className="font-medium">{fmt(Number(a.purchase_value ?? 0))}</p>
-                      </div>
-                    )}
+                    <div>
+                      <p className="text-muted-foreground">Purchase Value</p>
+                      <p className="font-medium">{fmt(Number(a.purchase_value ?? 0))}</p>
+                    </div>
                     {hasDepreciation && (
                       <div>
                         <p className="text-muted-foreground">Depreciated Value</p>
@@ -1048,14 +975,12 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                       </div>
                     )}
                   </div>
-                  {a.asset_type !== 'cash' && (
-                    <div className="flex items-center gap-1 text-xs">
-                      {gain >= 0 ? <ArrowUpRight className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />}
-                      <span className={gain >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
-                        {gain >= 0 ? '+' : ''}{fmt(gain)}{Number(a.purchase_value) > 0 && ` (${Math.round((gain / Number(a.purchase_value)) * 100)}%)`}
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 text-xs">
+                    {gain >= 0 ? <ArrowUpRight className="w-3.5 h-3.5 text-green-600 flex-shrink-0" /> : <ArrowDownRight className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />}
+                    <span className={gain >= 0 ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                      {gain >= 0 ? '+' : ''}{fmt(gain)}{Number(a.purchase_value) > 0 && ` (${Math.round((gain / Number(a.purchase_value)) * 100)}%)`}
+                    </span>
+                  </div>
                   {hasDepreciation && Number(a.purchase_value) > 0 && (
                     <div>
                       <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
@@ -1273,42 +1198,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
                   </Select>
                   {assetForm.formState.errors.asset_type && <p className="text-xs text-destructive">{assetForm.formState.errors.asset_type.message}</p>}
                 </div>
-                {assetForm.watch('asset_type') === 'cash' && (
-                  <div className="space-y-3 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
-                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-1">
-                      <Banknote className="w-3.5 h-3.5" /> Cash & Liquid Asset Details
-                    </p>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Liquid Asset Type</Label>
-                      <Select onValueChange={v => { assetForm.setValue('liquid_subtype', v); assetForm.setValue('is_liquid', true); const sub = LIQUID_ASSET_SUBTYPES.find(s => s.value === v); if (!assetForm.getValues('name') && sub) assetForm.setValue('name', sub.label) }} defaultValue={assetForm.getValues('liquid_subtype') || ''}>
-                        <SelectTrigger className="bg-white"><SelectValue placeholder="Select liquid type" /></SelectTrigger>
-                        <SelectContent>{LIQUID_ASSET_SUBTYPES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Currency</Label>
-                        <Select onValueChange={v => assetForm.setValue('currency', v)} defaultValue={assetForm.getValues('currency') || 'GHS'}>
-                          <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
-                          <SelectContent>{['GHS','USD','EUR','GBP','NGN','KES','ZAR','AED'].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Linked Account <span className="text-muted-foreground">(optional)</span></Label>
-                        <Select onValueChange={v => assetForm.setValue('account_id', v === 'none' ? undefined : v)} defaultValue={assetForm.getValues('account_id') || 'none'}>
-                          <SelectTrigger className="bg-white"><SelectValue placeholder="Link account" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No account</SelectItem>
-                            {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <p className="text-xs text-emerald-600 bg-emerald-100/50 rounded-lg px-3 py-2">
-                      💡 Enter the <strong>Current Value</strong> as the cash amount available.
-                    </p>
-                  </div>
-                )}
                 <div className="space-y-1.5">
                   <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input placeholder="Brief description…" {...assetForm.register('description')} />
@@ -1346,84 +1235,55 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
             )}
             {activeTab === 'financial' && (
               <div className="space-y-4">
-                {assetForm.watch('asset_type') === 'cash' ? (
-                  <div className="space-y-4">
-                    <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
-                      <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-1">Cash / Liquid Asset</p>
-                      <p className="text-xs text-emerald-600">Enter the amount currently available. No depreciation applies.</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Purchase Price *</Label>
+                    <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('purchase_value')} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Current Market Value *</Label>
+                    <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('current_value')} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Purchase Date</Label>
+                  <Input type="date" {...assetForm.register('purchase_date')} />
+                </div>
+                <div className="pt-2 border-t border-border space-y-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+                    <DepIcon className="w-3.5 h-3.5" /> Depreciation
+                  </p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label>Method</Label>
+                      <Select onValueChange={v => assetForm.setValue('depreciation_method', v)} defaultValue={assetForm.getValues('depreciation_method') || 'none'}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>{DEPRECIATION_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Current Balance / Amount *</Label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-muted-foreground">{assetForm.watch('currency') || 'GHS'}</span>
-                        <Input type="number" step="0.01" placeholder="0.00" className="pl-14" {...assetForm.register('current_value')} />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Date Recorded</Label>
-                      <Input type="date" {...assetForm.register('purchase_date')} />
-                    </div>
-                    <input type="hidden" {...assetForm.register('purchase_value')} />
-                    <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 text-xs text-blue-700 space-y-1">
-                      <p className="font-semibold">How cash assets work:</p>
-                      <p>• Counted toward Total Assets and Net Worth</p>
-                      <p>• Shown in the Cash & Liquid Assets summary</p>
-                      <p>• Use Update Balance to change the amount later</p>
+                      <Label>Annual Rate %</Label>
+                      <Input type="number" step="0.1" placeholder="e.g. 20" {...assetForm.register('annual_depreciation_rate')} />
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>Purchase Price *</Label>
-                        <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('purchase_value')} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Current Market Value *</Label>
-                        <Input type="number" step="0.01" placeholder="0.00" {...assetForm.register('current_value')} />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Purchase Date</Label>
-                      <Input type="date" {...assetForm.register('purchase_date')} />
-                    </div>
-                    <div className="pt-2 border-t border-border space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
-                        <DepIcon className="w-3.5 h-3.5" /> Depreciation
-                      </p>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
-                          <Label>Method</Label>
-                          <Select onValueChange={v => assetForm.setValue('depreciation_method', v)} defaultValue={assetForm.getValues('depreciation_method') || 'none'}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>{DEPRECIATION_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Annual Rate %</Label>
-                          <Input type="number" step="0.1" placeholder="e.g. 20" {...assetForm.register('annual_depreciation_rate')} />
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Useful Life (years)</Label>
-                        <Input type="number" placeholder="e.g. 5" {...assetForm.register('useful_life_years')} />
-                      </div>
-                      {(() => {
-                        const vals = assetForm.watch()
-                        const dep  = calcDepreciation(vals)
-                        if (!vals.annual_depreciation_rate || vals.depreciation_method === 'none') return null
-                        return (
-                          <div className="bg-orange-50 rounded-xl p-3 space-y-1 text-xs">
-                            <p className="font-semibold text-orange-700">Depreciation Preview</p>
-                            <div className="flex justify-between"><span className="text-muted-foreground">Purchase Price</span><span className="font-medium">{fmt(Number(vals.purchase_value ?? 0))}</span></div>
-                            <div className="flex justify-between"><span className="text-muted-foreground">Annual Depr.</span><span className="font-medium text-orange-600">-{fmt(dep.annualAmount)}</span></div>
-                            <div className="flex justify-between"><span className="text-muted-foreground">Current Depr. Value</span><span className="font-semibold">{fmt(dep.currentDepreciatedValue)}</span></div>
-                          </div>
-                        )
-                      })()}
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label>Useful Life (years)</Label>
+                    <Input type="number" placeholder="e.g. 5" {...assetForm.register('useful_life_years')} />
                   </div>
-                )}
+                  {(() => {
+                    const vals = assetForm.watch()
+                    const dep  = calcDepreciation(vals)
+                    if (!vals.annual_depreciation_rate || vals.depreciation_method === 'none') return null
+                    return (
+                      <div className="bg-orange-50 rounded-xl p-3 space-y-1 text-xs">
+                        <p className="font-semibold text-orange-700">Depreciation Preview</p>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Purchase Price</span><span className="font-medium">{fmt(Number(vals.purchase_value ?? 0))}</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Annual Depr.</span><span className="font-medium text-orange-600">-{fmt(dep.annualAmount)}</span></div>
+                        <div className="flex justify-between"><span className="text-muted-foreground">Current Depr. Value</span><span className="font-semibold">{fmt(dep.currentDepreciatedValue)}</span></div>
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
             )}
             {activeTab === 'details' && (
@@ -1610,131 +1470,6 @@ export function WealthContent({ initialAssets, initialInvestments, initialDebts,
               <Button type="submit" disabled={loading} className="bg-orange-500 text-white hover:bg-orange-600">{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Disposal'}</Button>
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Value to Cash Asset Dialog */}
-      <Dialog open={dialogType === 'update_balance'} onOpenChange={o => !o && setDialogType(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-emerald-600" /> Add Value</DialogTitle></DialogHeader>
-          {editingId && (() => {
-            const asset    = assets.find(a => a.id === editingId)
-            const cur      = asset?.currency || 'GHS'
-            const delta    = Number(cashAddAmt || 0) * (cashAddDirection === 'add' ? 1 : -1)
-            const newBal   = Math.max(0, Number(asset?.current_value ?? 0) + delta)
-            return (
-              <div className="space-y-4">
-                <div className="bg-emerald-50 rounded-xl p-3 text-sm">
-                  <p className="font-semibold">{asset?.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Current: <span className="font-semibold text-emerald-700">{formatCurrency(Number(asset?.current_value ?? 0), cur)}</span></p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setCashAddDirection('add')}
-                    className={`flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors ${cashAddDirection === 'add' ? 'bg-emerald-600 text-white border-emerald-600' : 'border-border text-muted-foreground hover:bg-muted'}`}>
-                    + Add to balance
-                  </button>
-                  <button type="button" onClick={() => setCashAddDirection('subtract')}
-                    className={`flex-1 text-xs font-semibold py-2 rounded-lg border transition-colors ${cashAddDirection === 'subtract' ? 'bg-red-500 text-white border-red-500' : 'border-border text-muted-foreground hover:bg-muted'}`}>
-                    − Subtract from balance
-                  </button>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Amount ({cur})</Label>
-                  <Input type="number" step="0.01" placeholder="0.00" value={cashAddAmt} onChange={e => setCashAddAmt(e.target.value)} autoFocus />
-                </div>
-
-                {cashAddAmt && Number(cashAddAmt) > 0 && (
-                  <div className={`rounded-xl p-3 text-sm space-y-1 ${cashAddDirection === 'add' ? 'bg-green-50' : 'bg-red-50'}`}>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{cashAddDirection === 'add' ? 'Adding' : 'Subtracting'}</span>
-                      <span className={`font-semibold ${cashAddDirection === 'add' ? 'text-green-600' : 'text-red-500'}`}>
-                        {cashAddDirection === 'add' ? '+' : '-'}{formatCurrency(Number(cashAddAmt), cur)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-border/50 pt-1">
-                      <span className="text-muted-foreground">New Balance</span>
-                      <span className="font-bold">{formatCurrency(newBal, cur)}</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-1.5">
-                  <Label>Date</Label>
-                  <Input type="date" value={cashAddDate} onChange={e => setCashAddDate(e.target.value)} />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>{cashAddDirection === 'add' ? 'Coming from account' : 'Going to account'} <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Select value={cashAddAccountId || 'none'} onValueChange={v => setCashAddAccountId(v === 'none' ? '' : v)}>
-                    <SelectTrigger className="bg-white"><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No account</SelectItem>
-                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    {cashAddDirection === 'add'
-                      ? 'If selected, records an income entry in that account.'
-                      : 'If selected, records an expense entry in that account.'}
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Input placeholder="e.g. Received salary, ATM withdrawal…" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
-                  <Button onClick={handleCashAddValue} disabled={loading || !cashAddAmt || Number(cashAddAmt) <= 0}
-                    className={cashAddDirection === 'add' ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-red-500 text-white hover:bg-red-600'}>
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : cashAddDirection === 'add' ? 'Add Value' : 'Subtract Value'}
-                  </Button>
-                </div>
-              </div>
-            )
-          })()}
-        </DialogContent>
-      </Dialog>
-
-      {/* Set Exchange Rate Dialog */}
-      <Dialog open={dialogType === 'set_rate'} onOpenChange={o => !o && setDialogType(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5 text-blue-600" /> Set Exchange Rate</DialogTitle></DialogHeader>
-          {editingId && (() => {
-            const asset = assets.find(a => a.id === editingId)
-            const cur   = asset?.currency || 'GHS'
-            const ghsEquivalent = Number(asset?.current_value ?? 0) * Number(rateValue || 0)
-            return (
-              <div className="space-y-4">
-                <div className="bg-blue-50 rounded-xl p-3 text-sm">
-                  <p className="font-semibold">{asset?.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Balance: <span className="font-semibold text-blue-700">{formatCurrency(Number(asset?.current_value ?? 0), cur)}</span>
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>1 {cur} = ? GHS</Label>
-                  <Input type="number" step="0.0001" placeholder="e.g. 12.50" value={rateValue} onChange={e => setRateValue(e.target.value)} autoFocus />
-                  <p className="text-xs text-muted-foreground">This rate is used to convert this asset into GHS for Net Worth and total calculations.</p>
-                </div>
-                {rateValue && Number(rateValue) > 0 && (
-                  <div className="rounded-xl p-3 bg-green-50 text-sm flex justify-between">
-                    <span className="text-muted-foreground">GHS Equivalent</span>
-                    <span className="font-bold text-green-700">{fmt(ghsEquivalent)}</span>
-                  </div>
-                )}
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
-                  <Button onClick={handleSetRate} disabled={loading || !rateValue || Number(rateValue) <= 0} className="bg-blue-600 text-white hover:bg-blue-700">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Rate'}
-                  </Button>
-                </div>
-              </div>
-            )
-          })()}
         </DialogContent>
       </Dialog>
 

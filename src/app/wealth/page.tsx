@@ -22,12 +22,21 @@ export default async function WealthPage() {
     { data: debts },
     { data: loans },
     { data: accounts },
+    { data: incomes },
+    { data: expenses },
+    { data: transfers },
   ] = await Promise.all([
     supabase.from('assets').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('investments').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('debts').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('loans').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
     supabase.from('user_accounts').select('*').eq('user_id', user.id).eq('is_active', true).order('name'),
+    // Same data source My Accounts uses — needed here so Cash & Liquid shows
+    // the SAME live-computed balance as My Accounts, instead of a separately
+    // stored number that can drift out of sync.
+    supabase.from('incomes').select('amount, account_id').eq('user_id', user.id),
+    supabase.from('expenses').select('amount, account_id').eq('user_id', user.id),
+    supabase.from('transfers').select('*').eq('user_id', user.id),
   ])
 
   return (
@@ -38,6 +47,9 @@ export default async function WealthPage() {
         initialDebts={debts             ?? []}
         initialLoans={loans             ?? []}
         initialAccounts={accounts       ?? []}
+        incomes={incomes                ?? []}
+        expenses={expenses              ?? []}
+        transfers={transfers            ?? []}
         userId={user.id}
       />
     </AppShell>

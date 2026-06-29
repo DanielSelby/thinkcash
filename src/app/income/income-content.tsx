@@ -25,7 +25,7 @@ const schema = z.object({
   category:   z.string().min(1, 'Category is required'),
   date:       z.string().min(1, 'Date is required'),
   notes:      z.string().optional(),
-  account_id: z.string().optional(),
+  account_id: z.string().min(1, 'Account is required — every income must be linked to a real account'),
 })
 type FormData = z.infer<typeof schema>
 
@@ -340,17 +340,22 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                 {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
               </div>
               <div className="space-y-1.5">
-                <Label>Account <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                <Select onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
-                  defaultValue={editing?.account_id || 'none'}>
-                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                <Label>Account</Label>
+                <Select onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
+                  defaultValue={editing?.account_id || undefined}>
+                  <SelectTrigger className={errors.account_id ? 'border-destructive' : ''}>
+                    <SelectValue placeholder="Select which account received this income" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No account</SelectItem>
                     {accounts.map(a => (
                       <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
+                {accounts.length === 0 && (
+                  <p className="text-xs text-amber-600">You need at least one account — add one in My Accounts first.</p>
+                )}
               </div>
             </div>
 
