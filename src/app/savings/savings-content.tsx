@@ -25,6 +25,8 @@ import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { notify } from '@/lib/notify'
+import { useEffect } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { SavingsGoal } from '@/types'
 
 const GOAL_ICONS: Record<string, string> = {
@@ -183,6 +185,95 @@ export function SavingsContent({ initialGoals, initialAccounts = [], incomes = [
   const [transactions, setTransactions] = useState<any[]>([])
   const [txLoading,    setTxLoading]    = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+
+  // ── Trend analysis state ─────────────────────────────────────────
+  const [allTxns,        setAllTxns]        = useState<any[]>([])
+  const [txnsLoaded,     setTxnsLoaded]     = useState(false)
+  const [trendGoalIds,   setTrendGoalIds]   = useState<string[]>([]) // empty = all goals
+  const [trendDateFrom,  setTrendDateFrom]  = useState('')
+  const [trendDateTo,    setTrendDateTo]    = useState('')
+  const [showTrend,      setShowTrend]      = useState(false)
+
+  // Load all savings transactions once (only when the trend panel is first opened)
+  useEffect(() => {
+    if (!showTrend || txnsLoaded) return
+    const load = async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('savings_transactions')
+        .select('*')
+        .order('date', { ascending: true })
+      setAllTxns(data || [])
+      setTxnsLoaded(true)
+    }
+    load()
+  }, [showTrend, txnsLoaded])
+
+  // Build chart data: one data point per unique date, one line per goal
+  const trendChartData = useMemo(() => {
+    if (!allTxns.length) return []
+
+    const goalPool = goals.filter(g =>
+      trendGoalIds.length === 0 || trendGoalIds.includes(g.id)
+    )
+
+    // All relevant txns, filtered by date range + selected goals
+    const filtered = allTxns.filter(tx => {
+      if (trendGoalIds.length > 0 && !trendGoalIds.includes(tx.goal_id)) return false
+      if (trendDateFrom && tx.date < trendDateFrom) return false
+      if (trendDateTo   && tx.date > trendDateTo)   return false
+      return true
+    })
+
+    if (!filtered.length) return []
+
+    // Unique sorted dates
+    const dates = Array.from(new Set(filtered.map(tx => tx.date))).sort()
+
+    // Running balance per goal per date
+    const runningBalance: Record<string, number> = {}
+    goalPool.forEach(g => { runningBalance[g.id] = 0 })
+
+    // Pre-populate balances from txns BEFORE the date range so we start at the right baseline
+    if (trendDateFrom) {
+      allTxns
+        .filter(tx => tx.date < trendDateFrom && goalPool.find(g => g.id === tx.goal_id))
+        .forEach(tx => {
+          const delta = (tx.type === 'add' || tx.type === 'transfer_in')
+            ? Number(tx.amount) : -Number(tx.amount)
+          runningBalance[tx.goal_id] = (runningBalance[tx.goal_id] ?? 0) + delta
+        })
+    }
+
+    return dates.map(date => {
+      // Apply all txns on this date
+      filtered
+        .filter(tx => tx.date === date)
+        .forEach(tx => {
+          const delta = (tx.type === 'add' || tx.type === 'transfer_in')
+            ? Number(tx.amount) : -Number(tx.amount)
+          runningBalance[tx.goal_id] = (runningBalance[tx.goal_id] ?? 0) + delta
+        })
+
+      const point: Record<string, any> = {
+        date,
+        label: new Date(date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' }),
+        total: goalPool.reduce((s, g) => s + Math.max(0, runningBalance[g.id] ?? 0), 0),
+      }
+      goalPool.forEach(g => {
+        point[g.id] = Math.max(0, runningBalance[g.id] ?? 0)
+      })
+      return point
+    })
+  }, [allTxns, goals, trendGoalIds, trendDateFrom, trendDateTo])
+
+  // One stable color per goal so lines don't flicker on re-render
+  const TREND_COLORS = ['#16a34a','#2563eb','#f59e0b','#dc2626','#9333ea','#0891b2','#ea580c','#0d9488']
+  const trendGoals = useMemo(() =>
+    goals.filter(g => trendGoalIds.length === 0 || trendGoalIds.includes(g.id)),
+    [goals, trendGoalIds]
+  )
+  const showPerGoalLines = trendGoalIds.length !== 1 && trendGoals.length <= 6
 
   // ── Totals ───────────────────────────────────────────────────────
   const activeGoals   = useMemo(() => goals.filter(g => g.status !== 'archived'), [goals])
@@ -458,6 +549,218 @@ export function SavingsContent({ initialGoals, initialAccounts = [], incomes = [
         <Card className="p-5"><p className="text-sm text-muted-foreground">Total Target</p><p className="font-display text-xl font-bold tabular-nums mt-1">{formatCurrency(totalTarget)}</p></Card>
         <Card className="p-5"><p className="text-sm text-muted-foreground">Overall Progress</p><p className="font-display text-xl font-bold tabular-nums mt-1">{totalTarget > 0 ? ((totalSaved / totalTarget) * 100).toFixed(0) : 0}%</p></Card>
         <Card className="p-5"><p className="text-sm text-muted-foreground">Completed</p><p className="font-display text-xl font-bold text-primary tabular-nums mt-1">{completed} / {activeGoals.length}</p></Card>
+      </div>
+
+      {/* ── Trend Analysis ── */}
+      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
+        {/* Collapsible header */}
+        <button
+          onClick={() => setShowTrend(v => !v)}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-left">
+              <p className="font-semibold text-sm">Savings Trend</p>
+              <p className="text-xs text-muted-foreground">Cumulative balance over time</p>
+            </div>
+          </div>
+          {showTrend
+            ? <ChevronUp   className="w-4 h-4 text-muted-foreground" />
+            : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+        </button>
+
+        {showTrend && (
+          <div className="border-t border-border px-5 pb-5 pt-4 space-y-4">
+
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 items-end">
+              {/* Goal filter — multi-select via toggle chips */}
+              <div className="space-y-1.5 flex-1 min-w-[200px]">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Goals</p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setTrendGoalIds([])}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                      trendGoalIds.length === 0
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-white text-muted-foreground border-border hover:border-emerald-400'
+                    }`}
+                  >
+                    All goals
+                  </button>
+                  {goals.filter(g => g.status !== 'archived').map((g, idx) => {
+                    const selected = trendGoalIds.includes(g.id)
+                    const color    = TREND_COLORS[idx % TREND_COLORS.length]
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => setTrendGoalIds(prev =>
+                          selected ? prev.filter(id => id !== g.id) : [...prev, g.id]
+                        )}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                          selected ? 'text-white border-transparent' : 'bg-white text-muted-foreground border-border hover:border-gray-400'
+                        }`}
+                        style={selected ? { background: color, borderColor: color } : {}}
+                      >
+                        {getGoalEmoji(g.goal_name)} {g.goal_name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Date range */}
+              <div className="flex gap-2 items-end">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">From</p>
+                  <input
+                    type="date"
+                    value={trendDateFrom}
+                    onChange={e => setTrendDateFrom(e.target.value)}
+                    className="h-8 px-2.5 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">To</p>
+                  <input
+                    type="date"
+                    value={trendDateTo}
+                    onChange={e => setTrendDateTo(e.target.value)}
+                    className="h-8 px-2.5 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  />
+                </div>
+                {(trendDateFrom || trendDateTo || trendGoalIds.length > 0) && (
+                  <button
+                    onClick={() => { setTrendDateFrom(''); setTrendDateTo(''); setTrendGoalIds([]) }}
+                    className="h-8 px-3 text-xs font-semibold text-orange-500 hover:text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Chart */}
+            {!txnsLoaded ? (
+              <div className="h-56 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : trendChartData.length === 0 ? (
+              <div className="h-56 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <TrendingUp className="w-8 h-8 opacity-20" />
+                <p className="text-sm">No transaction data in this range.</p>
+                <p className="text-xs">Add savings to a goal to see the trend line.</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary strip */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-emerald-50 rounded-xl p-3">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Latest Total</p>
+                    <p className="font-bold tabular-nums text-emerald-700 mt-1">
+                      {formatCurrency(trendChartData[trendChartData.length - 1]?.total ?? 0)}
+                    </p>
+                  </div>
+                  <div className="bg-blue-50 rounded-xl p-3">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Data Points</p>
+                    <p className="font-bold tabular-nums text-blue-700 mt-1">{trendChartData.length}</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-xl p-3">
+                    <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Goals Shown</p>
+                    <p className="font-bold tabular-nums text-purple-700 mt-1">
+                      {trendGoalIds.length === 0 ? goals.filter(g => g.status !== 'archived').length : trendGoalIds.length}
+                    </p>
+                  </div>
+                </div>
+
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={trendChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
+                      width={40}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: '10px', border: '1px solid #e2e8f0', fontSize: 12 }}
+                      formatter={(value: number, name: string) => {
+                        const goal = goals.find(g => g.id === name)
+                        return [formatCurrency(value), goal ? `${getGoalEmoji(goal.goal_name)} ${goal.goal_name}` : name]
+                      }}
+                      labelStyle={{ fontWeight: 600, marginBottom: 4 }}
+                    />
+                    {(showPerGoalLines || trendGoalIds.length > 1) && <Legend
+                      formatter={(value) => {
+                        const goal = goals.find(g => g.id === value)
+                        return goal ? `${getGoalEmoji(goal.goal_name)} ${goal.goal_name}` : value
+                      }}
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 11 }}
+                    />}
+
+                    {/* Total line — always shown when multiple goals visible */}
+                    {trendGoalIds.length !== 1 && (
+                      <Line
+                        type="monotone"
+                        dataKey="total"
+                        name="Total"
+                        stroke="#16a34a"
+                        strokeWidth={2.5}
+                        dot={trendChartData.length <= 20}
+                        activeDot={{ r: 5 }}
+                      />
+                    )}
+
+                    {/* Per-goal lines — shown when ≤6 goals to keep chart readable */}
+                    {showPerGoalLines && trendGoals.map((g, idx) => (
+                      <Line
+                        key={g.id}
+                        type="monotone"
+                        dataKey={g.id}
+                        name={g.id}
+                        stroke={TREND_COLORS[idx % TREND_COLORS.length]}
+                        strokeWidth={1.5}
+                        strokeDasharray="4 2"
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))}
+
+                    {/* Single goal selected — show just that one solid line */}
+                    {trendGoalIds.length === 1 && (() => {
+                      const g   = trendGoals[0]
+                      const idx = goals.findIndex(x => x.id === g?.id)
+                      return g ? (
+                        <Line
+                          key={g.id}
+                          type="monotone"
+                          dataKey={g.id}
+                          name={g.id}
+                          stroke={TREND_COLORS[idx % TREND_COLORS.length]}
+                          strokeWidth={2.5}
+                          dot={trendChartData.length <= 20}
+                          activeDot={{ r: 5 }}
+                        />
+                      ) : null
+                    })()}
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Goals grid */}
