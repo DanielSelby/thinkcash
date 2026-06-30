@@ -435,6 +435,9 @@ export function WealthContent({
   // sold assets panel
   const [showSoldAssets, setShowSoldAssets] = useState(false)
 
+  // related accounts panel (Cash & Liquid detail)
+  const [showRelatedAccounts, setShowRelatedAccounts] = useState(false)
+
   // ── Forms ─────────────────────────────────────────────────────────
   const assetForm = useForm<AssetFormData>({
     resolver: zodResolver(assetSchema),
@@ -910,11 +913,17 @@ export function WealthContent({
                 <p className="text-sm font-semibold text-emerald-800">Cash & Liquid Assets</p>
                 <span className="text-xs text-emerald-600">{accountsWithBalance.length} account(s)</span>
               </div>
-              <a href="/user-accounts" className="text-xs font-semibold text-emerald-700 hover:underline">
-                Manage in My Accounts →
-              </a>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setShowRelatedAccounts(true)}
+                  className="text-xs font-semibold text-emerald-700 hover:underline">
+                  Related Accounts →
+                </button>
+                <a href="/user-accounts" className="text-xs font-semibold text-emerald-700 hover:underline">
+                  Manage in My Accounts →
+                </a>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3 mb-3">
+            <div className="flex flex-wrap gap-3">
               {Object.entries(liquidByCurrency).map(([cur, amt]) => {
                 const rateForCur = Number(accountsWithBalance.find(a => (a.currency || 'GHS') === cur)?.exchange_rate) || 1
                 return (
@@ -932,24 +941,6 @@ export function WealthContent({
                     {cur !== 'GHS' && (
                       <p className="text-[10px] text-muted-foreground">≈ {fmt(amt * rateForCur)} @ rate {rateForCur}</p>
                     )}
-                  </div>
-                )
-              })}
-            </div>
-            <div className="space-y-1.5">
-              {accountsWithBalance.map(a => {
-                const typeInfo = [
-                  { value: 'bank', icon: Building2 },
-                  { value: 'mobile_money', icon: PhoneIcon },
-                  { value: 'cash', icon: Banknote },
-                  { value: 'investment', icon: TrendingUp },
-                ].find(t => t.value === a.type)
-                const Icon = typeInfo?.icon ?? Banknote
-                return (
-                  <div key={a.id} className="flex items-center gap-2 text-sm">
-                    <Icon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
-                    <span className="flex-1 truncate">{a.name}</span>
-                    <span className="font-semibold tabular-nums text-emerald-700">{formatCurrency(Number(a.balance ?? 0), a.currency || 'GHS')}</span>
                   </div>
                 )
               })}
@@ -1760,6 +1751,41 @@ export function WealthContent({
           )}
           <div className="flex justify-end pt-2 border-t border-border">
             <Button variant="outline" onClick={() => setShowSoldAssets(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Related Accounts Panel — the per-account breakdown previously shown inline in Cash & Liquid */}
+      <Dialog open={showRelatedAccounts} onOpenChange={setShowRelatedAccounts}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Banknote className="w-5 h-5 text-emerald-600" /> Related Accounts</DialogTitle></DialogHeader>
+          {accountsWithBalance.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No accounts yet</p>
+          ) : (
+            <div className="space-y-1.5">
+              {accountsWithBalance.map(a => {
+                const typeInfo = [
+                  { value: 'bank', icon: Building2 },
+                  { value: 'mobile_money', icon: PhoneIcon },
+                  { value: 'cash', icon: Banknote },
+                  { value: 'investment', icon: TrendingUp },
+                ].find(t => t.value === a.type)
+                const Icon = typeInfo?.icon ?? Banknote
+                return (
+                  <div key={a.id} className="flex items-center gap-2 text-sm p-2 rounded-lg hover:bg-muted/40 transition-colors">
+                    <Icon className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                    <span className="flex-1 truncate">{a.name}</span>
+                    <span className="font-semibold tabular-nums text-emerald-700">{formatCurrency(Number(a.balance ?? 0), a.currency || 'GHS')}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div className="flex justify-between items-center pt-2 border-t border-border">
+            <a href="/user-accounts" className="text-xs font-semibold text-emerald-700 hover:underline">
+              Manage all accounts →
+            </a>
+            <Button variant="outline" onClick={() => setShowRelatedAccounts(false)}>Close</Button>
           </div>
         </DialogContent>
       </Dialog>
