@@ -100,10 +100,12 @@ function IncomeDecompositionTree({
   filteredIncomes,
   getTransactionCurrency,
   themePrimary,
+  exchangeRateMap,
 }: {
   filteredIncomes: any[]
   getTransactionCurrency: (r: any) => string
   themePrimary: string
+  exchangeRateMap: Record<string, number>
 }) {
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<{ currency: string; category: string } | null>(null)
@@ -120,8 +122,15 @@ function IncomeDecompositionTree({
   const categoryElsRef   = useRef<Map<string, HTMLDivElement>>(new Map())
   const [connectors, setConnectors] = useState<{ d: string; color: string }[]>([])
 
+  // Converted grand total — each income record multiplied by its currency's
+  // exchange rate (set on Net Worth page) before summing, so the root node and
+  // percentages reflect real GHS-equivalent value, not a meaningless currency mix.
   const grandTotal = useMemo(() =>
-    filteredIncomes.reduce((s, r) => s + Number(r.amount), 0), [filteredIncomes])
+    filteredIncomes.reduce((s, r) => {
+      const cur  = getTransactionCurrency(r)
+      const rate = exchangeRateMap[cur] ?? 1
+      return s + Number(r.amount) * rate
+    }, 0), [filteredIncomes, getTransactionCurrency, exchangeRateMap])
 
   const tree = useMemo(() => {
     const byCurrency: Record<string, { total: number; categories: Record<string, { total: number; rows: any[] }> }> = {}
@@ -144,7 +153,8 @@ function IncomeDecompositionTree({
       key: cur,
       label: cur,
       amount: data.total,
-      pct: grandTotal > 0 ? (data.total / grandTotal) * 100 : 0,
+      // pct uses converted currency total vs converted grand total
+      pct: grandTotal > 0 ? ((data.total * (exchangeRateMap[cur] ?? 1)) / grandTotal) * 100 : 0,
       color: DONUT_COLORS[i % DONUT_COLORS.length],
       type: 'currency',
       currency: cur,
@@ -272,7 +282,7 @@ function IncomeDecompositionTree({
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5" style={{ color: themePrimary }}>
             {Math.round(grandTotal).toLocaleString()}
           </p>
-          <p className="text-[9px] sm:text-[10px] text-muted-foreground">All currencies</p>
+          <p className="text-[9px] sm:text-[10px] text-muted-foreground">Converted (GHS)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <div className="flex items-center gap-1.5">
@@ -373,7 +383,7 @@ function IncomeDecompositionTree({
                 <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
-                <p className="text-[9px] text-muted-foreground">100%</p>
+                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
               </button>
             </div>
 
@@ -618,16 +628,22 @@ function IncomeDecompositionTreeExpand({
   filteredIncomes,
   getTransactionCurrency,
   themePrimary,
+  exchangeRateMap,
 }: {
   filteredIncomes: any[]
   getTransactionCurrency: (r: any) => string
   themePrimary: string
+  exchangeRateMap: Record<string, number>
 }) {
   const [expandedCurrency, setExpandedCurrency] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<DecompNode | null>(null)
 
   const grandTotal = useMemo(() =>
-    filteredIncomes.reduce((s, r) => s + Number(r.amount), 0), [filteredIncomes])
+    filteredIncomes.reduce((s, r) => {
+      const cur  = getTransactionCurrency(r)
+      const rate = exchangeRateMap[cur] ?? 1
+      return s + Number(r.amount) * rate
+    }, 0), [filteredIncomes, getTransactionCurrency, exchangeRateMap])
 
   const tree = useMemo(() => {
     const byCurrency: Record<string, { total: number; categories: Record<string, { total: number; rows: any[] }> }> = {}
@@ -646,7 +662,7 @@ function IncomeDecompositionTreeExpand({
       key: cur,
       label: cur,
       amount: data.total,
-      pct: grandTotal > 0 ? (data.total / grandTotal) * 100 : 0,
+      pct: grandTotal > 0 ? ((data.total * (exchangeRateMap[cur] ?? 1)) / grandTotal) * 100 : 0,
       color: DONUT_COLORS[i % DONUT_COLORS.length],
       type: 'currency',
       currency: cur,
@@ -695,7 +711,10 @@ function IncomeDecompositionTreeExpand({
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5" style={{ color: themePrimary }}>
             {Math.round(grandTotal).toLocaleString()}
           </p>
-          <p className="text-[9px] sm:text-[10px] text-muted-foreground">All currencies</p>
+          <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
+                  {Math.round(grandTotal).toLocaleString()}
+                </p>
+                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Currencies</p>
@@ -1071,6 +1090,38 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const grandTotalIncomeRaw = useMemo(() =>
     incomeByCategory.reduce((s, c) => s + c.value, 0), [incomeByCategory])
+
+  // Exchange rates from user_accounts.exchange_rate — set on the Net Worth page.
+  // GHS is always 1. Any currency without a matching account defaults to 1 (no conversion).
+  const exchangeRateMap = useMemo(() => {
+    const map: Record<string, number> = { GHS: 1 }
+    accounts.forEach(a => {
+      const cur  = a.currency || 'GHS'
+      const rate = Number(a.exchange_rate ?? 1)
+      if (cur !== 'GHS' && rate > 0 && !map[cur]) map[cur] = rate
+    })
+    return map
+  }, [accounts])
+
+  // True total: every currency's income converted to GHS using Net Worth rates.
+  const grandTotalIncomeConverted = useMemo(() =>
+    Object.entries(incomeByCurrency).reduce((sum, [cur, amt]) => {
+      const rate = exchangeRateMap[cur] ?? 1
+      return sum + amt * rate
+    }, 0),
+    [incomeByCurrency, exchangeRateMap]
+  )
+
+  // Per-currency converted subtotals — used in the matrix footer
+  const currencyConvertedTotals = useMemo(() =>
+    Object.fromEntries(
+      currencyBreakdown.map(c => [
+        c.name,
+        { raw: c.value, converted: c.value * (exchangeRateMap[c.name] ?? 1), rate: exchangeRateMap[c.name] ?? 1 }
+      ])
+    ),
+    [currencyBreakdown, exchangeRateMap]
+  )
 
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
@@ -1629,10 +1680,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                         style={{ color: theme.colors.primary }}>
                         {activeDonutIndex !== null
                           ? Math.round(incomeByCategory[activeDonutIndex]?.value ?? 0).toLocaleString()
-                          : Math.round(grandTotalIncomeRaw).toLocaleString()}
+                          : formatCurrency(Math.round(grandTotalIncomeConverted), currency)}
                       </p>
                       {currencyBreakdown.length > 1 && activeDonutIndex === null && (
-                        <p className="text-[7px] sm:text-[9px] text-muted-foreground mt-0.5">Combined, all currencies</p>
+                        <p className="text-[7px] sm:text-[9px] text-muted-foreground mt-0.5">
+                          Converted to {currency}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -1644,16 +1697,24 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     <thead>
                       <tr>
                         <th className="text-left align-bottom pb-2 pr-2 font-semibold text-muted-foreground">Category</th>
-                        {currencyBreakdown.map((c, i) => (
-                          <th key={c.name}
-                            className="text-center pb-2 px-2 font-semibold whitespace-nowrap"
-                            style={{ background: getCurrencyColor(c.name, i) + '90', borderRadius: '4px 4px 0 0' }}>
-                            {getCurrencySymbol(c.name)} {c.name}
-                          </th>
-                        ))}
+                        {currencyBreakdown.map((c, i) => {
+                          const rate = exchangeRateMap[c.name] ?? 1
+                          return (
+                            <th key={c.name}
+                              className="text-center pb-2 px-2 font-semibold whitespace-nowrap"
+                              style={{ background: getCurrencyColor(c.name, i) + '90', borderRadius: '4px 4px 0 0' }}>
+                              {getCurrencySymbol(c.name)} {c.name}
+                              {c.name !== currency && (
+                                <div className="text-[8px] font-normal text-muted-foreground">
+                                  @ {rate} {currency}
+                                </div>
+                              )}
+                            </th>
+                          )
+                        })}
                         <th className="text-center pb-2 px-2 font-semibold text-muted-foreground bg-muted/40"
                           style={{ borderRadius: '4px 4px 0 0' }}>
-                          Total
+                          Total ({currency})
                         </th>
                       </tr>
                     </thead>
@@ -1686,14 +1747,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       ))}
                       <tr className="border-t-2 border-border">
                         <td className="py-2 pr-2 font-bold">Total</td>
-                        {currencyBreakdown.map((c, i) => (
-                          <td key={c.name} className="text-center py-2 px-2 font-bold tabular-nums"
-                            style={{ background: getCurrencyColor(c.name, i) + '44' }}>
-                            {Math.round(c.value).toLocaleString()}
-                          </td>
-                        ))}
+                        {currencyBreakdown.map((c, i) => {
+                          const conv = currencyConvertedTotals[c.name]
+                          return (
+                            <td key={c.name} className="text-center py-2 px-2 font-bold tabular-nums"
+                              style={{ background: getCurrencyColor(c.name, i) + '44' }}>
+                              {Math.round(c.value).toLocaleString()}
+                              {c.name !== currency && conv && (
+                                <div className="text-[8px] font-normal text-muted-foreground">
+                                  ≈ {formatCurrency(Math.round(conv.converted), currency)}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
                         <td className="text-center py-2 px-2 font-bold tabular-nums bg-muted/50">
-                          {Math.round(grandTotalIncomeRaw).toLocaleString()}
+                          {formatCurrency(Math.round(grandTotalIncomeConverted), currency)}
+                          {currencyBreakdown.length > 1 && (
+                            <div className="text-[8px] font-normal text-muted-foreground">converted</div>
+                          )}
                         </td>
                       </tr>
                     </tbody>
@@ -1709,12 +1781,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               filteredIncomes={filteredIncomes}
               getTransactionCurrency={getTransactionCurrency}
               themePrimary={theme.colors.primary}
+              exchangeRateMap={exchangeRateMap}
             />
           ) : (
             <IncomeDecompositionTree
               filteredIncomes={filteredIncomes}
               getTransactionCurrency={getTransactionCurrency}
               themePrimary={theme.colors.primary}
+              exchangeRateMap={exchangeRateMap}
             />
           )}
         </CardContent>
