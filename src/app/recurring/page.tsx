@@ -16,15 +16,20 @@ export default async function RecurringPage() {
     .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
   requirePageAccess(profile, 'recurring')
 
-  const { data: recurring } = await supabase
-    .from('recurring_transactions')
-    .select('*')
-    .eq('user_id', user.id)
-    .order('next_date', { ascending: true })
+  const [{ data: recurring }, { data: accounts }] = await Promise.all([
+    supabase.from('recurring_transactions').select('*')
+      .eq('user_id', user.id).order('next_date', { ascending: true }),
+    supabase.from('user_accounts').select('id, name, currency')
+      .eq('user_id', user.id).eq('is_active', true),
+  ])
 
   return (
     <AppShell>
-      <RecurringContent initialRecurring={recurring || []} userId={user.id} />
+      <RecurringContent
+        initialRecurring={recurring || []}
+        accounts={accounts || []}
+        userId={user.id}
+      />
     </AppShell>
   )
 }

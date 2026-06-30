@@ -127,6 +127,7 @@ export interface RecurringTransaction {
   frequency: TransactionFrequency
   next_date: string
   is_active: boolean
+  account_id?: string | null
   created_at: string
   updated_at: string
 }

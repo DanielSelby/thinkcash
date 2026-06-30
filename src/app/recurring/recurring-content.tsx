@@ -21,18 +21,20 @@ import { useCategories } from '@/hooks/useCategories'
 import type { RecurringTransaction } from '@/types'
 
 const schema = z.object({
-  title:     z.string().min(1, 'Title required'),
-  type:      z.enum(['income', 'expense']),
-  amount:    z.coerce.number().positive('Amount must be positive'),
-  category:  z.string().min(1, 'Category required'),
-  frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
-  next_date: z.string().min(1, 'Next date required'),
+  title:      z.string().min(1, 'Title required'),
+  type:       z.enum(['income', 'expense']),
+  amount:     z.coerce.number().positive('Amount must be positive'),
+  category:   z.string().min(1, 'Category required'),
+  frequency:  z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  next_date:  z.string().min(1, 'Next date required'),
+  account_id: z.string().optional(),
 })
 type FormData = z.infer<typeof schema>
 
-interface Props { initialRecurring: RecurringTransaction[]; userId: string }
+interface AccountLite { id: string; name: string; currency: string }
+interface Props { initialRecurring: RecurringTransaction[]; accounts?: AccountLite[]; userId: string }
 
-export function RecurringContent({ initialRecurring, userId }: Props) {
+export function RecurringContent({ initialRecurring, accounts = [], userId }: Props) {
   const { incomeCategories, expenseCategories } = useCategories()
 
   const [items,   setItems]   = useState(initialRecurring)
@@ -381,6 +383,22 @@ export function RecurringContent({ initialRecurring, userId }: Props) {
                 </SelectContent>
               </Select>
               {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Account <span className="text-muted-foreground text-xs">(optional — needed for Cash Flow Forecast)</span></Label>
+              <Select
+                onValueChange={v => setValue('account_id', v === 'none' ? '' : v)}
+                defaultValue={editing?.account_id || 'none'}
+              >
+                <SelectTrigger><SelectValue placeholder="Which account?" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
