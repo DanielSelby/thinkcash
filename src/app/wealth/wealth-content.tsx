@@ -26,6 +26,7 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { Asset, Investment, Debt, Loan } from '@/types'
 import { AssetDetailPanel } from './wealth-asset-detail'
+import { KPICard } from '@/components/ui/kpi-card'
 
 const fmt = (n: number) => formatCurrency(n, 'GHS')
 
@@ -77,12 +78,14 @@ const LOAN_TYPES = [
 
 const ASSET_STATUSES = [
   { value: 'active',      label: 'Active',      color: '#16a34a' },
-  { value: 'sold',        label: 'Sold',        color: '#2563eb' },
+  { value: 'sold',        label: 'Sold',        color: '#2563eb' }, // kept for StatusBadge color lookups; not selectable in the main filter anymore
   { value: 'disposed',    label: 'Disposed',    color: '#dc2626' },
   { value: 'donated',     label: 'Donated',     color: '#9333ea' },
   { value: 'lost',        label: 'Lost',        color: '#f59e0b' },
   { value: 'maintenance', label: 'Maintenance', color: '#0891b2' },
 ]
+
+const SELECTABLE_ASSET_STATUSES = ASSET_STATUSES.filter(s => s.value !== 'sold')
 
 const ASSET_CONDITIONS = [
   { value: 'new',       label: 'New'       },
@@ -182,33 +185,6 @@ function ConditionBadge({ condition }: { condition: string }) {
       style={{ background: color + '20', color }}>
       {condition?.charAt(0).toUpperCase() + condition?.slice(1) || '—'}
     </span>
-  )
-}
-
-function KPI({ label, value, sub, bg, icon: Icon }: {
-  label: string; value: string; sub?: string; bg: string; icon: any
-}) {
-  const fontSizeClass =
-    value.length > 14 ? 'text-[11px] sm:text-lg' :
-    value.length > 10 ? 'text-xs sm:text-xl'      :
-    'text-sm sm:text-2xl'
-  return (
-    <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-      <div className="h-1" style={{ background: bg }} />
-      <CardContent className="p-3 sm:p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">{label}</p>
-            <p className={`font-bold tabular-nums mt-1 leading-tight whitespace-nowrap ${fontSizeClass}`}>{value}</p>
-            {sub && <p className="text-[9px] sm:text-xs text-muted-foreground mt-1 truncate">{sub}</p>}
-          </div>
-          <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: bg + '18' }}>
-            <Icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" style={{ color: bg }} />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   )
 }
 
@@ -367,6 +343,7 @@ const sellSchema = z.object({
   sold_price: z.coerce.number().min(0, 'Sale price required'),
   sold_date:  z.string().min(1, 'Date required'),
   sold_to:    z.string().optional(),
+  account_id: z.string().min(1, 'Choose which account receives the sale proceeds'),
   notes:      z.string().optional(),
 })
 type SellFormData = z.infer<typeof sellSchema>
@@ -400,7 +377,7 @@ export function WealthContent({
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [assets,      setAssets]      = useState<any[]>(initialAssets)
-  const [accounts]                    = useState<any[]>(initialAccounts ?? [])
+  const [accounts, setAccountsState]  = useState<any[]>(initialAccounts ?? [])
   const [investments, setInvestments] = useState<any[]>(initialInvestments)
   const [debts,       setDebts]       = useState<any[]>(initialDebts)
   const [loans,       setLoans]       = useState<any[]>(initialLoans)
@@ -449,6 +426,14 @@ export function WealthContent({
   // search / filter
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // exchange rate editing (per currency, applied to all accounts of that currency)
+  const [editingRateCurrency, setEditingRateCurrency] = useState<string | null>(null)
+  const [rateInputValue,      setRateInputValue]      = useState('')
+  const [savingRate,          setSavingRate]          = useState(false)
+
+  // sold assets panel
+  const [showSoldAssets, setShowSoldAssets] = useState(false)
 
   // ── Forms ─────────────────────────────────────────────────────────
   const assetForm = useForm<AssetFormData>({
@@ -516,10 +501,16 @@ export function WealthContent({
 
   const filteredAssets = useMemo(() =>
     assets.filter(a => {
+      if (a.status === 'sold') return false // sold assets move to the dedicated Sold Assets panel
       const matchSearch = !search || a.name.toLowerCase().includes(search.toLowerCase())
       const matchStatus = statusFilter === 'all' || a.status === statusFilter
       return matchSearch && matchStatus
     }), [assets, search, statusFilter])
+
+  const soldAssets = useMemo(() =>
+    assets.filter(a => a.status === 'sold').sort((a, b) =>
+      new Date(b.sold_date ?? b.updated_at).getTime() - new Date(a.sold_date ?? a.updated_at).getTime()
+    ), [assets])
 
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
@@ -540,7 +531,7 @@ export function WealthContent({
 
   const openSell = (asset: any) => {
     setEditingId(asset.id)
-    sellForm.reset({ sold_price: Number(asset.current_value), sold_date: new Date().toISOString().split('T')[0], sold_to: '', notes: '' })
+    sellForm.reset({ sold_price: Number(asset.current_value), sold_date: new Date().toISOString().split('T')[0], sold_to: '', account_id: '', notes: '' })
     setDialogType('sell')
   }
 
@@ -571,6 +562,35 @@ export function WealthContent({
     const { error } = await supabase.from(table).delete().eq('id', id)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     else { setter(prev => prev.filter((x: any) => x.id !== id)); toast({ title: 'Deleted' }) }
+  }
+
+  // Rate is set per CURRENCY, applied to every account using that currency at once —
+  // setting it twice for two USD accounts would be redundant and error-prone.
+  const openRateEditor = (currency: string, currentRate: number) => {
+    setEditingRateCurrency(currency)
+    setRateInputValue(String(currentRate))
+  }
+
+  const saveExchangeRate = async () => {
+    if (!editingRateCurrency || !rateInputValue || Number(rateInputValue) <= 0) {
+      toast({ title: 'Enter a valid exchange rate', variant: 'destructive' }); return
+    }
+    setSavingRate(true)
+    const supabase = createClient()
+    const rate = Number(rateInputValue)
+    const accountIdsForCurrency = accounts.filter(a => (a.currency || 'GHS') === editingRateCurrency).map(a => a.id)
+    const { error } = await supabase
+      .from('user_accounts')
+      .update({ exchange_rate: rate, updated_at: new Date().toISOString() })
+      .in('id', accountIdsForCurrency)
+    if (error) {
+      toast({ title: 'Failed to update rate', description: error.message, variant: 'destructive' })
+    } else {
+      setAccountsState(prev => prev.map(a => (a.currency || 'GHS') === editingRateCurrency ? { ...a, exchange_rate: rate } : a))
+      toast({ title: `Rate updated for ${editingRateCurrency}`, variant: 'success' })
+      setEditingRateCurrency(null)
+    }
+    setSavingRate(false)
   }
 
   const onSubmitAsset = async (data: AssetFormData) => {
@@ -643,13 +663,35 @@ export function WealthContent({
     const supabase = createClient()
     const asset = assets.find(a => a.id === editingId)
     const gain  = Number(data.sold_price) - Number(asset?.purchase_value ?? 0)
+
     const { data: updated, error } = await supabase.from('assets').update({
       status: 'sold', sold_price: data.sold_price, sold_date: data.sold_date,
-      sold_to: data.sold_to || null, notes: data.notes || asset?.notes || null,
+      sold_to: data.sold_to || null, sold_account_id: data.account_id,
+      notes: data.notes || asset?.notes || null,
       updated_at: new Date().toISOString(),
     }).eq('id', editingId).select().single()
-    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-    else { setAssets(p => p.map(x => x.id === editingId ? updated : x)); toast({ title: `Asset sold — ${gain >= 0 ? '+' : ''}${fmt(gain)} gain/loss`, variant: 'success' }); setDialogType(null) }
+
+    if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
+
+    // Sale proceeds flow into Cash & Liquid via a real income record — same
+    // consolidated cash system everything else in the app uses.
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      const destAccount = accounts.find(a => a.id === data.account_id)
+      await supabase.from('incomes').insert({
+        user_id:    user.id,
+        title:      `Sale of asset: ${asset?.name ?? 'Asset'}`,
+        amount:     data.sold_price,
+        category:   'other',
+        date:       data.sold_date,
+        account_id: data.account_id,
+        notes:      data.notes || `Asset sold${data.sold_to ? ` to ${data.sold_to}` : ''}${destAccount ? ` — proceeds to ${destAccount.name}` : ''}`,
+      })
+    }
+
+    setAssets(p => p.map(x => x.id === editingId ? updated : x))
+    toast({ title: `Asset sold — ${gain >= 0 ? '+' : ''}${fmt(gain)} gain/loss, proceeds added to Cash & Liquid`, variant: 'success' })
+    setDialogType(null)
     setLoading(false)
   }
 
@@ -803,19 +845,57 @@ export function WealthContent({
         </CardContent>
       </Card>
 
-      {/* KPI row */}
+      {/* KPI row — all flip cards (hover on desktop, tap on mobile) */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KPI label="Physical Assets" value={fmt(totalPhysical)} sub={`${activeAssets.length} items`} bg={SECTION_COLORS.asset.bg} icon={Landmark} />
-        <KPI label="Cash & Liquid"   value={fmt(totalLiquid)}   sub={`${accountsWithBalance.length} account(s)`} bg="#059669" icon={Banknote} />
-        <KPI label="Investments"     value={fmt(totalInvested)} sub={investmentGain >= 0 ? `+${fmt(investmentGain)} gain` : `${fmt(investmentGain)} loss`} bg={SECTION_COLORS.investment.bg} icon={TrendingUp} />
-        <KPI label="Debts"           value={fmt(totalDebts)}    sub={`${debts.length} account(s)`} bg={SECTION_COLORS.debt.bg} icon={CreditCard} />
-        <KPI label="Loans"           value={fmt(totalLoans)}    sub={`${loans.length} loan(s)`}    bg={SECTION_COLORS.loan.bg} icon={Building2} />
+        <KPICard label="Physical Assets" value={fmt(totalPhysical)} sub={`${activeAssets.length} items`}
+          colorClass="" icon={Landmark} accentColor={SECTION_COLORS.asset.bg}
+          tooltip={activeAssets.map(a => `${a.name}: ${fmt(Number(a.current_value ?? 0))}`).join('\n') || 'No physical assets yet'} />
+        <KPICard label="Cash & Liquid" value={fmt(totalLiquid)} sub={`${accountsWithBalance.length} account(s)`}
+          colorClass="" icon={Banknote} accentColor="#059669"
+          tooltip={accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency || 'GHS')}`).join('\n') || 'No accounts yet'} />
+        <KPICard label="Investments" value={fmt(totalInvested)} sub={investmentGain >= 0 ? `+${fmt(investmentGain)} gain` : `${fmt(investmentGain)} loss`}
+          colorClass="" icon={TrendingUp} accentColor={SECTION_COLORS.investment.bg}
+          tooltip={investments.map(i => `${i.name}: ${fmt(Number(i.current_value ?? 0))}`).join('\n') || 'No investments yet'} />
+        <KPICard label="Debts" value={fmt(totalDebts)} sub={`${debts.length} account(s)`}
+          colorClass="" icon={CreditCard} accentColor={SECTION_COLORS.debt.bg}
+          tooltip={debts.map(d => `${d.name}: ${fmt(Number(d.remaining))} remaining`).join('\n') || 'No debts'} />
+        <KPICard label="Loans" value={fmt(totalLoans)} sub={`${loans.length} loan(s)`}
+          colorClass="" icon={Building2} accentColor={SECTION_COLORS.loan.bg}
+          tooltip={loans.map(l => `${l.name}: ${fmt(Number(l.remaining))} remaining`).join('\n') || 'No loans'} />
       </div>
+
+      {/* Analytics — moved above Cash & Liquid */}
+      {analytics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl border border-border p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Highest Value</p>
+            <p className="font-bold text-sm mt-1 truncate">{analytics.highest?.name || '—'}</p>
+            <p className="text-xs text-green-600 tabular-nums">{fmt(Number(analytics.highest?.current_value ?? 0))}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-border p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Most Appreciated</p>
+            <p className="font-bold text-sm mt-1 truncate">{analytics.mostAppreciated?.name || '—'}</p>
+            <p className="text-xs text-green-600 tabular-nums">+{fmt(Math.max(0, Number(analytics.mostAppreciated?.current_value ?? 0) - Number(analytics.mostAppreciated?.purchase_value ?? 0)))}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-border p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Average Value</p>
+            <p className="font-bold text-sm mt-1">{fmt(analytics.avgValue)}</p>
+            <p className="text-xs text-muted-foreground">{activeAssets.length} active assets</p>
+          </div>
+          <div className="bg-white rounded-xl border border-border p-3">
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Sold Assets</p>
+            <p className="font-bold text-sm mt-1">{analytics.soldCount}</p>
+            <p className="text-xs text-muted-foreground">Total sold</p>
+          </div>
+        </div>
+      )}
 
       {/* Cash & Liquid — live mirror of My Accounts. Read-only here by design:
           this is a REPORT, not a second place to edit cash. To add income,
           log an expense, or adjust an opening balance, go to Income/Expenses/
-          My Accounts — those are the only places cash balances ever change. */}
+          My Accounts — those are the only places cash balances ever change.
+          Exchange rate per currency CAN be set here since it's specific to
+          how Net Worth converts foreign cash into GHS. */}
       {accountsWithBalance.length > 0 && (() => {
         const liquidByCurrency: Record<string, number> = {}
         accountsWithBalance.forEach(a => {
@@ -839,7 +919,15 @@ export function WealthContent({
                 const rateForCur = Number(accountsWithBalance.find(a => (a.currency || 'GHS') === cur)?.exchange_rate) || 1
                 return (
                   <div key={cur} className="bg-white rounded-lg px-3 py-2 border border-emerald-100">
-                    <p className="text-xs text-muted-foreground">{cur}</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">{cur}</p>
+                      {cur !== 'GHS' && (
+                        <button onClick={() => openRateEditor(cur, rateForCur)}
+                          className="text-[10px] font-semibold text-blue-600 hover:underline">
+                          Set Rate
+                        </button>
+                      )}
+                    </div>
                     <p className="font-bold tabular-nums text-emerald-700">{formatCurrency(amt, cur)}</p>
                     {cur !== 'GHS' && (
                       <p className="text-[10px] text-muted-foreground">≈ {fmt(amt * rateForCur)} @ rate {rateForCur}</p>
@@ -870,41 +958,20 @@ export function WealthContent({
         )
       })()}
 
-      {/* Analytics */}
-      {analytics && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-xl border border-border p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Highest Value</p>
-            <p className="font-bold text-sm mt-1 truncate">{analytics.highest?.name || '—'}</p>
-            <p className="text-xs text-green-600 tabular-nums">{fmt(Number(analytics.highest?.current_value ?? 0))}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-border p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Most Appreciated</p>
-            <p className="font-bold text-sm mt-1 truncate">{analytics.mostAppreciated?.name || '—'}</p>
-            <p className="text-xs text-green-600 tabular-nums">+{fmt(Math.max(0, Number(analytics.mostAppreciated?.current_value ?? 0) - Number(analytics.mostAppreciated?.purchase_value ?? 0)))}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-border p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Average Value</p>
-            <p className="font-bold text-sm mt-1">{fmt(analytics.avgValue)}</p>
-            <p className="text-xs text-muted-foreground">{activeAssets.length} active assets</p>
-          </div>
-          <div className="bg-white rounded-xl border border-border p-3">
-            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wide">Sold Assets</p>
-            <p className="font-bold text-sm mt-1">{analytics.soldCount}</p>
-            <p className="text-xs text-muted-foreground">Total sold</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Assets Section ── */}
       <Section title="Physical Assets" count={filteredAssets.length} color={SECTION_COLORS.asset} icon={Landmark} onAdd={() => openCreate('asset')}>
-        <div className="flex gap-3 mb-4 flex-wrap">
+        <div className="flex gap-3 mb-4 flex-wrap items-center">
           <Input placeholder="Search assets…" value={search} onChange={e => setSearch(e.target.value)} className="flex-1 min-w-[160px] h-8 text-sm bg-white" />
+          {soldAssets.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setShowSoldAssets(true)} className="h-8 text-xs gap-1">
+              <DollarSign className="w-3.5 h-3.5" /> View Sold Assets ({soldAssets.length})
+            </Button>
+          )}
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-36 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              {ASSET_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              {SELECTABLE_ASSET_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -993,7 +1060,6 @@ export function WealthContent({
                   <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
                     {a.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{a.location}</span>}
                     {a.purchase_date && <span className="flex items-center gap-0.5"><Calendar className="w-3 h-3" />{new Date(a.purchase_date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
-                    {a.status === 'sold' && a.sold_price && <span className="flex items-center gap-0.5 text-blue-600"><DollarSign className="w-3 h-3" />Sold: {fmt(Number(a.sold_price))}</span>}
                   </div>
                 </div>
               )
@@ -1431,6 +1497,17 @@ export function WealthContent({
                   <div className="space-y-1.5"><Label>Sale Price *</Label><Input type="number" step="0.01" placeholder="0.00" {...sellForm.register('sold_price')} /></div>
                   <div className="space-y-1.5"><Label>Sale Date *</Label><Input type="date" {...sellForm.register('sold_date')} /></div>
                 </div>
+                <div className="space-y-1.5">
+                  <Label>Deposit proceeds to *</Label>
+                  <Select onValueChange={v => sellForm.setValue('account_id', v, { shouldValidate: true })}>
+                    <SelectTrigger><SelectValue placeholder="Which account receives the cash?" /></SelectTrigger>
+                    <SelectContent>
+                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {sellForm.formState.errors.account_id && <p className="text-xs text-destructive">{sellForm.formState.errors.account_id.message}</p>}
+                  {accounts.length === 0 && <p className="text-xs text-amber-600">Add an account in My Accounts first.</p>}
+                </div>
                 <div className="space-y-1.5"><Label>Buyer <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="Buyer name" {...sellForm.register('sold_to')} /></div>
                 <div className="space-y-1.5"><Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="Any notes…" {...sellForm.register('notes')} /></div>
                 {soldPrice > 0 && (
@@ -1626,6 +1703,64 @@ export function WealthContent({
               </div>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Exchange Rate Dialog (per currency, applied to all accounts in that currency) */}
+      <Dialog open={!!editingRateCurrency} onOpenChange={o => !o && setEditingRateCurrency(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5 text-blue-600" /> Set Exchange Rate — {editingRateCurrency}</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Applies to every {editingRateCurrency} account. Used to convert this currency into GHS for Net Worth totals.
+            </p>
+            <div className="space-y-1.5">
+              <Label>1 {editingRateCurrency} = ? GHS</Label>
+              <Input type="number" step="0.0001" placeholder="e.g. 12.50" value={rateInputValue} onChange={e => setRateInputValue(e.target.value)} autoFocus />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setEditingRateCurrency(null)}>Cancel</Button>
+              <Button onClick={saveExchangeRate} disabled={savingRate || !rateInputValue || Number(rateInputValue) <= 0} className="bg-blue-600 text-white hover:bg-blue-700">
+                {savingRate ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Rate'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sold Assets Panel */}
+      <Dialog open={showSoldAssets} onOpenChange={setShowSoldAssets}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><DollarSign className="w-5 h-5 text-blue-600" /> Sold Assets ({soldAssets.length})</DialogTitle></DialogHeader>
+          {soldAssets.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No assets sold yet</p>
+          ) : (
+            <div className="space-y-3">
+              {soldAssets.map(a => {
+                const gain = Number(a.sold_price ?? 0) - Number(a.purchase_value ?? 0)
+                const destAccount = accounts.find(acc => acc.id === a.sold_account_id)
+                return (
+                  <div key={a.id} className="p-3 rounded-xl border border-border bg-muted/20 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-sm">{a.name}</p>
+                      <span className="text-xs px-1.5 py-0.5 rounded-md bg-blue-100 text-blue-700 font-semibold">Sold</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div><p className="text-muted-foreground">Sale Price</p><p className="font-medium">{fmt(Number(a.sold_price ?? 0))}</p></div>
+                      <div><p className="text-muted-foreground">Purchase Price</p><p className="font-medium">{fmt(Number(a.purchase_value ?? 0))}</p></div>
+                      <div><p className="text-muted-foreground">Gain / Loss</p><p className={`font-semibold ${gain >= 0 ? 'text-green-600' : 'text-red-500'}`}>{gain >= 0 ? '+' : ''}{fmt(gain)}</p></div>
+                      <div><p className="text-muted-foreground">Sale Date</p><p className="font-medium">{a.sold_date ? new Date(a.sold_date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</p></div>
+                    </div>
+                    {a.sold_to && <p className="text-xs text-muted-foreground">Buyer: {a.sold_to}</p>}
+                    {destAccount && <p className="text-xs text-muted-foreground">Proceeds deposited to: <span className="font-medium">{destAccount.name}</span></p>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div className="flex justify-end pt-2 border-t border-border">
+            <Button variant="outline" onClick={() => setShowSoldAssets(false)}>Close</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
