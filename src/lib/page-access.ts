@@ -31,6 +31,7 @@ export const GATEABLE_PAGES = [
   { key: 'categories',        label: 'Categories',        href: '/categories' },
   { key: 'reports',           label: 'Reports',           href: '/reports' },
   { key: 'analytics',         label: 'Analytics',         href: '/analytics' },
+  { key: 'forecast',          label: 'Cash Flow Forecast', href: '/forecast' },
   { key: 'health-score',      label: 'Health Score',      href: '/health-score' },
   { key: 'ai-advisor',        label: 'AI Advisor',        href: '/ai-advisor' },
   { key: 'notifications',     label: 'Notifications',     href: '/notifications' },

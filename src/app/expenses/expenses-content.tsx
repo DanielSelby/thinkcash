@@ -323,6 +323,23 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
   const grandTotalFiltered = useMemo(() =>
     expenseByCategory.reduce((s, c) => s + c.value, 0), [expenseByCategory])
 
+  const avgExpense = useMemo(() =>
+    filtered.length > 0 ? grandTotalFiltered / filtered.length : 0,
+    [grandTotalFiltered, filtered])
+
+  const todayStr = new Date().toISOString().split('T')[0]
+  const expensesToday = useMemo(() =>
+    filtered.filter(e => e.date === todayStr),
+    [filtered, todayStr])
+  const totalToday = useMemo(() =>
+    groupByCurrency(expensesToday, accounts),
+    [expensesToday, accounts])
+
+  const highestExpense = useMemo(() =>
+    filtered.reduce<Expense | null>((max, e) =>
+      !max || Number(e.amount) > Number(max.amount) ? e : max, null),
+    [filtered])
+
   // Budget vs Actual — pairs each budget with what's actually been spent in that
   // category, but ONLY for one month/year at a time: budgets are month-scoped
   // (budget_month / budget_year), so comparing "actual" against every budget
@@ -380,28 +397,88 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       </div>
 
       {/* KPI cards — currency-aware, never sum across currencies */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+
+        {/* Total Expenses */}
+        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden col-span-1">
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
             Total Expenses
           </p>
           <CurrencyTotal byCurrency={totalByCurrency} />
           {Object.keys(totalByCurrency).length > 1 && (
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Shown per currency</p>
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Per currency</p>
           )}
         </Card>
-        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
+
+        {/* This View */}
+        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden col-span-1">
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
             This View
           </p>
           <CurrencyTotal byCurrency={filteredByCurrency} />
+          {Object.keys(filteredByCurrency).length > 1 && (
+            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Per currency</p>
+          )}
         </Card>
-        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden">
+
+        {/* Entries */}
+        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden col-span-1">
           <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
             Entries
           </p>
           <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">In current view</p>
         </Card>
+
+        {/* Avg Expense */}
+        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
+          style={{ borderTop: `3px solid ${theme.colors.primary}` }}>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Avg Expense
+          </p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate"
+            style={{ color: theme.colors.primary }}>
+            {filtered.length > 0 ? formatCurrency(avgExpense) : '—'}
+          </p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+            Per transaction
+          </p>
+        </Card>
+
+        {/* Expenses Today */}
+        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
+          style={{ borderTop: '3px solid #0891b2' }}>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Today
+          </p>
+          {expensesToday.length > 0 ? (
+            <CurrencyTotal byCurrency={totalToday} colorClass="text-cyan-600" />
+          ) : (
+            <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 text-cyan-600">
+              —
+            </p>
+          )}
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
+            {expensesToday.length} transaction{expensesToday.length !== 1 ? 's' : ''} today
+          </p>
+        </Card>
+
+        {/* Highest Expense */}
+        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
+          style={{ borderTop: '3px solid #9333ea' }}>
+          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
+            Highest
+          </p>
+          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate text-purple-600">
+            {highestExpense
+              ? formatCurrency(Number(highestExpense.amount), getAccountCurrency(highestExpense.account_id))
+              : '—'}
+          </p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">
+            {highestExpense ? highestExpense.title : 'No expenses yet'}
+          </p>
+        </Card>
+
       </div>
 
       <div className="flex gap-3 flex-wrap">

@@ -1165,7 +1165,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // This is what the user sees as "what's actually sitting in my wallets right now."
   const totalAccountBalanceByCurrency: Record<string, number> = {}
   accountsWithBalance.forEach(a => {
-    const cur = a.currency || 'GHS'
+    const cur = a.currency || 'GHC'
     totalAccountBalanceByCurrency[cur] = (totalAccountBalanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
 
@@ -1386,7 +1386,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
             <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
               value={formatCurrency(bal, cur)}
-              sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).length} account(s)`}
+              sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
               tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
@@ -1714,7 +1714,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                         })}
                         <th className="text-center pb-2 px-2 font-semibold text-muted-foreground bg-muted/40"
                           style={{ borderRadius: '4px 4px 0 0' }}>
-                          Total ({currency})
+                          Total (GHC)
                         </th>
                       </tr>
                     </thead>
@@ -1750,7 +1750,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                                 : 0
                               return (
                                 <>
-                                  {formatCurrency(Math.round(convertedRowTotal), currency)}
+                                  {Math.round(convertedRowTotal).toLocaleString()}
                                   <span className="text-muted-foreground font-normal ml-1 text-[9px]">
                                     ({pct}%)
                                   </span>
@@ -1777,7 +1777,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                           )
                         })}
                         <td className="text-center py-2 px-2 font-bold tabular-nums bg-muted/50">
-                          {formatCurrency(Math.round(grandTotalIncomeConverted), currency)}
+                          {Math.round(grandTotalIncomeConverted).toLocaleString()}
                           {currencyBreakdown.length > 1 && (
                             <div className="text-[8px] font-normal text-muted-foreground">converted</div>
                           )}
