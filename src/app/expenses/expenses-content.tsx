@@ -22,6 +22,7 @@ import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate, PAYMENT_METHODS, CATEGORY_COLORS } from '@/lib/utils'
 import { notify } from '@/lib/notify'
 import { useCategories } from '@/hooks/useCategories'
+import { KPICard } from '@/components/ui/kpi-card'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { Expense, UserAccount } from '@/types'
@@ -39,9 +40,9 @@ type FormData = z.infer<typeof schema>
 
 interface Props {
   initialExpenses: Expense[]
-  accounts: UserAccount[]
-  userId: string
-  budgets?: any[]
+  accounts:        UserAccount[]
+  userId:          string
+  budgets?:        any[]
 }
 
 const shortFmt = (v: number) => {
@@ -50,15 +51,7 @@ const shortFmt = (v: number) => {
   return String(Math.round(v))
 }
 
-// ── Theme-derived chart palette ──────────────────────────────────────
-// Categories still need visually distinct colors (that's the whole point
-// of a categorical chart), but the *set* of colors should feel like it
-// belongs to the app's current theme rather than an arbitrary fixed
-// rainbow. We take the theme's primary color, convert it to HSL, and
-// rotate the hue evenly around the color wheel to generate N distinct
-// but theme-anchored colors — same saturation/lightness family, so they
-// read as "a palette," just like the original DONUT_COLORS did, but tied
-// to whichever theme is currently active.
+// ── Theme-aware chart palette ─────────────────────────────────────────
 function hexToHsl(hex: string): [number, number, number] {
   const clean = hex.replace('#', '')
   const r = parseInt(clean.slice(0, 2), 16) / 255
@@ -73,7 +66,7 @@ function hexToHsl(hex: string): [number, number, number] {
     s = d / (1 - Math.abs(2 * l - 1))
     switch (max) {
       case r: h = ((g - b) / d) % 6; break
-      case g: h = (b - r) / d + 2; break
+      case g: h = (b - r) / d + 2;   break
       default: h = (r - g) / d + 4
     }
     h *= 60
@@ -105,11 +98,12 @@ function buildThemedPalette(baseHex: string, count: number): string[] {
     h = hsl[0]
     s = Math.min(Math.max(hsl[1], 55), 75)
     l = Math.min(Math.max(hsl[2], 38), 55)
-  } catch { /* fall back to the defaults above if baseHex is unparsable */ }
-  return Array.from({ length: count }, (_, i) => hslToHex((h + (360 / count) * i) % 360, s, l))
+  } catch { /* use defaults */ }
+  return Array.from({ length: count }, (_, i) =>
+    hslToHex((h + (360 / count) * i) % 360, s, l))
 }
 
-function groupByCurrency(items: any[], accounts: UserAccount[]) {
+function groupByCurrency(items: any[], accounts: UserAccount[]): Record<string, number> {
   const map: Record<string, number> = {}
   items.forEach(e => {
     const cur = accounts.find(a => a.id === e.account_id)?.currency || 'GHS'
@@ -118,11 +112,13 @@ function groupByCurrency(items: any[], accounts: UserAccount[]) {
   return map
 }
 
+// ── Compact multi-currency display used only in legacy plain-card slots ──
 function CurrencyTotal({ byCurrency, colorClass }: {
-  byCurrency: Record<string, number>; colorClass?: string
+  byCurrency: Record<string, number>
+  colorClass?: string
 }) {
   const entries = Object.entries(byCurrency)
-  if (entries.length === 0) return (
+  if (!entries.length) return (
     <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${colorClass}`}>
       {formatCurrency(0)}
     </p>
@@ -143,28 +139,32 @@ function CurrencyTotal({ byCurrency, colorClass }: {
   )
 }
 
+// ── Main component ─────────────────────────────────────────────────────
 export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [] }: Props) {
   const { expenseCategories } = useCategories()
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
-  const [expenses,       setExpenses]       = useState(initialExpenses)
-  const [open,           setOpen]           = useState(false)
-  const [editing,        setEditing]        = useState<Expense | null>(null)
-  const [loading,        setLoading]        = useState(false)
-  const [search,         setSearch]         = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [accountFilter,  setAccountFilter]  = useState('all')
+  // ── State ────────────────────────────────────────────────────────────
+  const [expenses,            setExpenses]            = useState(initialExpenses)
+  const [open,                setOpen]                = useState(false)
+  const [editing,             setEditing]             = useState<Expense | null>(null)
+  const [loading,             setLoading]             = useState(false)
+  const [search,              setSearch]              = useState('')
+  const [categoryFilter,      setCategoryFilter]      = useState('all')
+  const [accountFilter,       setAccountFilter]       = useState('all')
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null)
-  const [dateFrom,  setDateFrom]  = useState('')
-  const [dateTo,    setDateTo]    = useState('')
-  const [monthFilter, setMonthFilter] = useState('all')
-  const [yearFilter,  setYearFilter]  = useState('all')
+  const [dateFrom,            setDateFrom]            = useState('')
+  const [dateTo,              setDateTo]              = useState('')
+  const [monthFilter,         setMonthFilter]         = useState('all')
+  const [yearFilter,          setYearFilter]          = useState('all')
 
-  // Regenerates whenever the active theme changes, so switching themes
-  // re-colors these charts without needing a page reload.
-  const chartColors = useMemo(() => buildThemedPalette(theme.colors.primary, 10), [theme.colors.primary])
+  const chartColors = useMemo(
+    () => buildThemedPalette(theme.colors.primary, 10),
+    [theme.colors.primary],
+  )
 
+  // ── Form ─────────────────────────────────────────────────────────────
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { date: new Date().toISOString().split('T')[0] },
@@ -172,6 +172,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
 
   const getAccountCurrency = (id?: string | null) =>
     accounts.find(a => a.id === id)?.currency
+
+  const getAccountName = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.name ?? '—'
 
   const openCreate = () => {
     setEditing(null)
@@ -193,14 +196,16 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
     setOpen(true)
   }
 
+  // ── Budget notification ───────────────────────────────────────────────
   const checkBudgetNotification = async (savedExpense: Expense) => {
-    const now = new Date()
+    const now   = new Date()
     const month = String(now.getMonth() + 1).padStart(2, '0')
     const year  = String(now.getFullYear())
+
     const matchingBudget = budgets.find(b =>
       b.category === savedExpense.category &&
       String(b.budget_month ?? now.getMonth() + 1).padStart(2, '0') === month &&
-      String(b.budget_year  ?? now.getFullYear()) === year
+      String(b.budget_year  ?? now.getFullYear()) === year,
     )
     if (!matchingBudget) return
 
@@ -214,27 +219,27 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
 
     if (pct >= 100) {
       await notify({
-        userId,
-        type: 'budget',
-        title: `Budget exceeded: ${matchingBudget.budget_name || savedExpense.category}`,
+        userId, type: 'budget',
+        title:   `Budget exceeded: ${matchingBudget.budget_name || savedExpense.category}`,
         message: `You've spent ${formatCurrency(spentSoFar)} of your ${formatCurrency(limit)} budget for ${savedExpense.category} this month (${Math.round(pct)}%).`,
         dedupeWindowHours: 20,
       })
     } else if (pct >= 80) {
       await notify({
-        userId,
-        type: 'budget',
-        title: `Budget warning: ${matchingBudget.budget_name || savedExpense.category}`,
+        userId, type: 'budget',
+        title:   `Budget warning: ${matchingBudget.budget_name || savedExpense.category}`,
         message: `You've used ${Math.round(pct)}% of your ${savedExpense.category} budget this month.`,
         dedupeWindowHours: 20,
       })
     }
   }
 
+  // ── CRUD ─────────────────────────────────────────────────────────────
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
     const payload  = { ...data, account_id: data.account_id || null }
+
     if (editing) {
       const { data: updated, error } = await supabase
         .from('expenses')
@@ -268,26 +273,26 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
     const supabase = createClient()
     const { error } = await supabase.from('expenses').delete().eq('id', id)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
-    else {
-      setExpenses(prev => prev.filter(e => e.id !== id))
-      toast({ title: 'Deleted' })
-    }
+    else { setExpenses(prev => prev.filter(e => e.id !== id)); toast({ title: 'Deleted' }) }
   }
 
-  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  // ── Date helpers ──────────────────────────────────────────────────────
+  const MONTH_NAMES = [
+    'January','February','March','April','May','June',
+    'July','August','September','October','November','December',
+  ]
 
   const availableYears = useMemo(() =>
     Array.from(new Set(expenses.map(e => e.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a)),
-    [expenses])
+    [expenses],
+  )
 
   const clearDateFilters = () => {
-    setDateFrom(''); setDateTo('')
-    setMonthFilter('all'); setYearFilter('all')
+    setDateFrom(''); setDateTo(''); setMonthFilter('all'); setYearFilter('all')
   }
   const hasActiveDateFilters = !!dateFrom || !!dateTo || monthFilter !== 'all' || yearFilter !== 'all'
 
-  const getAccountName = (id?: string | null) =>
-    accounts.find(a => a.id === id)?.name ?? '—'
+  // ── Derived data (memo order matters — no forward references) ─────────
 
   const filtered = useMemo(() =>
     expenses.filter(e => {
@@ -299,16 +304,25 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       const matchMonth   = monthFilter === 'all' || e.date.slice(5, 7) === monthFilter
       const matchYear    = yearFilter  === 'all' || e.date.slice(0, 4) === yearFilter
       return matchSearch && matchCat && matchAccount && matchFrom && matchTo && matchMonth && matchYear
-    }), [expenses, search, categoryFilter, accountFilter, dateFrom, dateTo, monthFilter, yearFilter])
+    }),
+    [expenses, search, categoryFilter, accountFilter, dateFrom, dateTo, monthFilter, yearFilter],
+  )
 
-  const totalByCurrency    = useMemo(() => groupByCurrency(expenses, accounts), [expenses, accounts])
-  const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
+  // All expenses, grouped by currency
+  const totalByCurrency = useMemo(
+    () => groupByCurrency(expenses, accounts),
+    [expenses, accounts],
+  )
+
+  // Filtered expenses, grouped by currency
+  const filteredByCurrency = useMemo(
+    () => groupByCurrency(filtered, accounts),
+    [filtered, accounts],
+  )
+
   const hasMixedExpenseCurrency = Object.keys(filteredByCurrency).length > 1
 
-  // Category breakdown for the charts — driven by whatever is currently filtered/searched,
-  // so the charts and the table below always agree. Note: like the dashboard's category
-  // breakdown, this blends raw amounts across currencies for the visual share only; exact
-  // per-currency totals are in the KPI cards above and the table below.
+  // Category breakdown (filtered)
   const expenseByCategory = useMemo(() => {
     const map: Record<string, number> = {}
     filtered.forEach(e => {
@@ -320,36 +334,75 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       .sort((a, b) => b.value - a.value)
   }, [filtered])
 
-  const grandTotalFiltered = useMemo(() =>
-    expenseByCategory.reduce((s, c) => s + c.value, 0), [expenseByCategory])
+  const grandTotalFiltered = useMemo(
+    () => expenseByCategory.reduce((s, c) => s + c.value, 0),
+    [expenseByCategory],
+  )
 
-  const avgExpense = useMemo(() =>
-    filtered.length > 0 ? grandTotalFiltered / filtered.length : 0,
-    [grandTotalFiltered, filtered])
+  // Average expense per transaction
+  const avgExpense = useMemo(
+    () => (filtered.length > 0 ? grandTotalFiltered / filtered.length : 0),
+    [grandTotalFiltered, filtered],
+  )
 
+  // Today's expenses (note: todayStr must be defined before expensesToday)
   const todayStr = new Date().toISOString().split('T')[0]
-  const expensesToday = useMemo(() =>
-    filtered.filter(e => e.date === todayStr),
-    [filtered, todayStr])
-  const totalToday = useMemo(() =>
-    groupByCurrency(expensesToday, accounts),
-    [expensesToday, accounts])
 
-  const highestExpense = useMemo(() =>
-    filtered.reduce<Expense | null>((max, e) =>
-      !max || Number(e.amount) > Number(max.amount) ? e : max, null),
-    [filtered])
+  const expensesToday = useMemo(
+    () => filtered.filter(e => e.date === todayStr),
+    [filtered, todayStr],
+  )
 
-  // Budget vs Actual — pairs each budget with what's actually been spent in that
-  // category, but ONLY for one month/year at a time: budgets are month-scoped
-  // (budget_month / budget_year), so comparing "actual" against every budget
-  // ever created would duplicate categories across months and show the same
-  // total next to each of them. We use the active month/year slicer when set,
-  // otherwise default to the current calendar month — same default the
-  // Budgets page uses. If no budgets exist for that period, falls back to
-  // showing actual spend per category (budget = 0) so the chart still renders
-  // something useful instead of an empty state.
+  // Currency totals for today — MUST come after expensesToday
+  const totalToday = useMemo(
+    () => groupByCurrency(expensesToday, accounts),
+    [expensesToday, accounts],
+  )
+
+  // Highest single expense in current filter
+  const highestExpense = useMemo(
+    () => filtered.reduce<Expense | null>(
+      (max, e) => !max || Number(e.amount) > Number(max.amount) ? e : max,
+      null,
+    ),
+    [filtered],
+  )
+
+  // ── KPICard formatted strings (all after their dependencies) ─────────
+
+  // Primary currency value for "Total Expenses" card
+  const totalExpStr = useMemo(() => {
+    const entries = Object.entries(totalByCurrency)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : formatCurrency(0)
+  }, [totalByCurrency])
+
+  const totalExpSub = useMemo(() => {
+    const entries = Object.entries(totalByCurrency)
+    if (entries.length <= 1) return `${expenses.length} entr${expenses.length === 1 ? 'y' : 'ies'}`
+    return entries.slice(1).map(([c, a]) => formatCurrency(a, c)).join(' · ')
+  }, [totalByCurrency, expenses])
+
+  // Primary currency value for "This View" card
+  const filteredExpStr = useMemo(() => {
+    const entries = Object.entries(filteredByCurrency)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : formatCurrency(0)
+  }, [filteredByCurrency])
+
+  const filteredExpSub = useMemo(() => {
+    const entries = Object.entries(filteredByCurrency)
+    if (entries.length <= 1) return `${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}`
+    return entries.slice(1).map(([c, a]) => formatCurrency(a, c)).join(' · ')
+  }, [filteredByCurrency, filtered])
+
+  // Primary currency value for "Today" card — depends on totalToday
+  const todayCardStr = useMemo(() => {
+    const entries = Object.entries(totalToday)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : '—'
+  }, [totalToday])
+
+  // ── Budget vs Actual ──────────────────────────────────────────────────
   const now = useMemo(() => new Date(), [])
+
   const budgetPeriod = useMemo(() => ({
     month: monthFilter !== 'all' ? monthFilter : String(now.getMonth() + 1).padStart(2, '0'),
     year:  yearFilter  !== 'all' ? yearFilter  : String(now.getFullYear()),
@@ -360,14 +413,13 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       const bMonth = String(b.budget_month ?? now.getMonth() + 1).padStart(2, '0')
       const bYear  = String(b.budget_year  ?? now.getFullYear())
       return bMonth === budgetPeriod.month && bYear === budgetPeriod.year
-    }), [budgets, budgetPeriod, now])
+    }),
+    [budgets, budgetPeriod, now],
+  )
 
   const budgetVsActual = useMemo(() => {
     if (!periodBudgets.length) return expenseByCategory.map(c => ({
-      name: c.name,
-      budget: 0,
-      actual: c.value,
-      pct: 0,
+      name: c.name, budget: 0, actual: c.value, pct: 0,
     }))
     return periodBudgets.map(b => {
       const actual = filtered
@@ -376,16 +428,17 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       const budget = Number(b.monthly_limit ?? b.amount ?? 0)
       return {
         name: b.budget_name || b.category,
-        budget,
-        actual,
+        budget, actual,
         pct: budget > 0 ? Math.round((actual / budget) * 100) : 0,
       }
     }).sort((a, b) => b.actual - a.actual)
   }, [periodBudgets, filtered, expenseByCategory])
 
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 animate-fade-in">
 
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-bold">Expenses</h1>
@@ -396,99 +449,114 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         </Button>
       </div>
 
-      {/* KPI cards — currency-aware, never sum across currencies */}
+      {/* ── KPI cards (3D flip) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
 
-        {/* Total Expenses */}
-        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden col-span-1">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Total Expenses
-          </p>
-          <CurrencyTotal byCurrency={totalByCurrency} />
-          {Object.keys(totalByCurrency).length > 1 && (
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Per currency</p>
-          )}
-        </Card>
+        <KPICard
+          label="Total expenses"
+          value={totalExpStr}
+          sub={totalExpSub}
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#dc2626"
+          tooltip={
+            Object.entries(totalByCurrency)
+              .map(([c, a]) => `${c}: ${formatCurrency(a, c)}`)
+              .join('\n') || 'No expenses yet'
+          }
+        />
 
-        {/* This View */}
-        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden col-span-1">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            This View
-          </p>
-          <CurrencyTotal byCurrency={filteredByCurrency} />
-          {Object.keys(filteredByCurrency).length > 1 && (
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Per currency</p>
-          )}
-        </Card>
+        <KPICard
+          label="This view"
+          value={filteredExpStr}
+          sub={filteredExpSub}
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#2563eb"
+          tooltip={
+            Object.entries(filteredByCurrency)
+              .map(([c, a]) => `${c}: ${formatCurrency(a, c)}`)
+              .join('\n') || 'No expenses in current filter'
+          }
+        />
 
-        {/* Entries */}
-        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden col-span-1">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Entries
-          </p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">In current view</p>
-        </Card>
+        <KPICard
+          label="Entries"
+          value={String(filtered.length)}
+          sub="In current view"
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#f97316"
+          tooltip={`${filtered.length} of ${expenses.length} total expenses match the current filters`}
+        />
 
-        {/* Avg Expense */}
-        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
-          style={{ borderTop: `3px solid ${theme.colors.primary}` }}>
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Avg Expense
-          </p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate"
-            style={{ color: theme.colors.primary }}>
-            {filtered.length > 0 ? formatCurrency(avgExpense) : '—'}
-          </p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-            Per transaction
-          </p>
-        </Card>
+        <KPICard
+          label="Avg expense"
+          value={filtered.length > 0 ? formatCurrency(avgExpense) : '—'}
+          sub="Per transaction"
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#0891b2"
+          topSource={expenseByCategory[0] ? `${expenseByCategory[0].name} (highest category)` : undefined}
+          tooltip={`Average across ${filtered.length} transaction${filtered.length !== 1 ? 's' : ''} in current view`}
+        />
 
-        {/* Expenses Today */}
-        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
-          style={{ borderTop: '3px solid #0891b2' }}>
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Today
-          </p>
-          {expensesToday.length > 0 ? (
-            <CurrencyTotal byCurrency={totalToday} colorClass="text-cyan-600" />
-          ) : (
-            <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 text-cyan-600">
-              —
-            </p>
-          )}
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">
-            {expensesToday.length} transaction{expensesToday.length !== 1 ? 's' : ''} today
-          </p>
-        </Card>
+        <KPICard
+          label="Today"
+          value={todayCardStr}
+          sub={`${expensesToday.length} transaction${expensesToday.length !== 1 ? 's' : ''} today`}
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#059669"
+          tooltip={
+            expensesToday.length > 0
+              ? expensesToday
+                  .map(e => `${e.title}: ${formatCurrency(Number(e.amount), getAccountCurrency(e.account_id))}`)
+                  .join('\n')
+              : 'No expenses recorded today'
+          }
+        />
 
-        {/* Highest Expense */}
-        <Card className="bg-white p-4 sm:p-5 overflow-hidden col-span-1"
-          style={{ borderTop: '3px solid #9333ea' }}>
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Highest
-          </p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate text-purple-600">
-            {highestExpense
+        <KPICard
+          label="Highest"
+          value={
+            highestExpense
               ? formatCurrency(Number(highestExpense.amount), getAccountCurrency(highestExpense.account_id))
-              : '—'}
-          </p>
-          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 truncate">
-            {highestExpense ? highestExpense.title : 'No expenses yet'}
-          </p>
-        </Card>
+              : '—'
+          }
+          sub={highestExpense ? highestExpense.title : 'No expenses yet'}
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#9333ea"
+          topSource={
+            highestExpense
+              ? `${highestExpense.category} · ${formatDate(highestExpense.date)}`
+              : undefined
+          }
+          tooltip={
+            highestExpense
+              ? `${highestExpense.title}\n${highestExpense.category} · ${formatDate(highestExpense.date)}\n${getAccountName(highestExpense.account_id)}`
+              : 'No expenses yet'
+          }
+        />
 
       </div>
 
+      {/* ── Search & filters ── */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search expenses…" value={search}
-            onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
+          <Input
+            placeholder="Search expenses…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 bg-white"
+          />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44 bg-white">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -496,7 +564,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         </Select>
         {accounts.length > 0 && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44 bg-white">
+              <SelectValue placeholder="Account" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Accounts</SelectItem>
               {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -505,14 +575,18 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         )}
       </div>
 
-      {/* Date / Month / Year slicer */}
+      {/* ── Date slicer ── */}
       <Card className="bg-white rounded-xl shadow-sm border border-border">
         <CardContent className="py-3 px-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filter by Date</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Filter by Date
+            </p>
             {hasActiveDateFilters && (
-              <button onClick={clearDateFilters}
-                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors">
+              <button
+                onClick={clearDateFilters}
+                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors"
+              >
                 Clear filters
               </button>
             )}
@@ -520,13 +594,19 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              <input
+                type="date" value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
+              <input
+                type="date" value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
@@ -554,11 +634,11 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         </CardContent>
       </Card>
 
-      {/* Budget vs Actual combo chart + Category Share donut */}
+      {/* ── Charts ── */}
       {(expenseByCategory.length > 0 || budgets.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* ── Budget vs Actual ── */}
+          {/* Budget vs Actual */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Budget vs Actual</CardTitle>
@@ -590,10 +670,10 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                 </div>
               ) : (
                 <>
-                  {/* Legend */}
                   <div className="flex gap-4 mb-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1.5">
-                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: theme.colors.primaryLight || theme.colors.primary + 'aa' }} />
+                      <span className="w-3 h-3 rounded-sm inline-block"
+                        style={{ background: theme.colors.primaryLight || theme.colors.primary + 'aa' }} />
                       Budget limit
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -612,13 +692,12 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                       <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} axisLine={false} tickLine={false} />
                       <Tooltip
-                        formatter={(v: any, name: string) => [formatCurrency(Number(v)), name === 'budget' ? 'Budget limit' : 'Actual spent']}
                         content={({ active, payload, label }) => {
                           if (!active || !payload?.length) return null
                           const budget = payload.find(p => p.dataKey === 'budget')?.value as number
                           const actual = payload.find(p => p.dataKey === 'actual')?.value as number
-                          const pct = budget > 0 ? Math.round((actual / budget) * 100) : 0
-                          const over = actual > budget
+                          const pct    = budget > 0 ? Math.round((actual / budget) * 100) : 0
+                          const over   = actual > budget
                           return (
                             <div className="glass-card rounded-xl p-3 shadow-lg text-xs space-y-1 min-w-[180px]">
                               <p className="font-semibold text-sm">{label}</p>
@@ -628,7 +707,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                               </div>
                               <div className="flex justify-between gap-4">
                                 <span className="text-muted-foreground">Actual</span>
-                                <span className={`font-medium ${over ? 'text-destructive' : 'text-success'}`}>{formatCurrency(actual)}</span>
+                                <span className={`font-medium ${over ? 'text-destructive' : 'text-success'}`}>
+                                  {formatCurrency(actual)}
+                                </span>
                               </div>
                               <div className="h-px bg-border" />
                               <div className="flex justify-between gap-4">
@@ -653,53 +734,44 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                           )
                         }}
                       />
-                      {/* Budget bar — background reference */}
                       <Bar
-                        dataKey="budget"
-                        name="Budget limit"
-                        radius={[0, 4, 4, 0]}
-                        cursor="pointer"
-                        animationDuration={500}
+                        dataKey="budget" name="Budget limit"
+                        radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
                         onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
                       >
-                        {budgetVsActual.map((row, i) => (
-                          <Cell
-                            key={i}
-                            fill={activeCategoryIndex !== null && activeCategoryIndex !== i
-                              ? (theme.colors.primaryLight || theme.colors.primary + 'aa') + '55'
-                              : (theme.colors.primaryLight || theme.colors.primary + 'aa')}
+                        {budgetVsActual.map((_, i) => (
+                          <Cell key={i}
+                            fill={
+                              activeCategoryIndex !== null && activeCategoryIndex !== i
+                                ? (theme.colors.primaryLight || theme.colors.primary + 'aa') + '55'
+                                : (theme.colors.primaryLight || theme.colors.primary + 'aa')
+                            }
                           />
                         ))}
                         <LabelList
-                          dataKey="budget"
-                          position="right"
+                          dataKey="budget" position="right"
                           content={(props: any) => {
                             const { x, y, width, height, index, value } = props
                             if (index == null) return null
                             return (
                               <text x={x + width + 6} y={y + height / 2} dy={4}
-                                fontSize={10} fill="var(--color-text-secondary, #888)">
+                                fontSize={10} fill="var(--color-text-secondary,#888)">
                                 {formatCurrency(value)}
                               </text>
                             )
                           }}
                         />
                       </Bar>
-                      {/* Actual bar — overlaid */}
                       <Bar
-                        dataKey="actual"
-                        name="Actual spent"
-                        radius={[0, 4, 4, 0]}
-                        cursor="pointer"
-                        animationDuration={500}
+                        dataKey="actual" name="Actual spent"
+                        radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
                         onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
                       >
                         {budgetVsActual.map((row, i) => {
-                          const over = row.actual > row.budget && row.budget > 0
+                          const over   = row.actual > row.budget && row.budget > 0
                           const dimmed = activeCategoryIndex !== null && activeCategoryIndex !== i
                           return (
-                            <Cell
-                              key={i}
+                            <Cell key={i}
                               fill={dimmed
                                 ? (over ? '#ef4444' : '#22c55e') + '55'
                                 : (over ? '#ef4444' : '#22c55e')}
@@ -714,7 +786,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
             </CardContent>
           </Card>
 
-          {/* ── Category Share donut ── */}
+          {/* Category Share donut */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">Category Share</CardTitle>
@@ -726,12 +798,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                   <PieChart>
                     <Pie
                       data={expenseByCategory}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius="55%"
-                      outerRadius="80%"
+                      dataKey="value" nameKey="name"
+                      cx="50%" cy="50%"
+                      innerRadius="55%" outerRadius="80%"
                       paddingAngle={2}
                       labelLine={false}
                       label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
@@ -739,11 +808,12 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
                     >
                       {expenseByCategory.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={activeCategoryIndex !== null && activeCategoryIndex !== i
-                            ? chartColors[i % chartColors.length] + '55'
-                            : chartColors[i % chartColors.length]}
+                        <Cell key={i}
+                          fill={
+                            activeCategoryIndex !== null && activeCategoryIndex !== i
+                              ? chartColors[i % chartColors.length] + '55'
+                              : chartColors[i % chartColors.length]
+                          }
                           stroke="#fff" strokeWidth={2}
                           style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
                         />
@@ -759,7 +829,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                   style={{ top: 0, height: 'calc(100% - 40px)' }}>
                   <div className="text-center leading-tight">
                     <p className="text-[10px] sm:text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                      {activeCategoryIndex !== null ? expenseByCategory[activeCategoryIndex]?.name : 'Total'}
+                      {activeCategoryIndex !== null
+                        ? expenseByCategory[activeCategoryIndex]?.name
+                        : 'Total'}
                     </p>
                     <p className="text-lg sm:text-xl font-bold tabular-nums mt-0.5 text-destructive">
                       {activeCategoryIndex !== null
@@ -783,6 +855,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         </div>
       )}
 
+      {/* ── Expenses table ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
@@ -839,8 +912,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" className="w-8 h-8"
-                            onClick={() => openEdit(expense)}>
+                          <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => openEdit(expense)}>
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
                           <Button size="icon" variant="ghost"
@@ -859,6 +931,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
         </CardContent>
       </Card>
 
+      {/* ── Add / Edit dialog ── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -885,8 +958,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Category</Label>
-                <Select onValueChange={v => setValue('category', v)}
-                  defaultValue={editing?.category}>
+                <Select onValueChange={v => setValue('category', v)} defaultValue={editing?.category}>
                   <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
                   <SelectContent>
                     {expenseCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -896,8 +968,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
               </div>
               <div className="space-y-1.5">
                 <Label>Payment Method</Label>
-                <Select onValueChange={v => setValue('payment_method', v)}
-                  defaultValue={editing?.payment_method}>
+                <Select onValueChange={v => setValue('payment_method', v)} defaultValue={editing?.payment_method}>
                   <SelectTrigger><SelectValue placeholder="Method" /></SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map(m => (
@@ -910,8 +981,10 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
             </div>
             <div className="space-y-1.5">
               <Label>Account</Label>
-              <Select onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
-                defaultValue={editing?.account_id || undefined}>
+              <Select
+                onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
+                defaultValue={editing?.account_id || undefined}
+              >
                 <SelectTrigger className={errors.account_id ? 'border-destructive' : ''}>
                   <SelectValue placeholder="Which account is this deducted from?" />
                 </SelectTrigger>
@@ -923,7 +996,9 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
               </Select>
               {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
               {accounts.length === 0 && (
-                <p className="text-xs text-amber-600">You need at least one account — add one in My Accounts first.</p>
+                <p className="text-xs text-amber-600">
+                  You need at least one account — add one in My Accounts first.
+                </p>
               )}
             </div>
             <div className="space-y-1.5">
@@ -933,7 +1008,8 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={loading}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" />
+                {loading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
                   : editing ? 'Save Changes' : 'Add Expense'}
               </Button>
             </div>

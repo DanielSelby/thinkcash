@@ -115,9 +115,13 @@ export function KPICard({
       {/* Value */}
       <div>
         <p style={{
-          fontSize: 22, fontWeight: 600, lineHeight: 1.1,
+          fontSize: value.length > 13 ? 13 : value.length > 10 ? 16 : value.length > 8 ? 18 : 21,
+          fontWeight: 600, lineHeight: 1.15,
           color: solid ? '#fff' : 'var(--color-text-primary)',
           marginTop: 4,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
         }}>
           {value}
         </p>
