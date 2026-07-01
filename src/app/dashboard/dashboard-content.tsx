@@ -1738,10 +1738,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                             )
                           })}
                           <td className="text-center py-2 px-2 font-semibold tabular-nums bg-muted/30 whitespace-nowrap">
-                            {Math.round(cat.value).toLocaleString()}
-                            <span className="text-muted-foreground font-normal ml-1 text-[9px]">
-                              ({grandTotalIncomeRaw > 0 ? Math.round((cat.value / grandTotalIncomeRaw) * 100) : 0}%)
-                            </span>
+                            {(() => {
+                              // Sum each currency's contribution for this category, converted to GHS
+                              const convertedRowTotal = currencyBreakdown.reduce((sum, c) => {
+                                const raw  = incomeMatrix[cat.name]?.[c.name] ?? 0
+                                const rate = exchangeRateMap[c.name] ?? 1
+                                return sum + raw * rate
+                              }, 0)
+                              const pct = grandTotalIncomeConverted > 0
+                                ? Math.round((convertedRowTotal / grandTotalIncomeConverted) * 100)
+                                : 0
+                              return (
+                                <>
+                                  {formatCurrency(Math.round(convertedRowTotal), currency)}
+                                  <span className="text-muted-foreground font-normal ml-1 text-[9px]">
+                                    ({pct}%)
+                                  </span>
+                                </>
+                              )
+                            })()}
                           </td>
                         </tr>
                       ))}
