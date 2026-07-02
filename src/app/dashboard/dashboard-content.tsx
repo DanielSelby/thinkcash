@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Target,
   ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
-  Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe,
+  Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -868,6 +868,128 @@ function IncomeDecompositionTreeExpand({
   )
 }
 
+// ── Flip Account Card — front shows the at-a-glance balance, back (tap to
+// flip) shows the full breakdown: opening balance, income/expense, transfers,
+// custody movements, and overdraft status. Kept as its own component so the
+// per-card flip state doesn't re-render the whole account grid. ────────────
+function FlipAccountCard({
+  acc,
+  color,
+  isNeg,
+}: {
+  acc: any
+  color: string
+  isNeg: boolean
+}) {
+  const [flipped, setFlipped] = useState(false)
+  const hasTransfers = (acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0
+  const hasCustody   = (acc.custody_in ?? 0) > 0 || (acc.custody_out ?? 0) > 0
+
+  return (
+    <div
+      className="relative h-[136px] sm:h-[156px] cursor-pointer select-none"
+      style={{ perspective: '1000px' }}
+      onClick={() => setFlipped(v => !v)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setFlipped(v => !v) }}
+    >
+      <div
+        className="relative w-full h-full transition-transform duration-500"
+        style={{ transformStyle: 'preserve-3d', transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+      >
+        {/* Front face */}
+        <Card
+          className="absolute inset-0 bg-white rounded-xl shadow-sm border border-border overflow-hidden"
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+        >
+          <div className="h-1" style={{ background: color }} />
+          <CardContent className="p-2.5 sm:p-4">
+            <div className="flex items-center justify-between gap-1">
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
+              {isNeg && <AlertTriangle className="w-3 h-3 flex-shrink-0" style={{ color }} />}
+            </div>
+            <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5 sm:mt-1 truncate" style={{ color }}>
+              {formatCurrency(acc.balance ?? 0, acc.currency)}
+            </p>
+            <div className="flex justify-between text-[10px] sm:text-xs mt-1 sm:mt-2 gap-1">
+              <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+              <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
+            </div>
+            {hasTransfers && (
+              <div className="flex justify-between text-[10px] sm:text-xs mt-0.5 sm:mt-1 gap-1">
+                {(acc.transfers_in  ?? 0) > 0 && <span className="text-blue-500 truncate">↙{formatCurrency(acc.transfers_in  ?? 0, acc.currency)}</span>}
+                {(acc.transfers_out ?? 0) > 0 && <span className="text-orange-500 truncate">↗{formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>}
+              </div>
+            )}
+            <div className="flex items-center gap-1 mt-1.5 sm:mt-2 text-[9px] text-muted-foreground/60">
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Tap for details</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Back face */}
+        <Card
+          className="absolute inset-0 bg-white rounded-xl shadow-sm border border-border overflow-hidden"
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+        >
+          <div className="h-1" style={{ background: color }} />
+          <CardContent className="p-2.5 sm:p-4 text-[10px] sm:text-[11px] space-y-1">
+            <p className="text-[10px] sm:text-xs font-semibold truncate mb-1">{acc.name}</p>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Opening</span>
+              <span className="font-medium tabular-nums">{formatCurrency(acc.opening_balance ?? 0, acc.currency)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Income</span>
+              <span className="font-medium tabular-nums text-green-600">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Expenses</span>
+              <span className="font-medium tabular-nums text-red-500">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
+            </div>
+            {hasTransfers && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Transfers In</span>
+                  <span className="font-medium tabular-nums text-blue-500">+{formatCurrency(acc.transfers_in ?? 0, acc.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Transfers Out</span>
+                  <span className="font-medium tabular-nums text-orange-500">-{formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>
+                </div>
+              </>
+            )}
+            {hasCustody && (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Custody In</span>
+                  <span className="font-medium tabular-nums">+{formatCurrency(acc.custody_in ?? 0, acc.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Custody Out</span>
+                  <span className="font-medium tabular-nums">-{formatCurrency(acc.custody_out ?? 0, acc.currency)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between pt-1 mt-1 border-t border-border/60">
+              <span className="text-muted-foreground">Status</span>
+              <span className="font-semibold" style={{ color }}>
+                {acc.overdraftStatus === 'ok' ? 'Healthy' : acc.overdraftStatus === 'overdraft' ? 'Overdrawn' : 'Blocked'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 mt-1.5 sm:mt-2 text-[9px] text-muted-foreground/60">
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Tap to flip back</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -905,12 +1027,17 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       const custodyIn      = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
       const custodyOut     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
       const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
+      const isNegative = balance < 0
+      const overdraftAllowed = acc.allow_negative === true || acc.type === 'bank'
       return {
         ...acc,
         total_income: totalIncome, total_expenses: totalExpense,
         transfers_in: transfersIn, transfers_out: transfersOut,
         custody_in: custodyIn, custody_out: custodyOut,
         balance,
+        isNegative,
+        overdraftAllowed,
+        overdraftStatus: !isNegative ? 'ok' : overdraftAllowed ? 'overdraft' : 'blocked',
       }
     }), [accounts, incomes, expenses, transfers, custodyTransactions])
 
@@ -1188,6 +1315,50 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   return (
     <div className="space-y-5">
 
+    {/* ── Overdraft / Negative Balance Alert Banner ─────────────────── */}
+      {(() => {
+        const overdraftAccounts = accountsWithBalance.filter(a => a.overdraftStatus === 'overdraft')
+        const blockedAccounts   = accountsWithBalance.filter(a => a.overdraftStatus === 'blocked')
+        if (!overdraftAccounts.length && !blockedAccounts.length) return null
+        return (
+          <div className="space-y-2">
+            {overdraftAccounts.map(acc => (
+              <div key={acc.id} className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-800">
+                    {acc.name} is overdrawn by {formatCurrency(Math.abs(acc.balance), acc.currency || 'GHS')}
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    This bank account has a negative balance. Add income or a deposit to clear the overdraft.
+                  </p>
+                </div>
+                <a href="/user-accounts" className="text-xs font-semibold text-amber-700 hover:underline whitespace-nowrap">
+                  Review →
+                </a>
+              </div>
+            ))}
+            {blockedAccounts.map(acc => (
+              <div key={acc.id} className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-200 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-red-800">
+                    {acc.name} shows a negative balance ({formatCurrency(acc.balance, acc.currency || 'GHS')})
+                  </p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    {acc.type === 'mobile_money' ? 'Mobile Money' : acc.type === 'cash' ? 'Cash' : 'Investment'} accounts should not go negative. Check for incorrect transactions.
+                  </p>
+                </div>
+                <a href="/user-accounts" className="text-xs font-semibold text-red-700 hover:underline whitespace-nowrap">
+                  Fix →
+                </a>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -1424,27 +1595,17 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                 {accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter).map(acc => {
-                  const color = ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+                  const color = acc.overdraftStatus === 'overdraft' ? '#d97706'
+                    : acc.overdraftStatus === 'blocked'   ? '#dc2626'
+                    : ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+                  const isNeg = acc.overdraftStatus !== 'ok'
                   return (
-                    <Card key={acc.id} className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-                      <div className="h-1" style={{ background: color }} />
-                      <CardContent className="p-2.5 sm:p-4">
-                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate">{acc.name}</p>
-                        <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5 sm:mt-1 truncate" style={{ color }}>
-                          {formatCurrency(acc.balance ?? 0, acc.currency)}
-                        </p>
-                        <div className="flex justify-between text-[10px] sm:text-xs mt-1 sm:mt-2 gap-1">
-                          <span className="text-green-600 truncate">+{formatCurrency(acc.total_income ?? 0, acc.currency)}</span>
-                          <span className="text-red-500 truncate">-{formatCurrency(acc.total_expenses ?? 0, acc.currency)}</span>
-                        </div>
-                        {((acc.transfers_in ?? 0) > 0 || (acc.transfers_out ?? 0) > 0) && (
-                          <div className="flex justify-between text-[10px] sm:text-xs mt-0.5 sm:mt-1 gap-1">
-                            {(acc.transfers_in  ?? 0) > 0 && <span className="text-blue-500 truncate">↙{formatCurrency(acc.transfers_in  ?? 0, acc.currency)}</span>}
-                            {(acc.transfers_out ?? 0) > 0 && <span className="text-orange-500 truncate">↗{formatCurrency(acc.transfers_out ?? 0, acc.currency)}</span>}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <FlipAccountCard
+                      key={acc.id}
+                      acc={acc}
+                      color={color}
+                      isNeg={isNeg}
+                    />
                   )
                 })}
               </div>
