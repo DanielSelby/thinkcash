@@ -85,6 +85,7 @@ const accountSchema = z.object({
   institution:     z.string().optional(),
   opening_balance: z.coerce.number().min(0),
   currency:        z.string().default('GHS'),
+  allow_negative:  z.boolean().optional(),
 })
 type AccountFormData = z.infer<typeof accountSchema>
 
@@ -155,7 +156,7 @@ export function UserAccountsContent({
 
   const accountForm = useForm<AccountFormData>({
     resolver: zodResolver(accountSchema),
-    defaultValues: { opening_balance: 0, currency: 'GHS' },
+    defaultValues: { opening_balance: 0, currency: 'GHS', allow_negative: false },
   })
 
   const transferForm = useForm<TransferFormData>({
@@ -185,12 +186,18 @@ export function UserAccountsContent({
       const custodyIn      = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
       const custodyOut     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
       const balance        = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
+      // Whether this account is allowed to carry a negative balance — an
+      // explicit per-account `allow_negative` flag always wins; otherwise
+      // bank accounts default to "yes" (overdraft facility) and everything
+      // else defaults to "no".
+      const overdraftAllowed = (acc as any).allow_negative === true || acc.type === 'bank'
       return {
         ...acc,
         total_income: totalIncome, total_expenses: totalExpense,
         transfers_in: transfersIn, transfers_out: transfersOut,
         custody_in: custodyIn, custody_out: custodyOut,
         balance,
+        overdraftAllowed,
       }
     }), [accounts, incomes, expenses, transfers, custodyTransactions])
 
@@ -244,7 +251,7 @@ export function UserAccountsContent({
 
   const openCreate = () => {
     setEditing(null)
-    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS' })
+    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false })
     setOpen(true)
   }
 
@@ -256,6 +263,7 @@ export function UserAccountsContent({
       institution:     acc.institution ?? '',
       opening_balance: acc.opening_balance,
       currency:        acc.currency,
+      allow_negative:  (acc as any).allow_negative ?? (acc.type === 'bank'),
     })
     setOpen(true)
   }
@@ -263,10 +271,11 @@ export function UserAccountsContent({
   const onAccountSubmit = async (data: AccountFormData) => {
     setLoading(true)
     const supabase = createClient()
+    const payload = { ...data, allow_negative: data.allow_negative ?? false }
     if (editing) {
       const { data: updated, error } = await supabase
         .from('user_accounts')
-        .update({ ...data, updated_at: new Date().toISOString() })
+        .update({ ...payload, updated_at: new Date().toISOString() })
         .eq('id', editing.id).select().single()
       if (error) toast({ title: 'Update failed', description: error.message, variant: 'destructive' })
       else {
@@ -277,7 +286,7 @@ export function UserAccountsContent({
     } else {
       const { data: created, error } = await supabase
         .from('user_accounts')
-        .insert({ ...data, user_id: userId, is_active: true })
+        .insert({ ...payload, user_id: userId, is_active: true })
         .select().single()
       if (error) toast({ title: 'Failed to create', description: error.message, variant: 'destructive' })
       else {
@@ -301,6 +310,21 @@ export function UserAccountsContent({
   }
 
   const onTransferSubmit = async (data: TransferFormData) => {
+    // ── Negative balance guard (source account) ─────────────────────────
+    // A transfer always deducts the full `amount` from the source account
+    // in its own currency, regardless of whether the transfer is cross-
+    // currency, so this check only needs to look at the "from" side.
+    const fromAccForGuard = accountsWithBalance.find(a => a.id === data.from_account_id)
+    if (fromAccForGuard && !fromAccForGuard.overdraftAllowed) {
+      const projectedBalance = (fromAccForGuard.balance ?? 0) - Number(data.amount)
+      if (projectedBalance < 0) {
+        const confirmed = confirm(
+          `⚠ This will put ${fromAccForGuard.name} into a negative balance of ${formatCurrency(projectedBalance, fromAccForGuard.currency || 'GHS')}.\n\n${fromAccForGuard.type === 'mobile_money' ? 'Mobile Money' : fromAccForGuard.type === 'cash' ? 'Cash' : 'Investment'} accounts normally cannot go negative.\n\nProceed anyway?`
+        )
+        if (!confirmed) return
+      }
+    }
+
     setTransferLoading(true)
     const supabase = createClient()
 
@@ -545,6 +569,11 @@ export function UserAccountsContent({
                           {acc.currency !== 'GHS' && (
                             <span className="ml-1 bg-muted px-1.5 py-0.5 rounded text-xs">{acc.currency}</span>
                           )}
+                          {acc.overdraftAllowed && (
+                            <span className="ml-1 bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-xs">
+                              Overdraft OK
+                            </span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -665,8 +694,17 @@ export function UserAccountsContent({
 
             <div className="space-y-1.5">
               <Label>Account Type</Label>
-              <Select onValueChange={v => accountForm.setValue('type', v)}
-                defaultValue={editing?.type}>
+              <Select
+                onValueChange={v => {
+                  accountForm.setValue('type', v)
+                  // For a brand-new account, default the toggle to match the
+                  // usual expectation for that type (bank = overdraft OK).
+                  // Once editing an existing account, leave whatever the
+                  // person has explicitly set alone.
+                  if (!editing) accountForm.setValue('allow_negative', v === 'bank')
+                }}
+                defaultValue={editing?.type}
+              >
                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
                   {ACCOUNT_TYPES.map(t => (
@@ -677,6 +715,29 @@ export function UserAccountsContent({
               {accountForm.formState.errors.type && (
                 <p className="text-xs text-destructive">{accountForm.formState.errors.type.message}</p>
               )}
+            </div>
+
+            {/* Allow Negative Balance toggle */}
+            <div className="flex items-center justify-between p-3 rounded-xl border border-border bg-muted/30">
+              <div className="flex-1 min-w-0 pr-4">
+                <p className="text-sm font-semibold">Allow Negative Balance</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {accountForm.watch('type') === 'bank'
+                    ? 'Bank accounts can have an overdraft facility.'
+                    : 'Enable only if this account can technically go below zero.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => accountForm.setValue('allow_negative', !accountForm.watch('allow_negative'))}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                  accountForm.watch('allow_negative') ? 'bg-amber-500' : 'bg-muted'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  accountForm.watch('allow_negative') ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
             </div>
 
             <div className="space-y-1.5">

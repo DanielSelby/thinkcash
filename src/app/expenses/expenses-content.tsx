@@ -176,6 +176,23 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
   const getAccountName = (id?: string | null) =>
     accounts.find(a => a.id === id)?.name ?? '—'
 
+  // ── Locally-estimated account balances — used only for the negative-
+  // balance guard below. This page never receives incomes or transfers
+  // (only its own `accounts` and `expenses`), so this is a conservative
+  // "opening balance minus this account's own recorded expenses" estimate,
+  // not the full cross-account balance shown on the Accounts/Dashboard
+  // pages. It's still enough to catch an obvious overdraft before it
+  // happens; it just isn't the authoritative number. ─────────────────────
+  const accountsWithBalance = useMemo(() =>
+    accounts.map(acc => {
+      const spent = expenses
+        .filter(e => e.account_id === acc.id)
+        .reduce((s, e) => s + Number(e.amount), 0)
+      const balance = Number(acc.opening_balance ?? 0) - spent
+      const overdraftAllowed = (acc as any).allow_negative === true || acc.type === 'bank'
+      return { ...acc, balance, overdraftAllowed }
+    }), [accounts, expenses])
+
   const openCreate = () => {
     setEditing(null)
     reset({ date: new Date().toISOString().split('T')[0] })
@@ -236,6 +253,23 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
 
   // ── CRUD ─────────────────────────────────────────────────────────────
   const onSubmit = async (data: FormData) => {
+    // ── Negative balance guard ────────────────────────────────────────
+    // When editing, only the delta between the old and new amount actually
+    // changes the account's balance, so we back out the old amount first.
+    if (data.account_id) {
+      const acc = accountsWithBalance.find(a => a.id === data.account_id)
+      if (acc && !acc.overdraftAllowed) {
+        const previousAmount = editing && editing.account_id === data.account_id ? Number(editing.amount) : 0
+        const projectedBalance = (acc.balance ?? 0) + previousAmount - Number(data.amount)
+        if (projectedBalance < 0) {
+          const confirmed = confirm(
+            `⚠ This will put ${acc.name} into a negative balance of ${formatCurrency(projectedBalance, acc.currency || 'GHS')}.\n\n${acc.type === 'mobile_money' ? 'Mobile Money' : acc.type === 'cash' ? 'Cash' : 'Investment'} accounts normally cannot go negative.\n\nProceed anyway?`
+          )
+          if (!confirmed) return
+        }
+      }
+    }
+
     setLoading(true)
     const supabase = createClient()
     const payload  = { ...data, account_id: data.account_id || null }
