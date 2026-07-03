@@ -7,7 +7,7 @@ import {
   PiggyBank, Target, BarChart3, BrainCircuit, Bell,
   Settings, Shield, Users, ChevronLeft, ChevronRight,
   Wallet, RefreshCcw, Tag, BookMarked, CreditCard,
-  Sparkles, HeartPulse, Landmark, CalendarClock,
+  Sparkles, HeartPulse, Landmark, CalendarClock, BadgeCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
@@ -41,10 +41,11 @@ const bottomItems = [
 ]
 
 const adminItems = [
-  { href: '/admin/dashboard',  icon: LayoutDashboard, label: 'Overview'   },
-  { href: '/admin/users',      icon: Users,           label: 'Users'      },
-  { href: '/admin/analytics',  icon: BarChart3,       label: 'Analytics'  },
-  { href: '/admin/monitoring', icon: Shield,          label: 'Monitoring' },
+  { href: '/admin/dashboard',     icon: LayoutDashboard, label: 'Overview'            },
+  { href: '/admin/users',         icon: Users,           label: 'Users'               },
+  { href: '/admin/subscriptions', icon: BadgeCheck,      label: 'Subscription Plans'  },
+  { href: '/admin/analytics',     icon: BarChart3,       label: 'Analytics'           },
+  { href: '/admin/monitoring',    icon: Shield,          label: 'Monitoring'          },
 ]
 
 function NavLink({

@@ -5,7 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import {
   Search, UserCheck, UserX, Trash2, Users,
   ShieldAlert, Lock, Loader2, Clock, LayoutTemplate, Plus, Pencil,
-  Activity, LogIn, FileText, LogOut,
+  Activity, LogIn, FileText, LogOut, BadgeCheck, Calendar, RefreshCw, XCircle,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -15,14 +15,18 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/misc'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/misc'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from '@/components/ui/toaster'
 import { formatDate } from '@/lib/utils'
 import { GATEABLE_PAGES } from '@/lib/page-access'
 import type { Profile, AccessTemplate, ActivityLogEntry } from '@/types'
 
 interface Props {
-  initialUsers: Profile[]
-  templates?: AccessTemplate[]
+  initialUsers:  Profile[]
+  templates:     AccessTemplate[]
+  plans:         any[]
+  subscriptions: any[]
+  adminId:       string
 }
 
 interface TemplateForm {
@@ -77,9 +81,10 @@ function PagesGrid({ selected, onToggle, onSelectAll, onClearAll }: {
   )
 }
 
-export function AdminUsersContent({ initialUsers, templates: initialTemplates = [] }: Props) {
+export function AdminUsersContent({ initialUsers, templates: initialTemplates, plans, subscriptions: initialSubs, adminId }: Props) {
   const [users, setUsers] = useState(initialUsers)
   const [templates, setTemplates] = useState(initialTemplates)
+  const [subs, setSubs]   = useState(initialSubs)
   const [search, setSearch] = useState('')
 
   // ── Per-user page access dialog ──────────────────────────────────
@@ -98,6 +103,14 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
   const [activityUser, setActivityUser]   = useState<Profile | null>(null)
   const [activityLog, setActivityLog]     = useState<ActivityLogEntry[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
+
+  // ── Subscription management dialog ────────────────────────────────
+  const [subUser,    setSubUser]    = useState<Profile | null>(null)
+  const [subLoading, setSubLoading] = useState(false)
+  const [subPlanId,  setSubPlanId]  = useState('')
+  const [subStartDate, setSubStartDate] = useState(new Date().toISOString().split('T')[0])
+  const [subAction,   setSubAction]    = useState<'assign' | 'extend' | 'cancel' | 'renew'>('assign')
+  const [extendDays,  setExtendDays]   = useState('30')
 
   const filtered = useMemo(() => users.filter(u =>
     u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -139,6 +152,97 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
       setRestrictMode(true)
       setSelectedPages(new Set(u.allowed_pages))
     }
+  }
+
+  // ── Subscription helpers ─────────────────────────────────────────
+  const getUserSub = (userId: string) => subs.find((s: any) => s.user_id === userId && s.status !== 'cancelled')
+
+  const openSubDialog = (u: Profile, action: typeof subAction) => {
+    setSubUser(u); setSubAction(action); setSubPlanId(''); setExtendDays('30')
+    setSubStartDate(new Date().toISOString().split('T')[0])
+  }
+
+  const logAudit = async (supabase: any, userId: string, subId: string, action: string, details: any) => {
+    await supabase.from('subscription_audit').insert({ user_id: userId, subscription_id: subId, action, details, performed_by: adminId })
+  }
+
+  const sendSubNotification = async (supabase: any, userId: string, subId: string, type: string, title: string, message: string) => {
+    await supabase.from('subscription_notifications').insert({ user_id: userId, subscription_id: subId, notification_type: type, title, message })
+    await supabase.from('notifications').insert({ user_id: userId, type: 'system', title, message })
+  }
+
+  const handleSubAction = async () => {
+    if (!subUser) return
+    setSubLoading(true)
+    const supabase = createClient()
+    const existingSub = getUserSub(subUser.id)
+
+    if (subAction === 'assign' || subAction === 'renew') {
+      if (!subPlanId) { toast({ title: 'Select a plan', variant: 'destructive' }); setSubLoading(false); return }
+      const plan = plans.find(p => p.id === subPlanId)
+      if (!plan) { setSubLoading(false); return }
+      const { calcEndDate } = await import('@/lib/subscription')
+      const endDate = calcEndDate(subStartDate, plan.billing_cycle, plan.custom_days)
+
+      if (existingSub) {
+        // Cancel existing first
+        await supabase.from('user_subscriptions').update({ status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', existingSub.id)
+      }
+
+      const { data: created, error } = await supabase.from('user_subscriptions').insert({
+        user_id: subUser.id, subscription_plan_id: subPlanId,
+        start_date: subStartDate, end_date: endDate,
+        amount: plan.amount, currency: plan.currency,
+        status: 'active', assigned_by: adminId,
+        ...(subAction === 'renew' ? { renewed_at: new Date().toISOString() } : {}),
+      }).select('*, subscription_plans(name, billing_cycle, currency)').single()
+
+      if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }) }
+      else {
+        setSubs(prev => [...prev.filter(s => s.user_id !== subUser.id || s.status === 'cancelled'), created])
+        const action_label = subAction === 'renew' ? 'renewed' : 'assigned'
+        await logAudit(supabase, subUser.id, created.id, subAction, { plan: plan.name, end_date: endDate })
+        await sendSubNotification(supabase, subUser.id, created.id, 'subscription_assigned',
+          `Subscription ${action_label}: ${plan.name}`,
+          `Your ${plan.name} subscription has been ${action_label}. Valid until ${endDate}.`
+        )
+        toast({ title: `Subscription ${action_label}`, variant: 'success' })
+        setSubUser(null)
+      }
+    }
+
+    if (subAction === 'extend' && existingSub) {
+      const days = Number(extendDays)
+      const newEnd = new Date(existingSub.end_date)
+      newEnd.setDate(newEnd.getDate() + days)
+      const newEndStr = newEnd.toISOString().split('T')[0]
+      const { data: updated, error } = await supabase.from('user_subscriptions')
+        .update({ end_date: newEndStr, updated_at: new Date().toISOString() }).eq('id', existingSub.id)
+        .select('*, subscription_plans(name, billing_cycle, currency)').single()
+      if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
+      else {
+        setSubs(prev => prev.map(s => s.id === existingSub.id ? updated : s))
+        await logAudit(supabase, subUser.id, existingSub.id, 'extended', { days, new_end: newEndStr })
+        await sendSubNotification(supabase, subUser.id, existingSub.id, 'subscription_extended',
+          'Subscription Extended', `Your subscription has been extended by ${days} days until ${newEndStr}.`)
+        toast({ title: 'Subscription extended', variant: 'success' }); setSubUser(null)
+      }
+    }
+
+    if (subAction === 'cancel' && existingSub) {
+      const { data: updated, error } = await supabase.from('user_subscriptions')
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', existingSub.id).select('*, subscription_plans(name, billing_cycle, currency)').single()
+      if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
+      else {
+        setSubs(prev => prev.map(s => s.id === existingSub.id ? updated : s))
+        await logAudit(supabase, subUser.id, existingSub.id, 'cancelled', {})
+        await sendSubNotification(supabase, subUser.id, existingSub.id, 'subscription_cancelled',
+          'Subscription Cancelled', 'Your subscription has been cancelled.')
+        toast({ title: 'Subscription cancelled' }); setSubUser(null)
+      }
+    }
+    setSubLoading(false)
   }
 
   const togglePage = (key: string) => {
@@ -316,6 +420,7 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Role</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">Access</th>
+                <th className="text-left px-6 py-3 font-medium text-muted-foreground">Subscription</th>
                 <th className="text-left px-6 py-3 font-medium text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Clock className="w-3 h-3" /> Last Active
@@ -361,6 +466,28 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
                       </Badge>
                     )}
                   </td>
+                  <td className="px-6 py-4">
+                    {(() => {
+                      const sub = getUserSub(u.id)
+                      if (!sub) return <span className="text-xs text-muted-foreground">None</span>
+                      const { computeStatus, STATUS_COLORS, daysRemaining, fmtDate } = require('@/lib/subscription')
+                      const plan = plans.find((p: any) => p.id === sub.subscription_plan_id)
+                      const gracePeriod = plan?.grace_period ?? 0
+                      const status = computeStatus(sub.end_date, gracePeriod, sub.status)
+                      const colors = STATUS_COLORS[status]
+                      const days = daysRemaining(sub.end_date)
+                      return (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                            style={{ background: colors.bg, color: colors.text }}>
+                            {status.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
+                          </span>
+                          <p className="text-[10px] text-muted-foreground">{sub.subscription_plans?.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{days > 0 ? `${days}d left` : 'Expired'}</p>
+                        </div>
+                      )
+                    })()}
+                  </td>
                   <td className="px-6 py-4 text-xs">
                     <button
                       onClick={() => openActivityLog(u)}
@@ -373,12 +500,11 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
                   <td className="px-6 py-4 text-muted-foreground">{formatDate(u.created_at)}</td>
                   <td className="px-6 py-4">
                     <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon" variant="ghost" className="w-8 h-8"
-                        onClick={() => openActivityLog(u)}
-                        title="View activity log"
-                      >
+                      <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => openActivityLog(u)} title="View activity log">
                         <Activity className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="w-8 h-8 text-purple-600" onClick={() => openSubDialog(u, getUserSub(u.id) ? 'renew' : 'assign')} title={getUserSub(u.id) ? 'Manage subscription' : 'Assign subscription'}>
+                        <BadgeCheck className="w-3.5 h-3.5" />
                       </Button>
                       {u.role !== 'admin' && (
                         <Button
@@ -638,6 +764,125 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates = 
               <Button variant="outline" onClick={() => setActivityUser(null)}>Close</Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Subscription Management Dialog */}
+      <Dialog open={!!subUser} onOpenChange={o => !o && setSubUser(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BadgeCheck className="w-5 h-5 text-purple-600" />
+              Manage Subscription — {subUser?.full_name}
+            </DialogTitle>
+          </DialogHeader>
+          {subUser && (() => {
+            const existingSub = getUserSub(subUser.id)
+            const plan = existingSub ? plans.find((p: any) => p.id === existingSub.subscription_plan_id) : null
+            return (
+              <div className="space-y-4">
+                {/* Current subscription summary */}
+                {existingSub ? (
+                  <div className="bg-purple-50 rounded-xl p-3 space-y-2 text-sm">
+                    <p className="font-semibold text-purple-800">Current Subscription</p>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      <div><p className="text-muted-foreground">Plan</p><p className="font-medium">{existingSub.subscription_plans?.name ?? '—'}</p></div>
+                      <div><p className="text-muted-foreground">Status</p><p className="font-medium capitalize">{existingSub.status.replace('_', ' ')}</p></div>
+                      <div><p className="text-muted-foreground">Start</p><p className="font-medium">{existingSub.start_date}</p></div>
+                      <div><p className="text-muted-foreground">End</p><p className="font-medium">{existingSub.end_date}</p></div>
+                      <div><p className="text-muted-foreground">Amount</p><p className="font-medium">{existingSub.currency} {Number(existingSub.amount).toLocaleString()}</p></div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-muted/40 rounded-xl p-3 text-sm text-muted-foreground text-center">No active subscription</div>
+                )}
+
+                {/* Action selector */}
+                <div className="flex gap-2 flex-wrap">
+                  {(['assign', 'renew', 'extend', 'cancel'] as const).filter(a => {
+                    if (a === 'cancel' || a === 'extend' || a === 'renew') return !!existingSub
+                    return true
+                  }).map(a => (
+                    <button key={a} onClick={() => setSubAction(a)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors capitalize ${subAction === a ? 'bg-purple-600 text-white border-purple-600' : 'border-border text-muted-foreground hover:border-purple-400'}`}>
+                      {a === 'assign' ? 'Assign Plan' : a === 'renew' ? 'Change / Renew' : a === 'extend' ? 'Extend' : 'Cancel'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Action-specific inputs */}
+                {(subAction === 'assign' || subAction === 'renew') && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label>Select Plan</Label>
+                      <Select onValueChange={setSubPlanId}>
+                        <SelectTrigger><SelectValue placeholder="Choose a plan" /></SelectTrigger>
+                        <SelectContent>
+                          {plans.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} — {p.currency} {Number(p.amount).toLocaleString()} / {p.billing_cycle.replace('_', ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Start Date</Label>
+                      <Input type="date" value={subStartDate} onChange={e => setSubStartDate(e.target.value)} />
+                    </div>
+                    {subPlanId && (() => {
+                      const selectedPlan = plans.find((p: any) => p.id === subPlanId)
+                      if (!selectedPlan) return null
+                      const { calcEndDate, BILLING_CYCLE_LABELS } = require('@/lib/subscription')
+                      const end = calcEndDate(subStartDate, selectedPlan.billing_cycle, selectedPlan.custom_days)
+                      return (
+                        <div className="bg-green-50 rounded-xl p-3 text-sm space-y-1">
+                          <p className="font-semibold text-green-700">{selectedPlan.name}</p>
+                          <div className="flex justify-between text-xs"><span className="text-muted-foreground">Amount</span><span className="font-semibold">{selectedPlan.currency} {Number(selectedPlan.amount).toLocaleString()}</span></div>
+                          <div className="flex justify-between text-xs"><span className="text-muted-foreground">Billing Cycle</span><span>{BILLING_CYCLE_LABELS[selectedPlan.billing_cycle]}</span></div>
+                          <div className="flex justify-between text-xs"><span className="text-muted-foreground">Expires</span><span className="font-semibold">{end}</span></div>
+                          <div className="flex justify-between text-xs"><span className="text-muted-foreground">Grace Period</span><span>{selectedPlan.grace_period} days</span></div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+
+                {subAction === 'extend' && (
+                  <div className="space-y-1.5">
+                    <Label>Extend by (days)</Label>
+                    <div className="flex gap-2">
+                      {['7','14','30','60','90'].map(d => (
+                        <button key={d} onClick={() => setExtendDays(d)}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${extendDays === d ? 'bg-purple-600 text-white border-purple-600' : 'border-border text-muted-foreground'}`}>
+                          {d}d
+                        </button>
+                      ))}
+                    </div>
+                    <Input type="number" value={extendDays} onChange={e => setExtendDays(e.target.value)} className="mt-2" />
+                    {existingSub && (
+                      <p className="text-xs text-muted-foreground">New end date: {(() => { const d = new Date(existingSub.end_date); d.setDate(d.getDate() + Number(extendDays)); return d.toISOString().split('T')[0] })()}</p>
+                    )}
+                  </div>
+                )}
+
+                {subAction === 'cancel' && (
+                  <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-700">
+                    <p className="font-semibold mb-1">Cancel subscription?</p>
+                    <p className="text-xs">This will cancel {subUser.full_name}'s current subscription immediately. The user will be notified.</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2 border-t border-border">
+                  <Button type="button" variant="outline" onClick={() => setSubUser(null)}>Cancel</Button>
+                  <Button onClick={handleSubAction} disabled={subLoading}
+                    className={subAction === 'cancel' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-purple-600 text-white hover:bg-purple-700'}>
+                    {subLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : subAction === 'assign' ? 'Assign Plan' : subAction === 'renew' ? 'Change / Renew' : subAction === 'extend' ? 'Extend' : 'Cancel Subscription'}
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>

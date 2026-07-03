@@ -43,10 +43,9 @@ export type PageKey = typeof GATEABLE_PAGES[number]['key']
  * Returns true if the user can access the given page key.
  * `allowed_pages === null` means unrestricted (full access).
  */
-export function canAccessPage(
-  allowedPages: string[] | null | undefined,
-  pageKey: string
-): boolean {
-  if (allowedPages === null || allowedPages === undefined) return true
-  return allowedPages.includes(pageKey)
+import { DEFAULT_ALLOWED_PAGES } from '@/lib/default-access'
+
+export function canAccessPage(allowedPages: string[] | null | undefined, pageKey: string): boolean {
+  const effective = allowedPages ?? DEFAULT_ALLOWED_PAGES
+  return effective.includes(pageKey)
 }
