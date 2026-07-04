@@ -179,7 +179,15 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates, p
 
     if (subAction === 'assign' || subAction === 'renew') {
       if (!subPlanId) { toast({ title: 'Select a plan', variant: 'destructive' }); setSubLoading(false); return }
-      const plan = plans.find(p => p.id === subPlanId)
+      // Re-fetch plan fresh from DB to guarantee allowed_pages is current
+      // (the prop may be stale or missing the column in edge cases).
+      const supabaseFetch = createClient()
+      const { data: planFresh } = await supabaseFetch
+        .from('subscription_plans')
+        .select('*')
+        .eq('id', subPlanId)
+        .single()
+      const plan = planFresh ?? plans.find(p => p.id === subPlanId)
       if (!plan) { setSubLoading(false); return }
       const { calcEndDate } = await import('@/lib/subscription')
       const endDate = calcEndDate(subStartDate, plan.billing_cycle, plan.custom_days)
