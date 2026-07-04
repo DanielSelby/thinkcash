@@ -201,7 +201,16 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates, p
       else {
         setSubs(prev => [...prev.filter(s => s.user_id !== subUser.id || s.status === 'cancelled'), created])
         const action_label = subAction === 'renew' ? 'renewed' : 'assigned'
-        await logAudit(supabase, subUser.id, created.id, subAction, { plan: plan.name, end_date: endDate })
+        // Apply the plan's page access to the user's profile —
+        // plan.allowed_pages null = full access, array = restricted set.
+        await supabase.from('profiles').update({
+          allowed_pages: plan.allowed_pages ?? null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', subUser.id)
+
+        await logAudit(supabase, subUser.id, created.id, subAction, {
+          plan: plan.name, end_date: endDate, allowed_pages: plan.allowed_pages ?? 'full',
+        })
         await sendSubNotification(supabase, subUser.id, created.id, 'subscription_assigned',
           `Subscription ${action_label}: ${plan.name}`,
           `Your ${plan.name} subscription has been ${action_label}. Valid until ${endDate}.`
@@ -236,9 +245,16 @@ export function AdminUsersContent({ initialUsers, templates: initialTemplates, p
       if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
       else {
         setSubs(prev => prev.map(s => s.id === existingSub.id ? updated : s))
+        // Revert access to the default restricted set on cancellation
+        const { DEFAULT_ALLOWED_PAGES } = await import('@/lib/default-access')
+        await supabase.from('profiles').update({
+          allowed_pages: DEFAULT_ALLOWED_PAGES,
+          updated_at: new Date().toISOString(),
+        }).eq('id', subUser.id)
+
         await logAudit(supabase, subUser.id, existingSub.id, 'cancelled', {})
         await sendSubNotification(supabase, subUser.id, existingSub.id, 'subscription_cancelled',
-          'Subscription Cancelled', 'Your subscription has been cancelled.')
+          'Subscription Cancelled', 'Your subscription has been cancelled. Access has been reverted to default.')
         toast({ title: 'Subscription cancelled' }); setSubUser(null)
       }
     }
