@@ -1014,7 +1014,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
-  const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
+  const [chartView,   setChartView]   = useState<'monthly' | 'daily'>('monthly')
+  const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
   const [showAccBalances,     setShowAccBalances]     = useState(true)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
 
@@ -1683,25 +1684,52 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold">
-              Income vs Expenses by {chartView === 'monthly' ? 'Month' : 'Day'}
+              {chartSeries === 'both'
+                ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                : chartSeries === 'income'
+                ? `Income Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                : `Expense Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`}
             </CardTitle>
-            <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
-              <button
-                onClick={() => setChartView('monthly')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setChartView('daily')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Daily
-              </button>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Series toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+                {([
+                  { id: 'both',    label: 'Both'    },
+                  { id: 'income',  label: 'Income'  },
+                  { id: 'expense', label: 'Expense' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setChartSeries(opt.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                      chartSeries === opt.id
+                        ? 'bg-white shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {/* Granularity toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+                <button
+                  onClick={() => setChartView('monthly')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setChartView('daily')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Daily
+                </button>
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -1735,8 +1763,20 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  dot={false} />
-                <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" dot={false} />
+                {(chartSeries === 'both' || chartSeries === 'income') && (
+                  <Area
+                    type="monotone" dataKey="income"
+                    stroke="#16a34a" fill="url(#gInc)" strokeWidth={2}
+                    name="Income" dot={false}
+                  />
+                )}
+                {(chartSeries === 'both' || chartSeries === 'expense') && (
+                  <Area
+                    type="monotone" dataKey="expense"
+                    stroke="#dc2626" fill="url(#gExp)" strokeWidth={2}
+                    name="Expense" dot={false}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}

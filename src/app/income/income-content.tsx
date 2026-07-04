@@ -17,6 +17,9 @@ import { Textarea } from '@/components/ui/misc'
 import { toast } from '@/components/ui/toaster'
 import { formatCurrency, formatDate, CATEGORY_COLORS } from '@/lib/utils'
 import { useCategories } from '@/hooks/useCategories'
+import { KPICard } from '@/components/ui/kpi-card'
+import { useAppStore } from '@/store'
+import { THEMES } from '@/lib/config'
 import type { Income, UserAccount } from '@/types'
 
 const schema = z.object({
@@ -31,12 +34,11 @@ type FormData = z.infer<typeof schema>
 
 interface Props {
   initialIncomes: Income[]
-  accounts: UserAccount[]
-  userId: string
+  accounts:       UserAccount[]
+  userId:         string
 }
 
-// Group amounts by currency — never sum across currencies
-function groupByCurrency(items: any[], accounts: UserAccount[]) {
+function groupByCurrency(items: any[], accounts: UserAccount[]): Record<string, number> {
   const map: Record<string, number> = {}
   items.forEach(i => {
     const cur = accounts.find(a => a.id === i.account_id)?.currency || 'GHS'
@@ -45,34 +47,12 @@ function groupByCurrency(items: any[], accounts: UserAccount[]) {
   return map
 }
 
-function CurrencyTotal({ byCurrency, className }: {
-  byCurrency: Record<string, number>; className?: string
-}) {
-  const entries = Object.entries(byCurrency)
-  if (entries.length === 0) return (
-    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${className}`}>
-      {formatCurrency(0)}
-    </p>
-  )
-  if (entries.length === 1) return (
-    <p className={`kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1 truncate ${className}`}>
-      {formatCurrency(entries[0][1], entries[0][0])}
-    </p>
-  )
-  return (
-    <div className="mt-1 space-y-0.5">
-      {entries.map(([cur, amt]) => (
-        <p key={cur} className={`kpi-value text-sm sm:text-lg font-bold tabular-nums truncate ${className}`}>
-          {formatCurrency(amt, cur)}
-        </p>
-      ))}
-    </div>
-  )
-}
-
 export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
   const { incomeCategories } = useCategories()
+  const { activeTheme } = useAppStore()
+  const theme = THEMES[activeTheme] ?? THEMES['green']
 
+  // ── State ────────────────────────────────────────────────────────────
   const [incomes,        setIncomes]        = useState(initialIncomes)
   const [open,           setOpen]           = useState(false)
   const [editing,        setEditing]        = useState<Income | null>(null)
@@ -80,7 +60,12 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
   const [search,         setSearch]         = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [accountFilter,  setAccountFilter]  = useState('all')
+  const [dateFrom,       setDateFrom]       = useState('')
+  const [dateTo,         setDateTo]         = useState('')
+  const [monthFilter,    setMonthFilter]    = useState('all')
+  const [yearFilter,     setYearFilter]     = useState('all')
 
+  // ── Form ─────────────────────────────────────────────────────────────
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { date: new Date().toISOString().split('T')[0] },
@@ -88,6 +73,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
 
   const getAccountCurrency = (id?: string | null) =>
     accounts.find(a => a.id === id)?.currency
+
+  const getAccountName = (id?: string | null) =>
+    accounts.find(a => a.id === id)?.name ?? '—'
 
   const openCreate = () => {
     setEditing(null)
@@ -108,6 +96,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
     setOpen(true)
   }
 
+  // ── CRUD ─────────────────────────────────────────────────────────────
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
@@ -143,29 +132,134 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
     const supabase = createClient()
     const { error } = await supabase.from('incomes').delete().eq('id', id)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
-    else {
-      setIncomes(prev => prev.filter(i => i.id !== id))
-      toast({ title: 'Income deleted' })
-    }
+    else { setIncomes(prev => prev.filter(i => i.id !== id)); toast({ title: 'Income deleted' }) }
   }
+
+  // ── Date helpers ──────────────────────────────────────────────────────
+  const MONTH_NAMES = [
+    'January','February','March','April','May','June',
+    'July','August','September','October','November','December',
+  ]
+
+  const availableYears = useMemo(() =>
+    Array.from(new Set(incomes.map(i => i.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a)),
+    [incomes],
+  )
+
+  const clearDateFilters = () => {
+    setDateFrom(''); setDateTo(''); setMonthFilter('all'); setYearFilter('all')
+  }
+  const hasActiveDateFilters = !!dateFrom || !!dateTo || monthFilter !== 'all' || yearFilter !== 'all'
+
+  // ── Derived data (strict memo order — no forward references) ──────────
 
   const filtered = useMemo(() =>
     incomes.filter(i => {
       const matchSearch  = i.title.toLowerCase().includes(search.toLowerCase())
       const matchCat     = categoryFilter === 'all' || i.category === categoryFilter
       const matchAccount = accountFilter  === 'all' || i.account_id === accountFilter
-      return matchSearch && matchCat && matchAccount
-    }), [incomes, search, categoryFilter, accountFilter])
+      const matchFrom    = !dateFrom || i.date >= dateFrom
+      const matchTo      = !dateTo   || i.date <= dateTo
+      const matchMonth   = monthFilter === 'all' || i.date.slice(5, 7) === monthFilter
+      const matchYear    = yearFilter  === 'all' || i.date.slice(0, 4) === yearFilter
+      return matchSearch && matchCat && matchAccount && matchFrom && matchTo && matchMonth && matchYear
+    }),
+    [incomes, search, categoryFilter, accountFilter, dateFrom, dateTo, monthFilter, yearFilter],
+  )
 
-  const totalByCurrency    = useMemo(() => groupByCurrency(incomes,  accounts), [incomes,  accounts])
-  const filteredByCurrency = useMemo(() => groupByCurrency(filtered, accounts), [filtered, accounts])
+  // All incomes grouped by currency
+  const totalByCurrency = useMemo(
+    () => groupByCurrency(incomes, accounts),
+    [incomes, accounts],
+  )
 
-  const getAccountName = (id?: string | null) =>
-    accounts.find(a => a.id === id)?.name ?? '—'
+  // Filtered incomes grouped by currency
+  const filteredByCurrency = useMemo(
+    () => groupByCurrency(filtered, accounts),
+    [filtered, accounts],
+  )
 
+  // Category breakdown of filtered incomes — for topSource on KPI back face
+  const incomeByCategory = useMemo(() => {
+    const map: Record<string, number> = {}
+    filtered.forEach(i => {
+      const cat = i.category || 'Other'
+      map[cat] = (map[cat] || 0) + Number(i.amount)
+    })
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+  }, [filtered])
+
+  const grandTotalFiltered = useMemo(
+    () => incomeByCategory.reduce((s, c) => s + c.value, 0),
+    [incomeByCategory],
+  )
+
+  // Average income per transaction
+  const avgIncome = useMemo(
+    () => (filtered.length > 0 ? grandTotalFiltered / filtered.length : 0),
+    [grandTotalFiltered, filtered],
+  )
+
+  // Today's incomes
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  const incomesToday = useMemo(
+    () => filtered.filter(i => i.date === todayStr),
+    [filtered, todayStr],
+  )
+
+  // Currency totals for today — MUST come after incomesToday
+  const totalToday = useMemo(
+    () => groupByCurrency(incomesToday, accounts),
+    [incomesToday, accounts],
+  )
+
+  // Highest single income in current filter
+  const highestIncome = useMemo(
+    () => filtered.reduce<Income | null>(
+      (max, i) => !max || Number(i.amount) > Number(max.amount) ? i : max,
+      null,
+    ),
+    [filtered],
+  )
+
+  // ── KPICard formatted strings (all after their dependencies) ──────────
+
+  const totalIncStr = useMemo(() => {
+    const entries = Object.entries(totalByCurrency)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : formatCurrency(0)
+  }, [totalByCurrency])
+
+  const totalIncSub = useMemo(() => {
+    const entries = Object.entries(totalByCurrency)
+    if (entries.length <= 1) return `${incomes.length} entr${incomes.length === 1 ? 'y' : 'ies'}`
+    return entries.slice(1).map(([c, a]) => formatCurrency(a, c)).join(' · ')
+  }, [totalByCurrency, incomes])
+
+  const filteredIncStr = useMemo(() => {
+    const entries = Object.entries(filteredByCurrency)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : formatCurrency(0)
+  }, [filteredByCurrency])
+
+  const filteredIncSub = useMemo(() => {
+    const entries = Object.entries(filteredByCurrency)
+    if (entries.length <= 1) return `${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}`
+    return entries.slice(1).map(([c, a]) => formatCurrency(a, c)).join(' · ')
+  }, [filteredByCurrency, filtered])
+
+  // Today card value — depends on totalToday
+  const todayCardStr = useMemo(() => {
+    const entries = Object.entries(totalToday)
+    return entries.length ? formatCurrency(entries[0][1], entries[0][0]) : '—'
+  }, [totalToday])
+
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5 animate-fade-in">
 
+      {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="font-display text-xl font-bold">Income</h1>
@@ -176,39 +270,114 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Button>
       </div>
 
-      {/* KPI cards — currency-aware, never sum across currencies */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Total Income
-          </p>
-          <CurrencyTotal byCurrency={totalByCurrency} />
-          {Object.keys(totalByCurrency).length > 1 && (
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Shown per currency</p>
-          )}
-        </Card>
-        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            This View
-          </p>
-          <CurrencyTotal byCurrency={filteredByCurrency} />
-        </Card>
-        <Card className="bg-white kpi-purple p-4 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">
-            Entries
-          </p>
-          <p className="kpi-value text-lg sm:text-2xl font-bold tabular-nums mt-1">{filtered.length}</p>
-        </Card>
+      {/* ── KPI cards (3D flip) ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+
+        <KPICard
+          label="Total income"
+          value={totalIncStr}
+          sub={totalIncSub}
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#16a34a"
+          tooltip={
+            Object.entries(totalByCurrency)
+              .map(([c, a]) => `${c}: ${formatCurrency(a, c)}`)
+              .join('\n') || 'No income yet'
+          }
+        />
+
+        <KPICard
+          label="This view"
+          value={filteredIncStr}
+          sub={filteredIncSub}
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#2563eb"
+          tooltip={
+            Object.entries(filteredByCurrency)
+              .map(([c, a]) => `${c}: ${formatCurrency(a, c)}`)
+              .join('\n') || 'No income in current filter'
+          }
+        />
+
+        <KPICard
+          label="Entries"
+          value={String(filtered.length)}
+          sub="In current view"
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#f97316"
+          tooltip={`${filtered.length} of ${incomes.length} total income entries match the current filters`}
+        />
+
+        <KPICard
+          label="Avg income"
+          value={filtered.length > 0 ? formatCurrency(avgIncome) : '—'}
+          sub="Per transaction"
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#0891b2"
+          topSource={incomeByCategory[0] ? `${incomeByCategory[0].name} (highest category)` : undefined}
+          tooltip={`Average across ${filtered.length} transaction${filtered.length !== 1 ? 's' : ''} in current view`}
+        />
+
+        <KPICard
+          label="Today"
+          value={todayCardStr}
+          sub={`${incomesToday.length} transaction${incomesToday.length !== 1 ? 's' : ''} today`}
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#059669"
+          tooltip={
+            incomesToday.length > 0
+              ? incomesToday
+                  .map(i => `${i.title}: ${formatCurrency(Number(i.amount), getAccountCurrency(i.account_id))}`)
+                  .join('\n')
+              : 'No income recorded today'
+          }
+        />
+
+        <KPICard
+          label="Highest"
+          value={
+            highestIncome
+              ? formatCurrency(Number(highestIncome.amount), getAccountCurrency(highestIncome.account_id))
+              : '—'
+          }
+          sub={highestIncome ? highestIncome.title : 'No income yet'}
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#9333ea"
+          topSource={
+            highestIncome
+              ? `${highestIncome.category} · ${formatDate(highestIncome.date)}`
+              : undefined
+          }
+          tooltip={
+            highestIncome
+              ? `${highestIncome.title}\n${highestIncome.category} · ${formatDate(highestIncome.date)}\n${getAccountName(highestIncome.account_id)}`
+              : 'No income yet'
+          }
+        />
+
       </div>
 
+      {/* ── Search & filters ── */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-[160px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search income…" value={search}
-            onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
+          <Input
+            placeholder="Search income…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 bg-white"
+          />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Category" /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44 bg-white">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             {incomeCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -216,7 +385,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </Select>
         {accounts.length > 0 && (
           <Select value={accountFilter} onValueChange={setAccountFilter}>
-            <SelectTrigger className="w-full sm:w-44 bg-white"><SelectValue placeholder="Account" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-44 bg-white">
+              <SelectValue placeholder="Account" />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Accounts</SelectItem>
               {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
@@ -225,6 +396,66 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         )}
       </div>
 
+      {/* ── Date slicer ── */}
+      <Card className="bg-white rounded-xl shadow-sm border border-border">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Filter by Date
+            </p>
+            {hasActiveDateFilters && (
+              <button
+                onClick={clearDateFilters}
+                className="text-xs font-semibold text-orange-500 hover:text-orange-600 transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">From</label>
+              <input
+                type="date" value={dateFrom}
+                onChange={e => setDateFrom(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">To</label>
+              <input
+                type="date" value={dateTo}
+                onChange={e => setDateTo(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Month</label>
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  {MONTH_NAMES.map((m, i) => (
+                    <SelectItem key={i} value={String(i + 1).padStart(2, '0')}>{m}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Year</label>
+              <Select value={yearFilter} onValueChange={setYearFilter}>
+                <SelectTrigger className="w-28 h-8 text-xs bg-white"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Years</SelectItem>
+                  {availableYears.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Income table ── */}
       <Card className="bg-white rounded-xl shadow-sm">
         <CardContent className="p-0">
           {filtered.length === 0 ? (
@@ -297,6 +528,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
         </CardContent>
       </Card>
 
+      {/* ── Add / Edit dialog ── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -328,8 +560,7 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Category</Label>
-                <Select onValueChange={v => setValue('category', v)}
-                  defaultValue={editing?.category}>
+                <Select onValueChange={v => setValue('category', v)} defaultValue={editing?.category}>
                   <SelectTrigger className={errors.category ? 'border-destructive' : ''}>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
@@ -341,10 +572,12 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
               </div>
               <div className="space-y-1.5">
                 <Label>Account</Label>
-                <Select onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
-                  defaultValue={editing?.account_id || undefined}>
+                <Select
+                  onValueChange={v => setValue('account_id', v, { shouldValidate: true })}
+                  defaultValue={editing?.account_id || undefined}
+                >
                   <SelectTrigger className={errors.account_id ? 'border-destructive' : ''}>
-                    <SelectValue placeholder="Select which account received this income" />
+                    <SelectValue placeholder="Which account received this?" />
                   </SelectTrigger>
                   <SelectContent>
                     {accounts.map(a => (
@@ -354,7 +587,9 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
                 </Select>
                 {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
                 {accounts.length === 0 && (
-                  <p className="text-xs text-amber-600">You need at least one account — add one in My Accounts first.</p>
+                  <p className="text-xs text-amber-600">
+                    You need at least one account — add one in My Accounts first.
+                  </p>
                 )}
               </div>
             </div>
@@ -367,7 +602,8 @@ export function IncomeContent({ initialIncomes, accounts, userId }: Props) {
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={loading}>
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" />
+                {loading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
                   : editing ? 'Save Changes' : 'Add Income'}
               </Button>
             </div>
