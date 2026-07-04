@@ -1762,7 +1762,52 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
                 />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <Tooltip
+  content={({ active, payload, label }) => {
+    if (!active || !payload?.length) return null
+    const inc = Number(payload.find(p => p.dataKey === 'income')?.value  ?? 0)
+    const exp = Number(payload.find(p => p.dataKey === 'expense')?.value ?? 0)
+    const net = inc - exp
+    const showInc = chartSeries === 'both' || chartSeries === 'income'
+    const showExp = chartSeries === 'both' || chartSeries === 'expense'
+    return (
+      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[180px] space-y-2">
+        <p className="font-semibold text-sm border-b border-border pb-1.5">
+          {label || (chartView === 'monthly' ? 'Month' : 'Day')}
+        </p>
+        {showInc && inc > 0 && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+              Income
+            </span>
+            <span className="font-semibold text-green-600 tabular-nums">+{fmt(inc)}</span>
+          </div>
+        )}
+        {showExp && exp > 0 && (
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+              Expenses
+            </span>
+            <span className="font-semibold text-red-500 tabular-nums">-{fmt(exp)}</span>
+          </div>
+        )}
+        {showInc && showExp && inc > 0 && exp > 0 && (
+          <div className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
+            <span className="text-muted-foreground font-medium">Net</span>
+            <span className={`font-bold tabular-nums ${net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {net >= 0 ? '+' : ''}{fmt(net)}
+            </span>
+          </div>
+        )}
+        {chartView === 'daily' && inc === 0 && exp === 0 && (
+          <p className="text-muted-foreground text-center py-1">No transactions</p>
+        )}
+      </div>
+    )
+  }}
+/>
                 {(chartSeries === 'both' || chartSeries === 'income') && (
                   <Area
                     type="monotone" dataKey="income"
