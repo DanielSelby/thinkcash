@@ -315,27 +315,34 @@ const investmentSchema = z.object({
 type InvestmentFormData = z.infer<typeof investmentSchema>
 
 const debtSchema = z.object({
-  name:          z.string().min(1, 'Name required'),
-  debt_type:     z.string().min(1, 'Type required'),
-  total_amount:  z.coerce.number().min(0),
-  remaining:     z.coerce.number().min(0),
-  interest_rate: z.coerce.number().min(0).max(100),
-  due_date:      z.string().optional(),
-  notes:         z.string().optional(),
+  name:              z.string().min(1, 'Name required'),
+  debt_type:         z.string().min(1, 'Type required'),
+  total_amount:      z.coerce.number().min(0),
+  remaining:         z.coerce.number().min(0),
+  interest_rate:     z.coerce.number().min(0).max(100),
+  due_date:          z.string().optional(),
+  account_id:        z.string().optional(),
+  paying_account_id: z.string().optional(),
+  debt_status:       z.string().default('active'),
+  notes:             z.string().optional(),
 })
 type DebtFormData = z.infer<typeof debtSchema>
 
 const loanSchema = z.object({
-  name:            z.string().min(1, 'Name required'),
-  loan_type:       z.string().min(1, 'Type required'),
-  principal:       z.coerce.number().min(0),
-  remaining:       z.coerce.number().min(0),
-  interest_rate:   z.coerce.number().min(0).max(100),
-  monthly_payment: z.coerce.number().min(0),
-  start_date:      z.string().optional(),
-  end_date:        z.string().optional(),
-  institution:     z.string().optional(),
-  notes:           z.string().optional(),
+  name:              z.string().min(1, 'Name required'),
+  loan_type:         z.string().min(1, 'Type required'),
+  principal:         z.coerce.number().min(0),
+  remaining:         z.coerce.number().min(0),
+  interest_rate:     z.coerce.number().min(0).max(100),
+  monthly_payment:   z.coerce.number().min(0),
+  start_date:        z.string().optional(),
+  end_date:          z.string().optional(),
+  institution:       z.string().optional(),
+  account_id:        z.string().optional(),
+  paying_account_id: z.string().optional(),
+  loan_status:       z.string().default('active'),
+  custom_loan_type:  z.string().optional(),
+  notes:             z.string().optional(),
 })
 type LoanFormData = z.infer<typeof loanSchema>
 
@@ -366,12 +373,15 @@ interface Props {
   incomes:            { amount: number; account_id: string | null }[]
   expenses:           { amount: number; account_id: string | null }[]
   transfers:          { from_account_id: string; to_account_id: string; amount: number; to_amount?: number | null }[]
+  loanPayments:       any[]
+  debtPayments:       any[]
   userId:             string
 }
 
 export function WealthContent({
   initialAssets, initialInvestments, initialDebts, initialLoans, initialAccounts = [],
-  incomes = [], expenses = [], transfers = [], userId,
+  incomes = [], expenses = [], transfers = [], loanPayments: initialLoanPayments = [],
+  debtPayments: initialDebtPayments = [], userId,
 }: Props) {
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -381,7 +391,12 @@ export function WealthContent({
   const [investments, setInvestments] = useState<any[]>(initialInvestments)
   const [debts,       setDebts]       = useState<any[]>(initialDebts)
   const [loans,       setLoans]       = useState<any[]>(initialLoans)
-  const [detailAsset, setDetailAsset] = useState<any | null>(null)
+  const [detailAsset,     setDetailAsset]     = useState<any | null>(null)
+  const [loanPayments,    setLoanPayments]     = useState<any[]>(initialLoanPayments)
+  const [debtPayments,    setDebtPayments]     = useState<any[]>(initialDebtPayments)
+  const [historyItem,     setHistoryItem]      = useState<{ type: 'loan' | 'debt'; id: string; name: string } | null>(null)
+  const [customLoanType,  setCustomLoanType]   = useState('')
+  const [showCustomLoan,  setShowCustomLoan]   = useState(false)
 
   // ── Live account balances — the SAME formula My Accounts uses. ──────────
   // Cash & Liquid is no longer a separately-stored number; it's a read-only
@@ -550,12 +565,18 @@ export function WealthContent({
     setDialogType('invest_add')
   }
 
+  const [payingAccountId, setPayingAccountId] = useState('')
+
   const openDebtPayment = (debt: any) => {
-    setEditingId(debt.id); setPaymentAmt(''); setPaymentNote(''); setDialogType('debt_payment')
+    setEditingId(debt.id); setPaymentAmt(''); setPaymentNote('')
+    setPayingAccountId(debt.paying_account_id || '')
+    setDialogType('debt_payment')
   }
 
   const openLoanPayment = (loan: any) => {
-    setEditingId(loan.id); setPaymentAmt(''); setPaymentNote(''); setDialogType('loan_payment')
+    setEditingId(loan.id); setPaymentAmt(''); setPaymentNote('')
+    setPayingAccountId(loan.paying_account_id || '')
+    setDialogType('loan_payment')
   }
 
   // ── CRUD ──────────────────────────────────────────────────────────
@@ -758,15 +779,47 @@ export function WealthContent({
     const debt = debts.find(d => d.id === editingId)
     if (!debt) { setLoading(false); return }
     const newRemaining = Math.max(0, Number(debt.remaining) - Number(paymentAmt))
+    const newStatus = newRemaining === 0 ? 'paid_off' : debt.debt_status ?? 'active'
     const { data: updated, error } = await supabase.from('debts')
-      .update({ remaining: newRemaining, updated_at: new Date().toISOString() })
+      .update({ remaining: newRemaining, debt_status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', editingId).select().single()
-    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-    else {
-      setDebts(p => p.map(d => d.id === editingId ? updated : d))
-      toast({ title: newRemaining === 0 ? '🎉 Debt fully paid off!' : `Payment recorded — ${fmt(newRemaining)} remaining`, variant: 'success' })
-      setDialogType(null); setPaymentAmt('')
+    if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
+
+    // Record payment history
+    await supabase.from('debt_payments').insert({
+      user_id:    userId,
+      debt_id:    editingId,
+      amount:     Number(paymentAmt),
+      account_id: payingAccountId || null,
+      note:       paymentNote || null,
+      paid_date:  new Date().toISOString().split('T')[0],
+    })
+
+    // Deduct from linked account as an expense
+    if (payingAccountId) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('expenses').insert({
+          user_id:        user.id,
+          title:          `Debt payment: ${debt.name}`,
+          amount:         Number(paymentAmt),
+          category:       'debt payment',
+          payment_method: 'bank_transfer',
+          date:           new Date().toISOString().split('T')[0],
+          account_id:     payingAccountId,
+          notes:          paymentNote || `Payment toward ${debt.name}`,
+        })
+      }
     }
+
+    setDebts(p => p.map(d => d.id === editingId ? updated : d))
+    setDebtPayments(prev => [{
+      id: Date.now().toString(), debt_id: editingId, amount: Number(paymentAmt),
+      account_id: payingAccountId || null, note: paymentNote,
+      paid_date: new Date().toISOString().split('T')[0], created_at: new Date().toISOString(),
+    }, ...prev])
+    toast({ title: newRemaining === 0 ? '🎉 Debt fully paid off!' : `Payment recorded — ${fmt(newRemaining)} remaining`, variant: 'success' })
+    setDialogType(null); setPaymentAmt(''); setPayingAccountId('')
     setLoading(false)
   }
 
@@ -779,15 +832,47 @@ export function WealthContent({
     const loan = loans.find(l => l.id === editingId)
     if (!loan) { setLoading(false); return }
     const newRemaining = Math.max(0, Number(loan.remaining) - Number(paymentAmt))
+    const newStatus = newRemaining === 0 ? 'paid_off' : loan.loan_status ?? 'active'
     const { data: updated, error } = await supabase.from('loans')
-      .update({ remaining: newRemaining, updated_at: new Date().toISOString() })
+      .update({ remaining: newRemaining, loan_status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', editingId).select().single()
-    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-    else {
-      setLoans(p => p.map(l => l.id === editingId ? updated : l))
-      toast({ title: newRemaining === 0 ? '🎉 Loan fully paid off!' : `Payment recorded — ${fmt(newRemaining)} remaining`, variant: 'success' })
-      setDialogType(null); setPaymentAmt('')
+    if (error) { toast({ title: 'Failed', description: error.message, variant: 'destructive' }); setLoading(false); return }
+
+    // Record payment history
+    await supabase.from('loan_payments').insert({
+      user_id:    userId,
+      loan_id:    editingId,
+      amount:     Number(paymentAmt),
+      account_id: payingAccountId || null,
+      note:       paymentNote || null,
+      paid_date:  new Date().toISOString().split('T')[0],
+    })
+
+    // Deduct from linked account as an expense
+    if (payingAccountId) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('expenses').insert({
+          user_id:        user.id,
+          title:          `Loan payment: ${loan.name}`,
+          amount:         Number(paymentAmt),
+          category:       'debt payment',
+          payment_method: 'bank_transfer',
+          date:           new Date().toISOString().split('T')[0],
+          account_id:     payingAccountId,
+          notes:          paymentNote || `Payment toward ${loan.name}`,
+        })
+      }
     }
+
+    setLoans(p => p.map(l => l.id === editingId ? updated : l))
+    setLoanPayments(prev => [{
+      id: Date.now().toString(), loan_id: editingId, amount: Number(paymentAmt),
+      account_id: payingAccountId || null, note: paymentNote,
+      paid_date: new Date().toISOString().split('T')[0], created_at: new Date().toISOString(),
+    }, ...prev])
+    toast({ title: newRemaining === 0 ? '🎉 Loan fully paid off!' : `Payment recorded — ${fmt(newRemaining)} remaining`, variant: 'success' })
+    setDialogType(null); setPaymentAmt(''); setPayingAccountId('')
     setLoading(false)
   }
 
@@ -795,6 +880,26 @@ export function WealthContent({
     const first = Object.values(errs)[0] as any
     toast({ title: 'Fix form errors', description: first?.message, variant: 'destructive' })
   }
+const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.name ?? '—'
+
+  const LOAN_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+    active:   { bg: '#dcfce7', text: '#15803d' },
+    paid_off: { bg: '#dbeafe', text: '#1d4ed8' },
+    overdue:  { bg: '#fee2e2', text: '#b91c1c' },
+  }
+
+  const LoanStatusBadge = ({ status }: { status?: string }) => {
+    const s = status ?? 'active'
+    const c = LOAN_STATUS_COLORS[s] ?? LOAN_STATUS_COLORS.active
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold"
+        style={{ background: c.bg, color: c.text }}>
+        {s === 'paid_off' ? 'Paid Off' : s.charAt(0).toUpperCase() + s.slice(1)}
+      </span>
+    )
+  }
+
+
 
   const Tab = ({ id, label }: { id: 'basic' | 'financial' | 'details'; label: string }) => (
     <button onClick={() => setActiveTab(id)}
@@ -1137,6 +1242,12 @@ export function WealthContent({
                       { label: 'Delete',       fn: () => handleDelete('debts', d.id, setDebts), cls: 'text-destructive' },
                     ]} />
                   </div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <LoanStatusBadge status={d.debt_status} />
+                    {d.account_id && (
+                      <span className="text-[10px] text-muted-foreground">← {getAccountName(d.account_id)}</span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <p className="text-muted-foreground">Remaining</p>
@@ -1188,10 +1299,17 @@ export function WealthContent({
                       </div>
                     </div>
                     <SimpleMenu items={[
-                      { label: 'Make Payment', fn: () => openLoanPayment(l), cls: 'text-green-600' },
-                      { label: 'Edit',         fn: () => openEdit('loan', l) },
-                      { label: 'Delete',       fn: () => handleDelete('loans', l.id, setLoans), cls: 'text-destructive' },
+                      { label: 'Make Payment',   fn: () => openLoanPayment(l), cls: 'text-green-600' },
+                      { label: 'View History',   fn: () => setHistoryItem({ type: 'loan', id: l.id, name: l.name }) },
+                      { label: 'Edit',           fn: () => openEdit('loan', l) },
+                      { label: 'Delete',         fn: () => handleDelete('loans', l.id, setLoans), cls: 'text-destructive' },
                     ]} />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <LoanStatusBadge status={l.loan_status} />
+                    {l.account_id && (
+                      <span className="text-[10px] text-muted-foreground">← {getAccountName(l.account_id)}</span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -1404,10 +1522,14 @@ export function WealthContent({
 
       {/* Debt Dialog */}
       <Dialog open={dialogType === 'debt'} onOpenChange={o => !o && setDialogType(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? 'Edit Debt' : 'Add Debt'}</DialogTitle></DialogHeader>
           <form onSubmit={debtForm.handleSubmit(onSubmitDebt, onInvalid)} className="space-y-4">
-            <div className="space-y-1.5"><Label>Name</Label><Input placeholder="e.g. Visa Credit Card" {...debtForm.register('name')} />{debtForm.formState.errors.name && <p className="text-xs text-destructive">{debtForm.formState.errors.name.message}</p>}</div>
+            <div className="space-y-1.5">
+              <Label>Name</Label>
+              <Input placeholder="e.g. Money borrowed from Kofi, Phone on credit" {...debtForm.register('name')} />
+              {debtForm.formState.errors.name && <p className="text-xs text-destructive">{debtForm.formState.errors.name.message}</p>}
+            </div>
             <div className="space-y-1.5">
               <Label>Debt Type</Label>
               <Select onValueChange={v => debtForm.setValue('debt_type', v, { shouldValidate: true })} defaultValue={debtForm.getValues('debt_type')}>
@@ -1424,6 +1546,41 @@ export function WealthContent({
               <div className="space-y-1.5"><Label>Interest Rate %</Label><Input type="number" step="0.1" placeholder="0.0" {...debtForm.register('interest_rate')} /></div>
               <div className="space-y-1.5"><Label>Due Date <span className="text-muted-foreground text-xs">(optional)</span></Label><Input type="date" {...debtForm.register('due_date')} /></div>
             </div>
+
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select onValueChange={v => debtForm.setValue('debt_status', v)} defaultValue={debtForm.getValues('debt_status') || 'active'}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paid_off">Paid Off</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Money received into account <span className="text-muted-foreground text-xs">(cash / where it arrived)</span></Label>
+              <Select onValueChange={v => debtForm.setValue('account_id', v === 'none' ? '' : v)} defaultValue={debtForm.getValues('account_id') || 'none'}>
+                <SelectTrigger><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Default paying account <span className="text-muted-foreground text-xs">(used for repayments)</span></Label>
+              <Select onValueChange={v => debtForm.setValue('paying_account_id', v === 'none' ? '' : v)} defaultValue={debtForm.getValues('paying_account_id') || 'none'}>
+                <SelectTrigger><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5"><Label>Notes <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="Any notes…" {...debtForm.register('notes')} /></div>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
@@ -1437,18 +1594,46 @@ export function WealthContent({
 
       {/* Loan Dialog */}
       <Dialog open={dialogType === 'loan'} onOpenChange={o => !o && setDialogType(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingId ? 'Edit Loan' : 'Add Loan'}</DialogTitle></DialogHeader>
           <form onSubmit={loanForm.handleSubmit(onSubmitLoan, onInvalid)} className="space-y-4">
-            <div className="space-y-1.5"><Label>Loan Name</Label><Input placeholder="e.g. GCB Mortgage" {...loanForm.register('name')} />{loanForm.formState.errors.name && <p className="text-xs text-destructive">{loanForm.formState.errors.name.message}</p>}</div>
+            <div className="space-y-1.5">
+              <Label>Loan Name</Label>
+              <Input placeholder="e.g. GCB Mortgage" {...loanForm.register('name')} />
+              {loanForm.formState.errors.name && <p className="text-xs text-destructive">{loanForm.formState.errors.name.message}</p>}
+            </div>
+
             <div className="space-y-1.5">
               <Label>Loan Type</Label>
-              <Select onValueChange={v => loanForm.setValue('loan_type', v, { shouldValidate: true })} defaultValue={loanForm.getValues('loan_type')}>
+              <Select onValueChange={v => {
+                if (v === '__custom__') { setShowCustomLoan(true) }
+                else { loanForm.setValue('loan_type', v, { shouldValidate: true }); setShowCustomLoan(false) }
+              }} defaultValue={loanForm.getValues('loan_type')}>
                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                <SelectContent>{LOAN_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  {LOAN_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  <SelectItem value="__custom__">+ Add custom type…</SelectItem>
+                </SelectContent>
               </Select>
+              {showCustomLoan && (
+                <div className="flex gap-2 mt-1">
+                  <Input placeholder="e.g. Salary Advance, Co-op Loan" value={customLoanType}
+                    onChange={e => setCustomLoanType(e.target.value)} className="flex-1" />
+                  <Button type="button" size="sm" onClick={() => {
+                    if (customLoanType.trim()) {
+                      loanForm.setValue('loan_type', 'custom', { shouldValidate: true })
+                      loanForm.setValue('custom_loan_type', customLoanType.trim())
+                      setShowCustomLoan(false)
+                    }
+                  }}>Use</Button>
+                </div>
+              )}
+              {loanForm.watch('custom_loan_type') && !showCustomLoan && (
+                <p className="text-xs text-primary">Custom type: {loanForm.watch('custom_loan_type')}</p>
+              )}
               {loanForm.formState.errors.loan_type && <p className="text-xs text-destructive">{loanForm.formState.errors.loan_type.message}</p>}
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5"><Label>Principal</Label><Input type="number" step="0.01" placeholder="0.00" {...loanForm.register('principal')} /></div>
               <div className="space-y-1.5"><Label>Remaining</Label><Input type="number" step="0.01" placeholder="0.00" {...loanForm.register('remaining')} /></div>
@@ -1457,6 +1642,41 @@ export function WealthContent({
               <div className="space-y-1.5"><Label>Interest % p.a.</Label><Input type="number" step="0.1" placeholder="0.0" {...loanForm.register('interest_rate')} /></div>
               <div className="space-y-1.5"><Label>Monthly Payment</Label><Input type="number" step="0.01" placeholder="0.00" {...loanForm.register('monthly_payment')} /></div>
             </div>
+
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select onValueChange={v => loanForm.setValue('loan_status', v)} defaultValue={loanForm.getValues('loan_status') || 'active'}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paid_off">Paid Off</SelectItem>
+                  <SelectItem value="overdue">Overdue</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Loan received into account <span className="text-muted-foreground text-xs">(where money landed)</span></Label>
+              <Select onValueChange={v => loanForm.setValue('account_id', v === 'none' ? '' : v)} defaultValue={loanForm.getValues('account_id') || 'none'}>
+                <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Default paying account <span className="text-muted-foreground text-xs">(used for repayments)</span></Label>
+              <Select onValueChange={v => loanForm.setValue('paying_account_id', v === 'none' ? '' : v)} defaultValue={loanForm.getValues('paying_account_id') || 'none'}>
+                <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-1.5"><Label>Institution <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="e.g. GCB Bank" {...loanForm.register('institution')} /></div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5"><Label>Start Date</Label><Input type="date" {...loanForm.register('start_date')} /></div>
@@ -1636,6 +1856,17 @@ export function WealthContent({
                     {newRemaining === 0 && <p className="text-green-700 font-semibold text-center">🎉 Debt will be fully cleared!</p>}
                   </div>
                 )}
+                <div className="space-y-1.5">
+                  <Label>Pay from account</Label>
+                  <Select value={payingAccountId || 'none'} onValueChange={v => setPayingAccountId(v === 'none' ? '' : v)}>
+                    <SelectTrigger><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No account</SelectItem>
+                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {payingAccountId && <p className="text-xs text-muted-foreground">This will also record an expense in that account.</p>}
+                </div>
                 <div className="space-y-1.5"><Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="e.g. Monthly installment…" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} /></div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
@@ -1686,6 +1917,17 @@ export function WealthContent({
                     {newRemaining === 0 && <p className="text-green-700 font-semibold text-center">🎉 Loan will be fully paid off!</p>}
                   </div>
                 )}
+                <div className="space-y-1.5">
+                  <Label>Pay from account</Label>
+                  <Select value={payingAccountId || 'none'} onValueChange={v => setPayingAccountId(v === 'none' ? '' : v)}>
+                    <SelectTrigger><SelectValue placeholder="Select account (optional)" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No account</SelectItem>
+                      {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {payingAccountId && <p className="text-xs text-muted-foreground">This will also record an expense in that account.</p>}
+                </div>
                 <div className="space-y-1.5"><Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label><Input placeholder="e.g. Monthly installment, extra payment…" value={paymentNote} onChange={e => setPaymentNote(e.target.value)} /></div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => setDialogType(null)}>Cancel</Button>
@@ -1789,6 +2031,60 @@ export function WealthContent({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Transaction History Dialog — Loan or Debt */}
+      <Dialog open={!!historyItem} onOpenChange={o => !o && setHistoryItem(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Payment History — {historyItem?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {historyItem && (() => {
+            const payments = historyItem.type === 'loan'
+              ? loanPayments.filter(p => p.loan_id === historyItem.id)
+              : debtPayments.filter(p => p.debt_id === historyItem.id)
+            const total = payments.reduce((s: number, p: any) => s + Number(p.amount), 0)
+            return (
+              <div className="space-y-3">
+                {payments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No payments recorded yet</p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-green-50 border border-green-100">
+                      <p className="text-sm font-semibold text-green-800">Total Paid</p>
+                      <p className="text-sm font-bold text-green-700 tabular-nums">{fmt(total)}</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {payments.map((p: any) => (
+                        <div key={p.id} className="flex items-center gap-3 py-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+                            <ArrowDownRight className="w-4 h-4 text-green-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{fmt(Number(p.amount))}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(p.paid_date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {p.account_id && ` · from ${getAccountName(p.account_id)}`}
+                              {p.note && ` · ${p.note}`}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-end pt-2 border-t border-border">
+                  <Button variant="outline" onClick={() => setHistoryItem(null)}>Close</Button>
+                </div>
+              </div>
+            )
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      
 
       {/* Asset Detail Panel */}
       {detailAsset && (

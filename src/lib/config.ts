@@ -176,5 +176,5 @@ export const APP_CONFIG = {
   currencyLocale: 'en-GH',
 
   // ── Default theme ─────────────────────────────────────────
-  defaultTheme: 'navy' as ThemeKey,
+  defaultTheme: 'eclipse' as ThemeKey,
 }

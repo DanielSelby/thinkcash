@@ -74,7 +74,7 @@ const CategoryOuterLabel = (props: any) => {
   const r = outerRadius + offset
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
-  const fs = (viewBox?.width ?? 400) < 340 ? 9 : 11
+  const fs = (viewBox?.width ?? 400) < 340 ? 7 : 9
   return (
     <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
       fontSize={fs} fontWeight={600} fill="#374151">
@@ -1013,11 +1013,11 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
-  const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
+  const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
   const [chartView,   setChartView]   = useState<'monthly' | 'daily'>('monthly')
   const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
-  const [showAccBalances,     setShowAccBalances]     = useState(true)
-  const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
+  const [showAccBalances,     setShowAccBalances]     = useState(false)
+  const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('donut')
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -1314,8 +1314,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
-      const spent = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
-      return { name: b.category, budget: Number(b.amount), spent }
+      const rows  = filteredExpenses.filter(e => e.category === b.category)
+      const spent = rows.reduce((s, e) => s + Number(e.amount), 0)
+      return { name: b.category, budget: Number(b.amount), spent, rows }
     }), [budgets, filteredExpenses])
 
   const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
@@ -1897,7 +1898,90 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      const point    = payload[0]?.payload as any
+                      const budget   = Number(point?.budget ?? 0)
+                      const spent    = Number(point?.spent  ?? 0)
+                      const rows     = (point?.rows ?? []) as any[]
+                      const remaining = budget - spent
+                      const pct       = budget > 0 ? Math.round((spent / budget) * 100) : 0
+                      const isOver    = spent > budget
+                      const MAX_ROWS  = 5
+                      return (
+                        <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[220px] max-w-[280px] space-y-2.5">
+
+                          {/* Category header */}
+                          <p className="font-semibold text-sm border-b border-border pb-1.5">{label}</p>
+
+                          {/* Budget vs Spent summary */}
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 text-muted-foreground">
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: theme.colors.primary + '60' }} />
+                                Budget
+                              </span>
+                              <span className="font-semibold tabular-nums">{fmt(budget)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 text-muted-foreground">
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: theme.colors.primary }} />
+                                Spent
+                              </span>
+                              <span className={`font-semibold tabular-nums ${isOver ? 'text-red-500' : 'text-foreground'}`}>
+                                {fmt(spent)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Progress bar */}
+                          <div className="space-y-1">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${Math.min(pct, 100)}%`,
+                                  background: isOver ? '#dc2626' : pct >= 80 ? '#f59e0b' : theme.colors.primary,
+                                }}
+                              />
+                            </div>
+                            <div className="flex justify-between">
+                              <span className={`font-semibold ${isOver ? 'text-red-500' : pct >= 80 ? 'text-amber-500' : 'text-green-600'}`}>
+                                {pct}% used
+                              </span>
+                              <span className={`tabular-nums ${isOver ? 'text-red-500' : 'text-muted-foreground'}`}>
+                                {isOver ? `${fmt(Math.abs(remaining))} over` : `${fmt(remaining)} left`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Individual expense rows */}
+                          {rows.length > 0 && (
+                            <div className="border-t border-border pt-2 space-y-0.5">
+                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                                Transactions ({rows.length})
+                              </p>
+                              {rows
+                                .sort((a: any, b: any) => Number(b.amount) - Number(a.amount))
+                                .slice(0, MAX_ROWS)
+                                .map((r: any, i: number) => (
+                                  <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                                    <span className="text-muted-foreground truncate max-w-[150px]">
+                                      {r.title || r.description || r.category || 'Expense'}
+                                    </span>
+                                    <span className="tabular-nums text-red-500 flex-shrink-0">-{fmt(Number(r.amount))}</span>
+                                  </div>
+                                ))}
+                              {rows.length > MAX_ROWS && (
+                                <p className="text-[10px] text-muted-foreground">+{rows.length - MAX_ROWS} more</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }}
+                  />
                 <Bar dataKey="budget" fill={theme.colors.primary + '40'} name="Budget" radius={[0,4,4,0]} />
                 <Bar dataKey="spent"  fill={theme.colors.primary}        name="Spent"  radius={[0,4,4,0]} />
               </BarChart>
@@ -2033,7 +2117,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       {currencyBreakdown.length > 1 && activeDonutIndex === null && (
                         <p className="text-[8px] sm:text-[10px] text-muted-foreground">Multi-currency</p>
                       )}
-                      <p className="text-base sm:text-xl font-bold tabular-nums mt-0.5"
+                      <p className="text-xs sm:text-sm font-bold tabular-nums mt-0.5"
                         style={{ color: theme.colors.primary }}>
                         {activeDonutIndex !== null
                           ? Math.round(incomeByCategory[activeDonutIndex]?.value ?? 0).toLocaleString()
