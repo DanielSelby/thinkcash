@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { canAccessPage } from '@/lib/page-access'
+import { canAccessPage, GATEABLE_PAGES } from '@/lib/page-access'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -60,8 +60,7 @@ export async function middleware(request: NextRequest) {
     const pageKey = pathname.split('/')[1]
 
     // Only check gateable pages (skip dashboard, profile, settings, etc.)
-    const isGateable = ['transactions','income','expenses','budgets',
-      'savings','recurring','reports','analytics','notifications'].includes(pageKey)
+    const isGateable = GATEABLE_PAGES.some(p => p.key === pageKey)
 
     if (isGateable) {
       const { data: profile } = await supabase

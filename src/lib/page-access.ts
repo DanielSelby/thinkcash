@@ -21,13 +21,13 @@ export const GATEABLE_PAGES = [
   { key: 'transactions',      label: 'Transactions',      href: '/transactions' },
   { key: 'income',            label: 'Income',            href: '/income' },
   { key: 'expenses',          label: 'Expenses',          href: '/expenses' },
-  { key: 'accounts',          label: 'My Accounts',       href: '/accounts' },
+  { key: 'user-accounts',     label: 'My Accounts',       href: '/user-accounts' },
   { key: 'chart-of-accounts', label: 'Chart of Accounts', href: '/chart-of-accounts' }, // ⚠ guessed route — verify
-  { key: 'net-worth',         label: 'Net Worth',         href: '/net-worth' },         // ⚠ guessed route — verify
+  { key: 'wealth',            label: 'Net Worth',         href: '/wealth' },        // ⚠ guessed route — verify
   { key: 'budgets',           label: 'Budgets',           href: '/budgets' },
   { key: 'savings',           label: 'Savings Goals',     href: '/savings' },
   { key: 'recurring',         label: 'Recurring',         href: '/recurring' },
-  { key: 'liabilities',       label: 'Custody Account',   href: '/liabilities' },       // ⚠ same feature as "Custody Account"? confirm route
+  { key: 'custody',           label: 'Custody Account',   href: '/custody' },      // ⚠ same feature as "Custody Account"? confirm route
   { key: 'categories',        label: 'Categories',        href: '/categories' },
   { key: 'reports',           label: 'Reports',           href: '/reports' },
   { key: 'analytics',         label: 'Analytics',         href: '/analytics' },
