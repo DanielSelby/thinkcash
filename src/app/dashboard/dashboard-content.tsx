@@ -1259,23 +1259,26 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // to every 7th day once there are more than 60 days, so the X axis
   // doesn't turn into unreadable soup. ────────────────────────────────────
   const chartData = useMemo(() => {
-    const map: Record<string, { date: string; income: number; expense: number }> = {}
-    const sliceLen = chartView === 'monthly' ? 7 : 10
+  const map: Record<string, { date: string; income: number; expense: number; incomeRows: any[]; expenseRows: any[] }> = {}
+  const sliceLen = chartView === 'monthly' ? 7 : 10
 
-    filteredIncomes
-      .filter(r => getTransactionCurrency(r) === currency)
-      .forEach(r => {
-        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
-        map[d].income += Number(r.amount)
-      })
-    filteredExpenses
-      .filter(r => getTransactionCurrency(r) === currency)
-      .forEach(r => {
-        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
-        map[d].expense += Number(r.amount)
-      })
+  filteredIncomes
+    .filter(r => getTransactionCurrency(r) === currency)
+    .forEach(r => {
+      const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
+      if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
+      map[d].income += Number(r.amount)
+      map[d].incomeRows.push(r)
+    })
+
+  filteredExpenses
+    .filter(r => getTransactionCurrency(r) === currency)
+    .forEach(r => {
+      const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
+      if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
+      map[d].expense += Number(r.amount)
+      map[d].expenseRows.push(r)
+    })
 
     const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
 
@@ -1297,7 +1300,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     const end = new Date(sorted[sorted.length - 1].date)
     while (cur <= end) {
       const key = cur.toISOString().slice(0, 10)
-      filled.push(map[key] ?? { date: key, income: 0, expense: 0 })
+      filled.push(map[key] ?? { date: key, income: 0, expense: 0, incomeRows: [], expenseRows: [] })
       cur.setDate(cur.getDate() + 1)
     }
 
@@ -1762,37 +1765,82 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
                 />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                <Tooltip
+              <Tooltip
   content={({ active, payload, label }) => {
     if (!active || !payload?.length) return null
-    const inc = Number(payload.find(p => p.dataKey === 'income')?.value  ?? 0)
-    const exp = Number(payload.find(p => p.dataKey === 'expense')?.value ?? 0)
-    const net = inc - exp
-    const showInc = chartSeries === 'both' || chartSeries === 'income'
-    const showExp = chartSeries === 'both' || chartSeries === 'expense'
+    const point     = payload[0]?.payload as any
+    const inc       = Number(point?.income  ?? 0)
+    const exp       = Number(point?.expense ?? 0)
+    const net       = inc - exp
+    const incRows   = (point?.incomeRows  ?? []) as any[]
+    const expRows   = (point?.expenseRows ?? []) as any[]
+    const showInc   = chartSeries === 'both' || chartSeries === 'income'
+    const showExp   = chartSeries === 'both' || chartSeries === 'expense'
+    const MAX_ROWS  = 5
+
     return (
-      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[180px] space-y-2">
+      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[210px] max-w-[280px] space-y-2.5">
+
+        {/* Date header */}
         <p className="font-semibold text-sm border-b border-border pb-1.5">
           {label || (chartView === 'monthly' ? 'Month' : 'Day')}
         </p>
+
+        {/* Income bucket */}
         {showInc && inc > 0 && (
-          <div className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
-              Income
-            </span>
-            <span className="font-semibold text-green-600 tabular-nums">+{fmt(inc)}</span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-semibold text-green-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+                Income
+              </span>
+              <span className="font-bold text-green-600 tabular-nums">+{fmt(inc)}</span>
+            </div>
+            <div className="pl-4 space-y-0.5">
+              {incRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                  <span className="text-muted-foreground truncate max-w-[130px]">
+                    {r.title || r.description || r.category || 'Income'}
+                    {r.category && r.title ? ` · ${r.category}` : ''}
+                  </span>
+                  <span className="tabular-nums text-green-600 flex-shrink-0">+{fmt(Number(r.amount))}</span>
+                </div>
+              ))}
+              {incRows.length > MAX_ROWS && (
+                <p className="text-[10px] text-muted-foreground">+{incRows.length - MAX_ROWS} more</p>
+              )}
+            </div>
           </div>
         )}
+
+        {/* Expense bucket */}
         {showExp && exp > 0 && (
-          <div className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
-              Expenses
-            </span>
-            <span className="font-semibold text-red-500 tabular-nums">-{fmt(exp)}</span>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 font-semibold text-red-700">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+                Expenses
+              </span>
+              <span className="font-bold text-red-500 tabular-nums">-{fmt(exp)}</span>
+            </div>
+            <div className="pl-4 space-y-0.5">
+              {expRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
+                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                  <span className="text-muted-foreground truncate max-w-[130px]">
+                    {r.title || r.description || r.category || 'Expense'}
+                    {r.category && r.title ? ` · ${r.category}` : ''}
+                  </span>
+                  <span className="tabular-nums text-red-500 flex-shrink-0">-{fmt(Number(r.amount))}</span>
+                </div>
+              ))}
+              {expRows.length > MAX_ROWS && (
+                <p className="text-[10px] text-muted-foreground">+{expRows.length - MAX_ROWS} more</p>
+              )}
+            </div>
           </div>
         )}
+
+        {/* Net row */}
         {showInc && showExp && inc > 0 && exp > 0 && (
           <div className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
             <span className="text-muted-foreground font-medium">Net</span>
@@ -1801,6 +1849,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             </span>
           </div>
         )}
+
+        {/* Empty day */}
         {chartView === 'daily' && inc === 0 && exp === 0 && (
           <p className="text-muted-foreground text-center py-1">No transactions</p>
         )}
