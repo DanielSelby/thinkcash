@@ -45,7 +45,14 @@ export type PageKey = typeof GATEABLE_PAGES[number]['key']
  */
 import { DEFAULT_ALLOWED_PAGES } from '@/lib/default-access'
 
-export function canAccessPage(allowedPages: string[] | null | undefined, pageKey: string): boolean {
+export function canAccessPage(
+  allowedPages: string[] | null | undefined,
+  pageKey: string
+): boolean {
+  if (allowedPages === null) {
+    return true
+  }
+
   const effective = allowedPages ?? DEFAULT_ALLOWED_PAGES
   return effective.includes(pageKey)
 }

@@ -1014,6 +1014,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
+  const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
   const [showAccBalances,     setShowAccBalances]     = useState(true)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
 
@@ -1250,29 +1251,62 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     [currencyBreakdown, exchangeRateMap]
   )
 
+  // ── Area-chart series — monthly (default) or daily, toggled by chartView.
+  // Monthly buckets by YYYY-MM as before. Daily buckets by YYYY-MM-DD and
+  // fills any gap days with zero income/expense so the line stays
+  // continuous instead of jumping across missing dates. Labels are thinned
+  // to every 7th day once there are more than 60 days, so the X axis
+  // doesn't turn into unreadable soup. ────────────────────────────────────
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; income: number; expense: number }> = {}
+    const sliceLen = chartView === 'monthly' ? 7 : 10
+
     filteredIncomes
       .filter(r => getTransactionCurrency(r) === currency)
       .forEach(r => {
-        const d = (r.date ?? '').slice(0, 7); if (!d) return
+        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
         if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
         map[d].income += Number(r.amount)
       })
     filteredExpenses
       .filter(r => getTransactionCurrency(r) === currency)
       .forEach(r => {
-        const d = (r.date ?? '').slice(0, 7); if (!d) return
+        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
         if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
         map[d].expense += Number(r.amount)
       })
-    return Object.values(map)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map(r => ({
+
+    const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
+
+    if (chartView === 'monthly') {
+      return sorted.map(r => ({
         ...r,
         label: new Date(r.date + '-01').toLocaleDateString('en-GH', { month: 'short', year: '2-digit' }),
       }))
-  }, [filteredIncomes, filteredExpenses, accounts, currency])
+    }
+
+    // Daily — fill zero-value gaps so line is continuous
+    if (sorted.length < 2) return sorted.map(r => ({
+      ...r,
+      label: new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' }),
+    }))
+
+    const filled: typeof sorted = []
+    const cur = new Date(sorted[0].date)
+    const end = new Date(sorted[sorted.length - 1].date)
+    while (cur <= end) {
+      const key = cur.toISOString().slice(0, 10)
+      filled.push(map[key] ?? { date: key, income: 0, expense: 0 })
+      cur.setDate(cur.getDate() + 1)
+    }
+
+    return filled.map((r, i) => ({
+      ...r,
+      label: (filled.length <= 60 || i % 7 === 0)
+        ? new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' })
+        : '',
+    }))
+  }, [filteredIncomes, filteredExpenses, accounts, currency, chartView])
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
@@ -1647,9 +1681,31 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {/* Area Chart */}
       <Card className="rounded-xl shadow-sm bg-white">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Income vs Expenses by Month</CardTitle>
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <CardTitle className="text-sm font-semibold">
+              Income vs Expenses by {chartView === 'monthly' ? 'Month' : 'Day'}
+            </CardTitle>
+            <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+              <button
+                onClick={() => setChartView('monthly')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setChartView('daily')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Daily
+              </button>
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground">
-            {chartData.length === 0 ? (hasMixedIncome ? `No ${currency} transactions yet` : 'No transactions yet') : `${chartData.length} month(s) · ${currency} only`}
+            {chartData.length === 0 ? (hasMixedIncome ? `No ${currency} transactions yet` : 'No transactions yet') : `${chartData.length} ${chartView === 'monthly' ? 'month(s)' : 'day(s)'} · ${currency} only`}
           </p>
         </CardHeader>
         <CardContent>
@@ -1671,7 +1727,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                     <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
+                />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                 <Tooltip formatter={(v: any) => fmt(Number(v))} />
                 <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  dot={false} />
