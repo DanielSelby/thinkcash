@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import {
   TrendingUp, TrendingDown, Wallet, Target,
-  ArrowUpRight, ArrowDownRight, RefreshCw, SlidersHorizontal, X,
+  RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
 } from 'lucide-react'
@@ -74,7 +74,7 @@ const CategoryOuterLabel = (props: any) => {
   const r = outerRadius + offset
   const x = cx + r * Math.cos(-midAngle * RAD)
   const y = cy + r * Math.sin(-midAngle * RAD)
-  const fs = (viewBox?.width ?? 400) < 340 ? 7 : 9
+  const fs = (viewBox?.width ?? 400) < 340 ? 9 : 11
   return (
     <text x={x} y={y} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central"
       fontSize={fs} fontWeight={600} fill="#374151">
@@ -1013,11 +1013,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
-  const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
-  const [chartView,   setChartView]   = useState<'monthly' | 'daily'>('monthly')
-  const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
-  const [showAccBalances,     setShowAccBalances]     = useState(false)
-  const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('donut')
+  const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
+  const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
+  const [showAccBalances,     setShowAccBalances]     = useState(true)
+  const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
+  // Budget Usage / Multi-Currency Breakdown / Savings Goals are heavy, detailed
+  // sections — collapsed by default so the main dashboard stays scannable;
+  // the Transactions page is already the place to dig into individual entries.
+  const [showMoreCharts, setShowMoreCharts] = useState(false)
 
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
@@ -1259,26 +1262,23 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // to every 7th day once there are more than 60 days, so the X axis
   // doesn't turn into unreadable soup. ────────────────────────────────────
   const chartData = useMemo(() => {
-  const map: Record<string, { date: string; income: number; expense: number; incomeRows: any[]; expenseRows: any[] }> = {}
-  const sliceLen = chartView === 'monthly' ? 7 : 10
+    const map: Record<string, { date: string; income: number; expense: number }> = {}
+    const sliceLen = chartView === 'monthly' ? 7 : 10
 
-  filteredIncomes
-    .filter(r => getTransactionCurrency(r) === currency)
-    .forEach(r => {
-      const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-      if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
-      map[d].income += Number(r.amount)
-      map[d].incomeRows.push(r)
-    })
-
-  filteredExpenses
-    .filter(r => getTransactionCurrency(r) === currency)
-    .forEach(r => {
-      const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-      if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
-      map[d].expense += Number(r.amount)
-      map[d].expenseRows.push(r)
-    })
+    filteredIncomes
+      .filter(r => getTransactionCurrency(r) === currency)
+      .forEach(r => {
+        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+        map[d].income += Number(r.amount)
+      })
+    filteredExpenses
+      .filter(r => getTransactionCurrency(r) === currency)
+      .forEach(r => {
+        const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+        map[d].expense += Number(r.amount)
+      })
 
     const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
 
@@ -1300,7 +1300,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     const end = new Date(sorted[sorted.length - 1].date)
     while (cur <= end) {
       const key = cur.toISOString().slice(0, 10)
-      filled.push(map[key] ?? { date: key, income: 0, expense: 0, incomeRows: [], expenseRows: [] })
+      filled.push(map[key] ?? { date: key, income: 0, expense: 0 })
       cur.setDate(cur.getDate() + 1)
     }
 
@@ -1314,9 +1314,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
-      const rows  = filteredExpenses.filter(e => e.category === b.category)
-      const spent = rows.reduce((s, e) => s + Number(e.amount), 0)
-      return { name: b.category, budget: Number(b.amount), spent, rows }
+      const spent = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
+      return { name: b.category, budget: Number(b.amount), spent }
     }), [budgets, filteredExpenses])
 
   const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
@@ -1688,52 +1687,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold">
-              {chartSeries === 'both'
-                ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
-                : chartSeries === 'income'
-                ? `Income Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`
-                : `Expense Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`}
+              Income vs Expenses by {chartView === 'monthly' ? 'Month' : 'Day'}
             </CardTitle>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              {/* Series toggle */}
-              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
-                {([
-                  { id: 'both',    label: 'Both'    },
-                  { id: 'income',  label: 'Income'  },
-                  { id: 'expense', label: 'Expense' },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setChartSeries(opt.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                      chartSeries === opt.id
-                        ? 'bg-white shadow-sm text-foreground'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              {/* Granularity toggle */}
-              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
-                <button
-                  onClick={() => setChartView('monthly')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                    chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Monthly
-                </button>
-                <button
-                  onClick={() => setChartView('daily')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                    chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  Daily
-                </button>
-              </div>
+            <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+              <button
+                onClick={() => setChartView('monthly')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setChartView('daily')}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                  chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Daily
+              </button>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -1766,119 +1738,117 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
                 />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-              <Tooltip
-  content={({ active, payload, label }) => {
-    if (!active || !payload?.length) return null
-    const point     = payload[0]?.payload as any
-    const inc       = Number(point?.income  ?? 0)
-    const exp       = Number(point?.expense ?? 0)
-    const net       = inc - exp
-    const incRows   = (point?.incomeRows  ?? []) as any[]
-    const expRows   = (point?.expenseRows ?? []) as any[]
-    const showInc   = chartSeries === 'both' || chartSeries === 'income'
-    const showExp   = chartSeries === 'both' || chartSeries === 'expense'
-    const MAX_ROWS  = 5
-
-    return (
-      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[210px] max-w-[280px] space-y-2.5">
-
-        {/* Date header */}
-        <p className="font-semibold text-sm border-b border-border pb-1.5">
-          {label || (chartView === 'monthly' ? 'Month' : 'Day')}
-        </p>
-
-        {/* Income bucket */}
-        {showInc && inc > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 font-semibold text-green-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
-                Income
-              </span>
-              <span className="font-bold text-green-600 tabular-nums">+{fmt(inc)}</span>
-            </div>
-            <div className="pl-4 space-y-0.5">
-              {incRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
-                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
-                  <span className="text-muted-foreground truncate max-w-[130px]">
-                    {r.title || r.description || r.category || 'Income'}
-                    {r.category && r.title ? ` · ${r.category}` : ''}
-                  </span>
-                  <span className="tabular-nums text-green-600 flex-shrink-0">+{fmt(Number(r.amount))}</span>
-                </div>
-              ))}
-              {incRows.length > MAX_ROWS && (
-                <p className="text-[10px] text-muted-foreground">+{incRows.length - MAX_ROWS} more</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Expense bucket */}
-        {showExp && exp > 0 && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 font-semibold text-red-700">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
-                Expenses
-              </span>
-              <span className="font-bold text-red-500 tabular-nums">-{fmt(exp)}</span>
-            </div>
-            <div className="pl-4 space-y-0.5">
-              {expRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
-                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
-                  <span className="text-muted-foreground truncate max-w-[130px]">
-                    {r.title || r.description || r.category || 'Expense'}
-                    {r.category && r.title ? ` · ${r.category}` : ''}
-                  </span>
-                  <span className="tabular-nums text-red-500 flex-shrink-0">-{fmt(Number(r.amount))}</span>
-                </div>
-              ))}
-              {expRows.length > MAX_ROWS && (
-                <p className="text-[10px] text-muted-foreground">+{expRows.length - MAX_ROWS} more</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Net row */}
-        {showInc && showExp && inc > 0 && exp > 0 && (
-          <div className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
-            <span className="text-muted-foreground font-medium">Net</span>
-            <span className={`font-bold tabular-nums ${net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-              {net >= 0 ? '+' : ''}{fmt(net)}
-            </span>
-          </div>
-        )}
-
-        {/* Empty day */}
-        {chartView === 'daily' && inc === 0 && exp === 0 && (
-          <p className="text-muted-foreground text-center py-1">No transactions</p>
-        )}
-      </div>
-    )
-  }}
-/>
-                {(chartSeries === 'both' || chartSeries === 'income') && (
-                  <Area
-                    type="monotone" dataKey="income"
-                    stroke="#16a34a" fill="url(#gInc)" strokeWidth={2}
-                    name="Income" dot={false}
-                  />
-                )}
-                {(chartSeries === 'both' || chartSeries === 'expense') && (
-                  <Area
-                    type="monotone" dataKey="expense"
-                    stroke="#dc2626" fill="url(#gExp)" strokeWidth={2}
-                    name="Expense" dot={false}
-                  />
-                )}
+                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  dot={false} />
+                <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
 
+      {/* Income Trend & Expense Trend — same period/granularity as the combined
+          chart above (driven by the shared chartView toggle), but each metric
+          isolated on its own axis so a move in one doesn't get visually
+          flattened by the scale of the other. ─────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="rounded-xl shadow-sm bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-green-600" /> Income Trend
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {chartData.length === 0
+                ? 'No income yet'
+                : `${chartView === 'monthly' ? 'Monthly' : 'Daily'} · ${currency} only`}
+            </p>
+          </CardHeader>
+          <CardContent>
+            {chartData.length === 0 ? (
+              <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <TrendingUp className="w-7 h-7 opacity-20" />
+                <p className="text-sm">Add income to see its trend</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gIncSolo" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <Area type="monotone" dataKey="income" stroke="#16a34a" fill="url(#gIncSolo)" strokeWidth={2} name="Income" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl shadow-sm bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-red-500" /> Expense Trend
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {chartData.length === 0
+                ? 'No expenses yet'
+                : `${chartView === 'monthly' ? 'Monthly' : 'Daily'} · ${currency} only`}
+            </p>
+          </CardHeader>
+          <CardContent>
+            {chartData.length === 0 ? (
+              <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                <TrendingDown className="w-7 h-7 opacity-20" />
+                <p className="text-sm">Add expenses to see their trend</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={160}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gExpSolo" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10 }}
+                    tickLine={false}
+                    interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                  <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExpSolo)" strokeWidth={2} name="Expense" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Toggle for the heavier detail sections below — collapsed by default */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-muted-foreground">Budget, Income Breakdown & Savings Goals</p>
+        <button
+          onClick={() => setShowMoreCharts(v => !v)}
+          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+        >
+          {showMoreCharts ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          {showMoreCharts ? 'Hide Details' : 'Show Details'}
+        </button>
+      </div>
+
+      {showMoreCharts && (
+      <>
       {/* Budget Usage */}
       <Card className="rounded-xl shadow-sm bg-white">
         <CardHeader className="pb-2">
@@ -1898,90 +1868,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
                 <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
-                <Tooltip
-                    content={({ active, payload, label }) => {
-                      if (!active || !payload?.length) return null
-                      const point    = payload[0]?.payload as any
-                      const budget   = Number(point?.budget ?? 0)
-                      const spent    = Number(point?.spent  ?? 0)
-                      const rows     = (point?.rows ?? []) as any[]
-                      const remaining = budget - spent
-                      const pct       = budget > 0 ? Math.round((spent / budget) * 100) : 0
-                      const isOver    = spent > budget
-                      const MAX_ROWS  = 5
-                      return (
-                        <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[220px] max-w-[280px] space-y-2.5">
-
-                          {/* Category header */}
-                          <p className="font-semibold text-sm border-b border-border pb-1.5">{label}</p>
-
-                          {/* Budget vs Spent summary */}
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 text-muted-foreground">
-                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: theme.colors.primary + '60' }} />
-                                Budget
-                              </span>
-                              <span className="font-semibold tabular-nums">{fmt(budget)}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 text-muted-foreground">
-                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: theme.colors.primary }} />
-                                Spent
-                              </span>
-                              <span className={`font-semibold tabular-nums ${isOver ? 'text-red-500' : 'text-foreground'}`}>
-                                {fmt(spent)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Progress bar */}
-                          <div className="space-y-1">
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${Math.min(pct, 100)}%`,
-                                  background: isOver ? '#dc2626' : pct >= 80 ? '#f59e0b' : theme.colors.primary,
-                                }}
-                              />
-                            </div>
-                            <div className="flex justify-between">
-                              <span className={`font-semibold ${isOver ? 'text-red-500' : pct >= 80 ? 'text-amber-500' : 'text-green-600'}`}>
-                                {pct}% used
-                              </span>
-                              <span className={`tabular-nums ${isOver ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                {isOver ? `${fmt(Math.abs(remaining))} over` : `${fmt(remaining)} left`}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Individual expense rows */}
-                          {rows.length > 0 && (
-                            <div className="border-t border-border pt-2 space-y-0.5">
-                              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                                Transactions ({rows.length})
-                              </p>
-                              {rows
-                                .sort((a: any, b: any) => Number(b.amount) - Number(a.amount))
-                                .slice(0, MAX_ROWS)
-                                .map((r: any, i: number) => (
-                                  <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
-                                    <span className="text-muted-foreground truncate max-w-[150px]">
-                                      {r.title || r.description || r.category || 'Expense'}
-                                    </span>
-                                    <span className="tabular-nums text-red-500 flex-shrink-0">-{fmt(Number(r.amount))}</span>
-                                  </div>
-                                ))}
-                              {rows.length > MAX_ROWS && (
-                                <p className="text-[10px] text-muted-foreground">+{rows.length - MAX_ROWS} more</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    }}
-                  />
+                <Tooltip formatter={(v: any) => fmt(Number(v))} />
                 <Bar dataKey="budget" fill={theme.colors.primary + '40'} name="Budget" radius={[0,4,4,0]} />
                 <Bar dataKey="spent"  fill={theme.colors.primary}        name="Spent"  radius={[0,4,4,0]} />
               </BarChart>
@@ -2117,7 +2004,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       {currencyBreakdown.length > 1 && activeDonutIndex === null && (
                         <p className="text-[8px] sm:text-[10px] text-muted-foreground">Multi-currency</p>
                       )}
-                      <p className="text-xs sm:text-sm font-bold tabular-nums mt-0.5"
+                      <p className="text-base sm:text-xl font-bold tabular-nums mt-0.5"
                         style={{ color: theme.colors.primary }}>
                         {activeDonutIndex !== null
                           ? Math.round(incomeByCategory[activeDonutIndex]?.value ?? 0).toLocaleString()
@@ -2250,58 +2137,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </CardContent>
       </Card>
 
-      {/* Recent Transactions */}
-      <Card className="rounded-xl shadow-sm bg-white">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Recent Transactions</CardTitle>
-            <span className="text-xs text-muted-foreground">
-              {filteredIncomes.length + filteredExpenses.length} total
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredIncomes.length === 0 && filteredExpenses.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground py-8">No transactions yet</p>
-          ) : (
-            [...filteredIncomes.map(r  => ({ ...r, _type: 'income'  })),
-             ...filteredExpenses.map(r => ({ ...r, _type: 'expense' }))]
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .slice(0, 10)
-              .map((r, i) => {
-                const txCurrency = getTransactionCurrency(r)
-                return (
-                  <div key={i} className="flex items-center justify-between py-2.5 border-b border-border last:border-0 gap-2">
-                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                      <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        r._type === 'income' ? 'bg-green-50' : 'bg-red-50'
-                      }`}>
-                        {r._type === 'income'
-                          ? <ArrowUpRight   className="w-3.5 h-3.5 text-green-600" />
-                          : <ArrowDownRight className="w-3.5 h-3.5 text-red-500"  />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-medium truncate">
-                          {r.description || r.title || r.category || '—'}
-                        </p>
-                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
-                          {new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          {r.category ? ` · ${r.category}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`text-xs sm:text-sm font-semibold tabular-nums flex-shrink-0 ${
-                      r._type === 'income' ? 'text-green-600' : 'text-red-500'
-                    }`}>
-                      {r._type === 'income' ? '+' : '−'}{formatCurrency(Number(r.amount), txCurrency)}
-                    </span>
-                  </div>
-                )
-              })
-          )}
-        </CardContent>
-      </Card>
-
       {/* Savings Goals */}
       {goals.length > 0 && (
         <Card className="rounded-xl shadow-sm bg-white">
@@ -2329,6 +2164,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             })}
           </CardContent>
         </Card>
+      )}
+      </>
       )}
     </div>
   )
