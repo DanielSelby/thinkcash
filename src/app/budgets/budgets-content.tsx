@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Plus, Edit2, Trash2, Wallet, AlertTriangle,
-  CheckCircle, XCircle, Loader2, ChevronLeft, ChevronRight,
+  CheckCircle, XCircle, Loader2, ChevronLeft, ChevronRight, Copy,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,12 @@ interface Props {
   userId: string
 }
 
+// Given a month/year, returns the next calendar month — used to default the
+// Rollover dialog's target to "next month" rather than making the person
+// pick it from scratch every time.
+const nextMonthOf = (month: number, year: number) =>
+  month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year }
+
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme, currency } = useAppStore()
   const { expenseCategories } = useCategories()
@@ -62,6 +68,18 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [selCategory, setSelCategory] = useState('')
   const [selMonth,    setSelMonth]    = useState(String(now.getMonth() + 1))
   const [selYear,     setSelYear]     = useState(String(now.getFullYear()))
+
+  // ── Budget Rollover ────────────────────────────────────────────────
+  // Copies selected budgets from the month currently being viewed into
+  // another month. Only budget_name/category/monthly_limit are copied —
+  // spent/remaining/percentage are always derived live from that month's
+  // real expenses, so a rolled-over budget always starts at 0% used,
+  // never carrying over "completed" spending from the source month.
+  const [rolloverOpen,     setRolloverOpen]     = useState(false)
+  const [rolloverLoading,  setRolloverLoading]  = useState(false)
+  const [rolloverSelected, setRolloverSelected] = useState<Set<string>>(new Set())
+  const [rolloverMonth,    setRolloverMonth]    = useState(String(now.getMonth() + 1))
+  const [rolloverYear,     setRolloverYear]     = useState(String(now.getFullYear()))
 
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -174,6 +192,97 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     }
   }
 
+  // ── Rollover helpers ─────────────────────────────────────────────────
+  const openRollover = () => {
+    setRolloverSelected(new Set(monthBudgets.map(b => b.id)))
+    const next = nextMonthOf(viewMonth, viewYear)
+    setRolloverMonth(String(next.month))
+    setRolloverYear(String(next.year))
+    setRolloverOpen(true)
+  }
+
+  const toggleRolloverBudget = (id: string) => {
+    setRolloverSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllRollover = () => setRolloverSelected(new Set(monthBudgets.map(b => b.id)))
+  const clearAllRollover  = () => setRolloverSelected(new Set())
+
+  const rolloverIsSameMonth = Number(rolloverMonth) === viewMonth && Number(rolloverYear) === viewYear
+
+  const handleRollover = async () => {
+    if (rolloverSelected.size === 0 || rolloverIsSameMonth) return
+    setRolloverLoading(true)
+    const supabase = createClient()
+    const targetMonth = Number(rolloverMonth)
+    const targetYear  = Number(rolloverYear)
+
+    const sourceBudgets = monthBudgets.filter(b => rolloverSelected.has(b.id))
+
+    // Never create a duplicate budget for a category that's already
+    // budgeted in the target month — skip those instead of overwriting
+    // or duplicating whatever spending/limit already exists there.
+    const existingCategoriesInTarget = new Set(
+      budgets
+        .filter(b =>
+          (b.budget_month ?? now.getMonth() + 1) === targetMonth &&
+          (b.budget_year  ?? now.getFullYear())  === targetYear
+        )
+        .map(b => b.category)
+    )
+
+    const toCreate = sourceBudgets.filter(b => !existingCategoriesInTarget.has(b.category))
+    const skipped  = sourceBudgets.length - toCreate.length
+
+    if (toCreate.length === 0) {
+      toast({
+        title: 'Nothing to roll over',
+        description: `All selected categories already have a budget in ${MONTH_NAMES[targetMonth - 1]} ${targetYear}.`,
+        variant: 'destructive',
+      })
+      setRolloverLoading(false)
+      return
+    }
+
+    // Only the definition carries over — no spent/remaining/percentage
+    // fields exist on the row at all, so there is nothing "completed"
+    // from the source month for the new budget to inherit.
+    const payload = toCreate.map(b => ({
+      budget_name:   b.budget_name,
+      category:      b.category,
+      monthly_limit: b.monthly_limit,
+      budget_month:  targetMonth,
+      budget_year:   targetYear,
+      user_id:       userId,
+    }))
+
+    const { data: created, error } = await supabase
+      .from('budgets')
+      .insert(payload)
+      .select()
+
+    if (error) {
+      toast({ title: 'Rollover failed', description: error.message, variant: 'destructive' })
+    } else {
+      const createdRows = created || []
+      setBudgets(prev => [...createdRows, ...prev])
+      toast({
+        title: `Rolled over ${createdRows.length} budget${createdRows.length === 1 ? '' : 's'} to ${MONTH_NAMES[targetMonth - 1]} ${targetYear}`,
+        description: skipped > 0
+          ? `${skipped} skipped — already budgeted for that month`
+          : undefined,
+        variant: 'success',
+      })
+      setRolloverOpen(false)
+    }
+    setRolloverLoading(false)
+  }
+
   const statusIcon = (pct: number) => {
     const s = getBudgetStatus(pct)
     if (s === 'exceeded') return <XCircle       className="w-4 h-4 text-destructive" />
@@ -202,9 +311,14 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </h1>
           <p className="text-muted-foreground text-sm">Monthly spending limits by category</p>
         </div>
-        <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
-          <Plus className="w-4 h-4 mr-1" /> Create Budget
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" onClick={openRollover} disabled={monthBudgets.length === 0}>
+            <Copy className="w-4 h-4 mr-1" /> Rollover Budgets
+          </Button>
+          <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
+            <Plus className="w-4 h-4 mr-1" /> Create Budget
+          </Button>
+        </div>
       </div>
 
       {/* Month Navigator */}
@@ -447,6 +561,116 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Rollover Dialog ── */}
+      <Dialog open={rolloverOpen} onOpenChange={setRolloverOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="w-5 h-5" style={{ color: theme.colors.primary }} />
+              Rollover Budgets
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Copy selected budgets from {MONTH_NAMES[viewMonth - 1]} {viewYear} into another month.
+              Only the name, category, and limit carry over — spending always starts fresh for the new month.
+            </p>
+
+            {monthBudgets.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No budgets in {MONTH_NAMES[viewMonth - 1]} {viewYear} to roll over.
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {rolloverSelected.size} of {monthBudgets.length} selected
+                  </p>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={selectAllRollover} className="text-xs font-semibold text-primary hover:underline">Select all</button>
+                    <button type="button" onClick={clearAllRollover} className="text-xs font-semibold text-muted-foreground hover:underline">Clear all</button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {monthBudgets.map(b => {
+                    const checked = rolloverSelected.has(b.id)
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => toggleRolloverBudget(b.id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors ${
+                          checked ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                          checked ? 'bg-primary border-primary' : 'border-border'
+                        }`}>
+                          {checked && <div className="w-2 h-2 bg-white rounded-sm" />}
+                        </div>
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ background: CATEGORY_COLORS[b.category] || '#94a3b8' }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{b.budget_name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{b.category}</p>
+                        </div>
+                        <span className="text-sm font-semibold tabular-nums flex-shrink-0">{fmt(b.monthly_limit)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Target Month</Label>
+                    <Select value={rolloverMonth} onValueChange={setRolloverMonth}>
+                      <SelectTrigger><SelectValue placeholder="Month" /></SelectTrigger>
+                      <SelectContent>
+                        {MONTH_NAMES.map((m, i) => (
+                          <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Target Year</Label>
+                    <Select value={rolloverYear} onValueChange={setRolloverYear}>
+                      <SelectTrigger><SelectValue placeholder="Year" /></SelectTrigger>
+                      <SelectContent>
+                        {YEARS.map(y => (
+                          <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {rolloverIsSameMonth && (
+                  <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                    Target month is the same as the month you're viewing — pick a different month.
+                  </p>
+                )}
+              </>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-border">
+              <Button type="button" variant="outline" onClick={() => setRolloverOpen(false)}>Cancel</Button>
+              <Button
+                onClick={handleRollover}
+                disabled={rolloverLoading || rolloverSelected.size === 0 || rolloverIsSameMonth || monthBudgets.length === 0}
+                style={{ background: theme.colors.primary, color: '#fff' }}
+              >
+                {rolloverLoading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : `Rollover ${rolloverSelected.size > 0 ? rolloverSelected.size : ''} Budget${rolloverSelected.size === 1 ? '' : 's'}`}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
