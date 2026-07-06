@@ -1013,9 +1013,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [isFiltered,        setIsFiltered]        = useState(false)
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
-  const [showTotalAccBalance, setShowTotalAccBalance] = useState(true)
+  const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
   const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
-  const [showAccBalances,     setShowAccBalances]     = useState(true)
+  const [showAccBalances,     setShowAccBalances]     = useState(false)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
   // Budget Usage / Multi-Currency Breakdown / Savings Goals are heavy, detailed
   // sections — collapsed by default so the main dashboard stays scannable;
@@ -1314,8 +1314,13 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
-      const spent = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
-      return { name: b.category, budget: Number(b.amount), spent }
+      const spent  = filteredExpenses.filter(e => e.category === b.category).reduce((s, e) => s + Number(e.amount), 0)
+      // Budget records store their limit as `monthly_limit`; `amount` is kept
+      // only as a fallback for any older/differently-shaped rows. Without
+      // this fallback chain, real budgets read `b.amount` (undefined) and
+      // the chart/tooltip show "GH₵NaN" instead of the actual limit.
+      const budget = Number(b.monthly_limit ?? b.amount ?? 0)
+      return { name: b.category, budget, spent }
     }), [budgets, filteredExpenses])
 
   const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
@@ -1835,17 +1840,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </Card>
       </div>
 
-      {/* Toggle for the heavier detail sections below — collapsed by default */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-muted-foreground">Budget, Income Breakdown & Savings Goals</p>
-        <button
-          onClick={() => setShowMoreCharts(v => !v)}
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-border bg-white text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
-        >
-          {showMoreCharts ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-          {showMoreCharts ? 'Hide Details' : 'Show Details'}
-        </button>
-      </div>
+      {/* Toggle for the heavier detail sections below — collapsed by default.
+          Styled as a solid, full-width button (not a muted link) since this
+          is the only way to reach the Budget Usage, Multi-Currency Income
+          Breakdown, and Savings Goals sections now that they're hidden by
+          default. ──────────────────────────────────────────────────────── */}
+      <button
+        onClick={() => setShowMoreCharts(v => !v)}
+        style={{ background: theme.colors.primary }}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl text-white font-semibold text-sm shadow-sm hover:opacity-90 transition-opacity"
+      >
+        <span className="flex items-center gap-2">
+          {showMoreCharts ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          Budget Usage, Income Breakdown &amp; Savings Goals
+        </span>
+        <ChevronDown
+          className="w-4 h-4 transition-transform"
+          style={{ transform: showMoreCharts ? 'rotate(180deg)' : 'rotate(0deg)' }}
+        />
+      </button>
 
       {showMoreCharts && (
       <>
@@ -1864,11 +1877,74 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               <p className="text-sm">Create a budget to track spending</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={Math.max(200, budgetData.length * 56)}>
               <BarChart data={budgetData} layout="vertical" margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={80} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  tick={{ fontSize: 10 }}
+                  width={120}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null
+                    const budget = (payload.find(p => p.dataKey === 'budget')?.value as number) ?? 0
+                    const spent  = (payload.find(p => p.dataKey === 'spent')?.value  as number) ?? 0
+                    const pct    = budget > 0 ? Math.round((spent / budget) * 100) : 0
+                    const over   = budget > 0 && spent > budget
+                    const catExpenses = filteredExpenses
+                      .filter(e => e.category === label)
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    return (
+                      <div className="bg-white rounded-xl p-3 shadow-lg border border-border text-xs space-y-1.5 min-w-[210px]">
+                        <p className="font-semibold text-sm">{label}</p>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Budget</span>
+                          <span className="font-medium">{fmt(budget)}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Spent</span>
+                          <span className={`font-medium ${over ? 'text-destructive' : 'text-success'}`}>{fmt(spent)}</span>
+                        </div>
+                        <div className="h-px bg-border" />
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">{over ? 'Over by' : 'Remaining'}</span>
+                          <span className={`font-semibold ${over ? 'text-destructive' : 'text-success'}`}>
+                            {fmt(Math.abs(budget - spent))}
+                          </span>
+                        </div>
+                        <div className="mt-1">
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-muted-foreground">Used</span>
+                            <span className={over ? 'text-destructive font-semibold' : 'font-medium'}>{pct}%</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all"
+                              style={{ width: `${Math.min(pct, 100)}%`, background: over ? '#ef4444' : '#22c55e' }} />
+                          </div>
+                        </div>
+                        {catExpenses.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-border">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                              Transactions ({catExpenses.length})
+                            </p>
+                            <div className="space-y-0.5 max-h-28 overflow-y-auto pr-1">
+                              {catExpenses.map((e: any, i: number) => (
+                                <div key={i} className="flex justify-between gap-3">
+                                  <span className="truncate max-w-[120px]">{e.title || e.description || label}</span>
+                                  <span className="text-destructive font-medium flex-shrink-0">-{fmt(Number(e.amount))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }}
+                />
                 <Bar dataKey="budget" fill={theme.colors.primary + '40'} name="Budget" radius={[0,4,4,0]} />
                 <Bar dataKey="spent"  fill={theme.colors.primary}        name="Spent"  radius={[0,4,4,0]} />
               </BarChart>
