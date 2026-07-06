@@ -20,6 +20,8 @@ import { toast } from '@/components/ui/toaster'
 import { formatCurrency, CATEGORY_COLORS, getBudgetStatus } from '@/lib/utils'
 import { useCategories } from '@/hooks/useCategories'
 import { useAppStore } from '@/store'
+import { KPICard } from '@/components/ui/kpi-card'
+import { BarChart3, TrendingDown } from 'lucide-react'
 import { THEMES } from '@/lib/config'
 import type { Budget } from '@/types'
 
@@ -321,71 +323,67 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         </div>
       </div>
 
-      {/* Month Navigator */}
-      <Card className="bg-white rounded-xl shadow-sm">
-        <CardContent className="py-3 px-4">
-          <div className="flex items-center justify-between">
-            <button onClick={prevMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="text-center min-w-0">
-              <p className="font-bold text-sm sm:text-base" style={{ color: theme.colors.primary }}>
-                {MONTH_NAMES[viewMonth - 1]} {viewYear}
-              </p>
-              {isCurrentMonth && (
-                <span className="text-xs text-white px-2 py-0.5 rounded-full"
-                  style={{ background: theme.colors.accent }}>
-                  Current Month
-                </span>
-              )}
-            </div>
-            <button onClick={nextMonth}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── KPI Flip Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KPICard
+          label="Budgeted"
+          value={fmt(summary.totalBudgeted)}
+          sub={`${monthBudgets.length} budget(s)`}
+          colorClass=""
+          icon={Wallet}
+          accentColor="#2563eb"
+          tooltip={`Total budget allocated for ${MONTH_NAMES[viewMonth - 1]} ${viewYear}`}
+        />
+        <KPICard
+          label="Spent"
+          value={fmt(summary.totalSpent)}
+          sub={summary.totalBudgeted > 0 ? `${Math.round((summary.totalSpent / summary.totalBudgeted) * 100)}% of budget` : 'No budget set'}
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#dc2626"
+          tooltip={`Total spent across all budgets in ${MONTH_NAMES[viewMonth - 1]} ${viewYear}`}
+        />
+        <KPICard
+          label="On Track"
+          value={String(summary.safe)}
+          sub={`${summary.safe} of ${monthBudgets.length} budgets`}
+          colorClass=""
+          icon={CheckCircle}
+          accentColor="#16a34a"
+          tooltip="Budgets where spending is within the limit"
+        />
+        <KPICard
+          label="Exceeded"
+          value={String(summary.exceeded)}
+          sub={summary.exceeded > 0 ? `${summary.exceeded} over budget` : 'All on track 🎉'}
+          colorClass=""
+          icon={XCircle}
+          accentColor={summary.exceeded > 0 ? "#dc2626" : "#16a34a"}
+          tooltip="Budgets where spending has gone over the limit"
+        />
+      </div>
 
-      {/* Summary KPIs */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="bg-white kpi-blue overflow-hidden">
-          <CardContent className="p-3 sm:p-5">
-            <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Budgeted</p>
-            <p className="kpi-value text-base sm:text-xl font-bold tabular-nums mt-1 truncate">{fmt(summary.totalBudgeted)}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{monthBudgets.length} budget(s)</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white kpi-red overflow-hidden">
-          <CardContent className="p-3 sm:p-5">
-            <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Spent</p>
-            <p className="kpi-value text-base sm:text-xl font-bold tabular-nums mt-1 truncate">{fmt(summary.totalSpent)}</p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 truncate">
-              {summary.totalBudgeted > 0
-                ? `${Math.round((summary.totalSpent / summary.totalBudgeted) * 100)}% of budget`
-                : 'No budget set'}
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white kpi-green overflow-hidden">
-          <CardContent className="p-3 sm:p-5">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle className="w-3.5 h-3.5 text-success flex-shrink-0" />
-              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">On Track</p>
-            </div>
-            <p className="kpi-value text-base sm:text-xl font-bold mt-1" style={{ color: '#16a34a' }}>{summary.safe}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white kpi-red overflow-hidden">
-          <CardContent className="p-3 sm:p-5">
-            <div className="flex items-center gap-1.5">
-              <XCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
-              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide truncate">Exceeded</p>
-            </div>
-            <p className="kpi-value text-base sm:text-xl font-bold mt-1" style={{ color: '#dc2626' }}>{summary.exceeded}</p>
-          </CardContent>
-        </Card>
+      {/* Month Navigator — compact inline bar */}
+      <div className="flex items-center justify-between bg-white border border-border rounded-xl px-4 py-2.5 shadow-sm">
+        <button onClick={prevMonth}
+          className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-2">
+          <p className="font-bold text-sm" style={{ color: theme.colors.primary }}>
+            {MONTH_NAMES[viewMonth - 1]} {viewYear}
+          </p>
+          {isCurrentMonth && (
+            <span className="text-[10px] text-white px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: theme.colors.accent }}>
+              Current Month
+            </span>
+          )}
+        </div>
+        <button onClick={nextMonth}
+          className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0">
+          <ChevronRight className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Budget Cards */}
