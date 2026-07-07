@@ -23,6 +23,7 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import { KPICard } from '@/components/ui/kpi-card'
 import type { UserAccount } from '@/types'
+import { Users, ShieldOff } from 'lucide-react'
 
 const ACCOUNT_TYPES = [
   { value: 'bank',         label: 'Bank Account', icon: Building2  },
@@ -80,12 +81,15 @@ const ALL_CURRENCIES = [
 const CUSTOM_KEY = 'ts_custom_currencies'
 
 const accountSchema = z.object({
-  name:            z.string().min(1, 'Account name is required'),
-  type:            z.string().min(1, 'Account type is required'),
-  institution:     z.string().optional(),
-  opening_balance: z.coerce.number().min(0),
-  currency:        z.string().default('GHS'),
-  allow_negative:  z.boolean().optional(),
+  name:             z.string().min(1, 'Account name is required'),
+  type:             z.string().min(1, 'Account type is required'),
+  institution:      z.string().optional(),
+  opening_balance:  z.coerce.number().min(0),
+  currency:         z.string().default('GHS'),
+  allow_negative:   z.boolean().optional(),
+  is_custody:       z.boolean().optional(),
+  exclude_from_net: z.boolean().optional(),
+  custody_for:      z.string().optional(),
 })
 type AccountFormData = z.infer<typeof accountSchema>
 
@@ -197,6 +201,8 @@ export function UserAccountsContent({
         transfers_in: transfersIn, transfers_out: transfersOut,
         custody_in: custodyIn, custody_out: custodyOut,
         balance,
+        isCustody:        (acc as any).is_custody        ?? false,
+        isExcludedFromNet:(acc as any).exclude_from_net  ?? (acc as any).is_custody ?? false,
         overdraftAllowed,
       }
     }), [accounts, incomes, expenses, transfers, custodyTransactions])
@@ -251,19 +257,22 @@ export function UserAccountsContent({
 
   const openCreate = () => {
     setEditing(null)
-    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false })
+    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false, is_custody: false, exclude_from_net: false, custody_for: '' })
     setOpen(true)
   }
 
   const openEdit = (acc: UserAccount) => {
     setEditing(acc)
     accountForm.reset({
-      name:            acc.name,
-      type:            acc.type,
-      institution:     acc.institution ?? '',
-      opening_balance: acc.opening_balance,
-      currency:        acc.currency,
-      allow_negative:  (acc as any).allow_negative ?? (acc.type === 'bank'),
+      name:             acc.name,
+      type:             acc.type,
+      institution:      acc.institution ?? '',
+      opening_balance:  acc.opening_balance,
+      currency:         acc.currency,
+      allow_negative:   (acc as any).allow_negative ?? (acc.type === 'bank'),
+      is_custody:       (acc as any).is_custody ?? false,
+      exclude_from_net: (acc as any).exclude_from_net ?? false,
+      custody_for:      (acc as any).custody_for ?? '',
     })
     setOpen(true)
   }
@@ -271,7 +280,13 @@ export function UserAccountsContent({
   const onAccountSubmit = async (data: AccountFormData) => {
     setLoading(true)
     const supabase = createClient()
-    const payload = { ...data, allow_negative: data.allow_negative ?? false }
+    const payload = {
+      ...data,
+      allow_negative:   data.allow_negative   ?? false,
+      is_custody:       data.is_custody        ?? false,
+      exclude_from_net: data.is_custody        ? true : (data.exclude_from_net ?? false),
+      custody_for:      data.custody_for       || null,
+    }
     if (editing) {
       const { data: updated, error } = await supabase
         .from('user_accounts')
@@ -564,6 +579,18 @@ export function UserAccountsContent({
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-sm truncate">{acc.name}</p>
+                        {(acc as any).is_custody && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-violet-100 text-violet-700 mt-0.5">
+                            <Users className="w-2.5 h-2.5" />
+                            Custody{(acc as any).custody_for ? `: ${(acc as any).custody_for}` : ''}
+                          </span>
+                        )}
+                        {!(acc as any).is_custody && (acc as any).exclude_from_net && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-orange-100 text-orange-700 mt-0.5">
+                            <ShieldOff className="w-2.5 h-2.5" />
+                            Excluded from Net Worth
+                          </span>
+                        )}
                         <p className="text-xs text-muted-foreground truncate">
                           {typeLabel}{acc.institution ? ` · ${acc.institution}` : ''}
                           {acc.currency !== 'GHS' && (
@@ -739,6 +766,95 @@ export function UserAccountsContent({
                 }`} />
               </button>
             </div>
+
+            {/* ── Custody Account toggle ── */}
+            <div className={`rounded-xl border-2 transition-all ${
+              accountForm.watch('is_custody')
+                ? 'border-violet-300 bg-violet-50'
+                : 'border-border bg-muted/30'
+            }`}>
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0 pr-3">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                    accountForm.watch('is_custody') ? 'bg-violet-100' : 'bg-muted'
+                  }`}>
+                    <Users className={`w-4 h-4 ${accountForm.watch('is_custody') ? 'text-violet-600' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Custody Account</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Money held on behalf of other people or groups. Excluded from your personal net worth automatically.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !accountForm.getValues('is_custody')
+                    accountForm.setValue('is_custody', next)
+                    accountForm.setValue('exclude_from_net', next)
+                  }}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                    accountForm.watch('is_custody') ? 'bg-violet-500' : 'bg-muted'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    accountForm.watch('is_custody') ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Custody for — only shown when is_custody is on */}
+              {accountForm.watch('is_custody') && (
+                <div className="px-3 pb-3 space-y-1.5 border-t border-violet-200 pt-3">
+                  <Label className="text-xs text-violet-700 font-semibold">Held on behalf of</Label>
+                  <Input
+                    placeholder="e.g. UCT Church Group, Family Fund, John Doe..."
+                    {...accountForm.register('custody_for')}
+                    className="bg-white border-violet-200 focus:border-violet-400 text-sm"
+                  />
+                  <p className="text-[10px] text-violet-600">
+                    This label will appear on the account card as a reminder.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Exclude from Net Worth toggle (only shown when NOT custody) ── */}
+            {!accountForm.watch('is_custody') && (
+              <div className={`rounded-xl border-2 transition-all ${
+                accountForm.watch('exclude_from_net')
+                  ? 'border-orange-300 bg-orange-50'
+                  : 'border-border bg-muted/30'
+              }`}>
+                <div className="flex items-center justify-between p-3">
+                  <div className="flex items-start gap-3 flex-1 min-w-0 pr-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      accountForm.watch('exclude_from_net') ? 'bg-orange-100' : 'bg-muted'
+                    }`}>
+                      <ShieldOff className={`w-4 h-4 ${accountForm.watch('exclude_from_net') ? 'text-orange-600' : 'text-muted-foreground'}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">Exclude from Net Worth</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        This account's balance won't count toward your personal net worth or wealth tracker totals.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => accountForm.setValue('exclude_from_net', !accountForm.watch('exclude_from_net'))}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                      accountForm.watch('exclude_from_net') ? 'bg-orange-500' : 'bg-muted'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      accountForm.watch('exclude_from_net') ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <Label>Institution / Provider <span className="text-muted-foreground">(optional)</span></Label>

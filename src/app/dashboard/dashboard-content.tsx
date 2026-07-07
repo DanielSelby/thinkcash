@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import {
-  TrendingUp, TrendingDown, Wallet, Target, Landmark, Calendar,
+  TrendingUp, Wallet, Wallet2, Landmark, Calendar,
+  ArrowUpCircle, ArrowDownCircle, Scale, PiggyBank,
   RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
@@ -1197,7 +1198,7 @@ function CashFlowWaterfall({
   ]
 
   return (
-    <Card className="rounded-xl shadow-sm bg-white dark:bg-neutral-900 dark:border-neutral-800 transition-colors">
+    <Card className="rounded-xl shadow-sm hover:shadow-md bg-white dark:bg-neutral-900 dark:border-neutral-800 transition-shadow duration-200">
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
@@ -1839,7 +1840,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             const prevMonth = series.length > 1 ? series[series.length - 2] : null
             const topCat    = incomeByCategoryByCurrency[cur]?.[0]
             return (
-              <KPICard key={`inc-${cur}`} label={`Total Income (${cur})`} colorClass="kpi-green" icon={TrendingUp}
+              <KPICard key={`inc-${cur}`} label={`Total Income (${cur})`} colorClass="kpi-green" icon={ArrowUpCircle}
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
                 accentColor={cur === currency ? undefined : '#22c55e'}
@@ -1863,7 +1864,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             const prevMonth = series.length > 1 ? series[series.length - 2] : null
             const topCat    = expenseByCategoryByCurrency[cur]?.[0]
             return (
-              <KPICard key={`exp-${cur}`} label={`Total Expenses (${cur})`} colorClass="kpi-red" icon={TrendingDown}
+              <KPICard key={`exp-${cur}`} label={`Total Expenses (${cur})`} colorClass="kpi-red" icon={ArrowDownCircle}
                 value={formatCurrency(amt, cur)}
                 sub={`${txnCount} txn${txnCount === 1 ? '' : 's'}`}
                 accentColor="#ef4444"
@@ -1883,7 +1884,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           const prevNet   = prevMonth ? prevMonth.income - prevMonth.expense : null
           const totalTxns = filteredIncomes.length + filteredExpenses.length
           return (
-            <KPICard label="Net Balance" colorClass="kpi-blue" icon={Wallet}
+            <KPICard label="Net Balance" colorClass="kpi-blue" icon={Scale}
               value={fmt(net)}
               sub={net >= 0 ? 'Surplus ✓' : 'Deficit ✗'}
               accentColor="#3b82f6"
@@ -1906,7 +1907,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             ? Math.round(((prevMonth.income - prevMonth.expense) / prevMonth.income) * 100)
             : null
           return (
-            <KPICard label="Savings Rate" colorClass="kpi-purple" icon={Target}
+            <KPICard label="Savings Rate" colorClass="kpi-purple" icon={PiggyBank}
               value={`${savingsRate}%`}
               sub="Of income saved"
               accentColor="#a855f7"
@@ -1935,16 +1936,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         />
       </div>
 
-      {/* Cash Flow Waterfall Chart — opening balance → income → expenses →
-          closing balance, filterable by date range and account type. */}
-      <CashFlowWaterfall
-        accounts={accounts}
-        incomes={incomes}
-        expenses={expenses}
-        currency={currency}
-        theme={theme}
-      />
-
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
           Shown separately from Net Balance since they measure different things: this card reflects
           what's really sitting in your wallets right now; Net Balance reflects income minus expenses. */}
@@ -1962,7 +1953,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {showTotalAccBalance && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
           {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
-            <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet}
+            <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet2}
               value={formatCurrency(bal, cur)}
               sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
@@ -2051,16 +2042,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </div>
       )}
 
-      {/* Area Chart — one combined chart with two independent toggles:
-          which series to show (Both/Income/Expense) and what granularity
-          to bucket by (Monthly/Daily). Replaces separate Income/Expense
-          Trend cards with a single chart so switching between "the
-          combined view" and "just income" or "just expense" doesn't
-          require scrolling to a different card. ───────────────────────── */}
-      <Card className="rounded-xl shadow-sm bg-white">
+      {/* Area Chart + Cash Flow Waterfall — side by side on larger screens so
+          the two most detailed charts share a row instead of stacking the
+          full width of the dashboard, one under the other. ───────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
-            <CardTitle className="text-sm font-semibold">
+            <CardTitle className="text-sm font-semibold tracking-tight">
               {chartSeries === 'both'
                 ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
                 : chartSeries === 'income'
@@ -2249,6 +2238,17 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           )}
         </CardContent>
       </Card>
+
+      {/* Cash Flow Waterfall Chart — opening balance → income → expenses →
+          closing balance, filterable by date range and account type. */}
+      <CashFlowWaterfall
+        accounts={accounts}
+        incomes={incomes}
+        expenses={expenses}
+        currency={currency}
+        theme={theme}
+      />
+      </div>
 
       {/* Toggle for the heavier detail sections below — collapsed by default.
           Styled as a solid, full-width button (not a muted link) since this
