@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState, useRef, useLayoutEffect } from 'react'
 import {
-  TrendingUp, TrendingDown, Wallet, Target,
+  TrendingUp, TrendingDown, Wallet, Target, Landmark, Calendar,
   RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, BarChart, Bar,
+  AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer, BarChart, Bar, ComposedChart, Line,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -990,6 +990,339 @@ function FlipAccountCard({
   )
 }
 
+// ── Cash Flow Waterfall Chart ─────────────────────────────────────────────
+// Visualizes Opening Balance → (+ income by category) → (– expenses by
+// category) → Closing Balance as a floating "waterfall" bar chart. Each bar
+// sits on an invisible `base` segment so it appears to float at the right
+// height; a stepped light-gray line traces the running balance across bars
+// as a connector. Deliberately scoped to income & expenses only (no
+// transfers/custody) to match the stated purpose: explain how money flows
+// in and out, not reconcile every ledger movement.
+const WATERFALL_COLORS = {
+  opening: '#374151',
+  income:  '#22C55E',
+  expense: '#EF4444',
+  closing: '#3B82F6',
+  connector: '#D1D5DB',
+}
+
+type WfDateFilter = 'today' | 'week' | 'month' | 'year' | 'custom'
+type WfAccountFilter = 'all' | 'bank' | 'mobile_money' | 'cash' | 'investment' | 'credit_card'
+
+const WF_ACCOUNT_FILTERS: { value: WfAccountFilter; label: string }[] = [
+  { value: 'all',          label: 'All Accounts'  },
+  { value: 'bank',         label: 'Bank'          },
+  { value: 'mobile_money', label: 'Mobile Money'  },
+  { value: 'cash',         label: 'Cash'          },
+  { value: 'investment',   label: 'Investment'    },
+  { value: 'credit_card',  label: 'Credit Card'   },
+]
+
+const toISODate = (d: Date) => d.toISOString().split('T')[0]
+
+// Monday–Sunday of the week containing `d`
+function weekRange(d: Date): [Date, Date] {
+  const day = d.getDay()
+  const diffToMonday = (day === 0 ? -6 : 1) - day
+  const monday = new Date(d)
+  monday.setDate(d.getDate() + diffToMonday)
+  const sunday = new Date(monday)
+  sunday.setDate(monday.getDate() + 6)
+  return [monday, sunday]
+}
+
+function CashFlowWaterfall({
+  accounts, incomes, expenses, currency, theme,
+}: {
+  accounts: any[]
+  incomes: any[]
+  expenses: any[]
+  currency: string
+  theme: any
+}) {
+  const [dateFilter,    setDateFilter]    = useState<WfDateFilter>('month')
+  const [customFrom,    setCustomFrom]    = useState('')
+  const [customTo,      setCustomTo]      = useState('')
+  const [accountFilter, setAccountFilter] = useState<WfAccountFilter>('all')
+
+  const fmt = (n: number) => formatCurrency(n, currency)
+  const shortFmt = (v: number) => {
+    if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+    if (Math.abs(v) >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
+    return String(Math.round(v))
+  }
+
+  // ── Resolve the active date range ───────────────────────────────────
+  const { rangeStart, rangeEnd, rangeLabel } = useMemo(() => {
+    const now = new Date()
+    const todayStr = toISODate(now)
+    if (dateFilter === 'today') return { rangeStart: todayStr, rangeEnd: todayStr, rangeLabel: 'Today' }
+    if (dateFilter === 'week') {
+      const [mon, sun] = weekRange(now)
+      return { rangeStart: toISODate(mon), rangeEnd: toISODate(sun), rangeLabel: 'This Week' }
+    }
+    if (dateFilter === 'year') {
+      return {
+        rangeStart: `${now.getFullYear()}-01-01`,
+        rangeEnd:   `${now.getFullYear()}-12-31`,
+        rangeLabel: 'This Year',
+      }
+    }
+    if (dateFilter === 'custom') {
+      return {
+        rangeStart: customFrom || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
+        rangeEnd:   customTo   || todayStr,
+        rangeLabel: 'Custom Range',
+      }
+    }
+    // month (default)
+    const first = new Date(now.getFullYear(), now.getMonth(), 1)
+    const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return { rangeStart: toISODate(first), rangeEnd: toISODate(last), rangeLabel: 'This Month' }
+  }, [dateFilter, customFrom, customTo])
+
+  // ── Accounts matching the type filter ────────────────────────────────
+  const wfAccounts = useMemo(
+    () => accounts.filter(a => accountFilter === 'all' || a.type === accountFilter),
+    [accounts, accountFilter],
+  )
+  const wfAccountIds = useMemo(() => new Set(wfAccounts.map(a => a.id)), [wfAccounts])
+
+  const periodIncomes = useMemo(
+    () => incomes.filter(r => wfAccountIds.has(r.account_id) && r.date >= rangeStart && r.date <= rangeEnd),
+    [incomes, wfAccountIds, rangeStart, rangeEnd],
+  )
+  const periodExpenses = useMemo(
+    () => expenses.filter(r => wfAccountIds.has(r.account_id) && r.date >= rangeStart && r.date <= rangeEnd),
+    [expenses, wfAccountIds, rangeStart, rangeEnd],
+  )
+
+  // Opening balance = opening_balance + everything before rangeStart, for
+  // the accounts currently in scope. Income/expenses only, by design.
+  const openingBalance = useMemo(() => wfAccounts.reduce((sum, acc) => {
+    const priorIncome  = incomes.filter(r => r.account_id === acc.id && r.date < rangeStart).reduce((s, r) => s + Number(r.amount), 0)
+    const priorExpense = expenses.filter(r => r.account_id === acc.id && r.date < rangeStart).reduce((s, r) => s + Number(r.amount), 0)
+    return sum + Number(acc.opening_balance ?? 0) + priorIncome - priorExpense
+  }, 0), [wfAccounts, incomes, expenses, rangeStart])
+
+  // ── Build the waterfall steps ────────────────────────────────────────
+  const { data, totalIncome, totalExpense, closingBalance } = useMemo(() => {
+    const byCat = (rows: any[]) => {
+      const map: Record<string, number> = {}
+      rows.forEach(r => { map[r.category || 'Other'] = (map[r.category || 'Other'] || 0) + Number(r.amount) })
+      return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+    }
+
+    const MAX_CATS = 5
+    const bucket = (cats: { name: string; value: number }[], otherLabel: string) => {
+      if (cats.length <= MAX_CATS) return cats
+      const top = cats.slice(0, MAX_CATS)
+      const rest = cats.slice(MAX_CATS).reduce((s, c) => s + c.value, 0)
+      return rest > 0 ? [...top, { name: otherLabel, value: rest }] : top
+    }
+
+    const incomeCats  = bucket(byCat(periodIncomes),  'Other Income')
+    const expenseCats = bucket(byCat(periodExpenses), 'Other Expenses')
+    const totalInc = incomeCats.reduce((s, c) => s + c.value, 0)
+    const totalExp = expenseCats.reduce((s, c) => s + c.value, 0)
+
+    let running = openingBalance
+    const steps: any[] = []
+
+    const push = (name: string, type: keyof typeof WATERFALL_COLORS, start: number, end: number, pct: number | null) => {
+      const base = Math.min(start, end)
+      const size = Math.abs(end - start)
+      steps.push({ name, type, base, size, delta: end - start, runningAfter: end, pct })
+    }
+
+    push('Opening Balance', 'opening', 0, openingBalance, null)
+
+    incomeCats.forEach(cat => {
+      const start = running
+      running += cat.value
+      push(cat.name, 'income', start, running, totalInc > 0 ? (cat.value / totalInc) * 100 : 0)
+    })
+
+    expenseCats.forEach(cat => {
+      const start = running
+      running -= cat.value
+      push(cat.name, 'expense', start, running, totalExp > 0 ? (cat.value / totalExp) * 100 : 0)
+    })
+
+    push('Closing Balance', 'closing', 0, running, null)
+
+    return { data: steps, totalIncome: totalInc, totalExpense: totalExp, closingBalance: running }
+  }, [periodIncomes, periodExpenses, openingBalance])
+
+  const netChange = closingBalance - openingBalance
+
+  const CustomWfTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null
+    const p = payload[0]?.payload
+    if (!p) return null
+    const color = (WATERFALL_COLORS as any)[p.type]
+    const signed = p.type === 'expense' ? -Math.abs(p.delta) : p.delta
+    return (
+      <div className="bg-white dark:bg-neutral-900 border border-border dark:border-neutral-700 rounded-xl shadow-lg p-3 text-xs min-w-[190px] space-y-1.5">
+        <p className="font-semibold text-sm flex items-center gap-2 text-foreground dark:text-neutral-100">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+          {p.name}
+        </p>
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground dark:text-neutral-400">Amount</span>
+          <span className="font-semibold tabular-nums" style={{ color }}>
+            {p.type === 'income' ? '+' : p.type === 'expense' ? '' : ''}{fmt(signed)}
+          </span>
+        </div>
+        <div className="flex justify-between gap-4">
+          <span className="text-muted-foreground dark:text-neutral-400">Running Balance</span>
+          <span className="font-semibold tabular-nums text-foreground dark:text-neutral-100">{fmt(p.runningAfter)}</span>
+        </div>
+        {p.pct !== null && (
+          <div className="flex justify-between gap-4">
+            <span className="text-muted-foreground dark:text-neutral-400">% Contribution</span>
+            <span className="font-semibold tabular-nums text-foreground dark:text-neutral-100">{p.pct.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const dateFilterOptions: { id: WfDateFilter; label: string }[] = [
+    { id: 'today', label: 'Today'      },
+    { id: 'week',  label: 'This Week'  },
+    { id: 'month', label: 'This Month' },
+    { id: 'year',  label: 'This Year'  },
+    { id: 'custom', label: 'Custom'    },
+  ]
+
+  return (
+    <Card className="rounded-xl shadow-sm bg-white dark:bg-neutral-900 dark:border-neutral-800 transition-colors">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <CardTitle className="text-sm font-semibold tracking-tight dark:text-neutral-100">
+              Cash Flow Waterfall
+            </CardTitle>
+            <p className="text-xs text-muted-foreground dark:text-neutral-400 mt-0.5">
+              {rangeLabel} · {fmt(openingBalance)} → {fmt(closingBalance)}
+              <span className={netChange >= 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-red-500 dark:text-red-400 font-medium'}>
+                {' '}({netChange >= 0 ? '+' : ''}{fmt(netChange)})
+              </span>
+            </p>
+          </div>
+        </div>
+
+        {/* Date filter pills */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          {dateFilterOptions.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setDateFilter(opt.id)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors border ${
+                dateFilter === opt.id
+                  ? 'text-white border-transparent'
+                  : 'border-border dark:border-neutral-700 text-muted-foreground dark:text-neutral-400 hover:text-foreground dark:hover:text-neutral-200'
+              }`}
+              style={dateFilter === opt.id ? { background: theme.colors.primary } : {}}
+            >
+              {opt.id === 'custom' && <Calendar className="w-3 h-3 inline mr-1 -mt-0.5" />}
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {dateFilter === 'custom' && (
+          <div className="flex flex-wrap items-end gap-2 mt-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-muted-foreground dark:text-neutral-400 font-semibold uppercase tracking-wide">From</label>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-muted-foreground dark:text-neutral-400 font-semibold uppercase tracking-wide">To</label>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                className="h-8 px-2 rounded-lg border border-border dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 text-xs bg-white focus:outline-none focus:ring-1" />
+            </div>
+          </div>
+        )}
+
+        {/* Account type filter pills */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          {WF_ACCOUNT_FILTERS.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setAccountFilter(opt.value)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
+                accountFilter === opt.value
+                  ? 'text-white border-transparent'
+                  : 'border-border dark:border-neutral-700 text-muted-foreground dark:text-neutral-400 hover:text-foreground dark:hover:text-neutral-200'
+              }`}
+              style={accountFilter === opt.value ? { background: theme.colors.accent } : {}}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {data.length <= 2 && totalIncome === 0 && totalExpense === 0 ? (
+          <div className="h-56 flex flex-col items-center justify-center gap-2 text-muted-foreground dark:text-neutral-400">
+            <Landmark className="w-8 h-8 opacity-20" />
+            <p className="text-sm">No income or expenses in this period</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={data} margin={{ top: 16, right: 12, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #f0f0f0)" vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 10 }}
+                tickLine={false}
+                interval={0}
+                angle={data.length > 6 ? -25 : 0}
+                textAnchor={data.length > 6 ? 'end' : 'middle'}
+                height={data.length > 6 ? 50 : 30}
+              />
+              <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomWfTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
+              {/* invisible base — floats each bar at the right height */}
+              <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
+              {/* visible segment — colored per step type, animated on load */}
+              <Bar
+                dataKey="size" stackId="wf" radius={[4, 4, 4, 4]}
+                isAnimationActive animationDuration={900} animationEasing="ease-out"
+              >
+                {data.map((d, i) => (
+                  <Cell key={i} fill={(WATERFALL_COLORS as any)[d.type]} />
+                ))}
+              </Bar>
+              {/* connector — thin stepped line tracing the running balance */}
+              <Line
+                type="stepAfter" dataKey="runningAfter"
+                stroke={WATERFALL_COLORS.connector} strokeWidth={1.5}
+                dot={false} isAnimationActive animationDuration={900} animationEasing="ease-out"
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+
+        {/* Legend */}
+        <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-border dark:border-neutral-800 text-[11px] text-muted-foreground dark:text-neutral-400">
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.opening }} /> Opening Balance</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.income }} /> Income</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.expense }} /> Expenses</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.closing }} /> Closing Balance</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground dark:text-neutral-500 mt-2 italic">
+          Reflects income and expenses only for the selected accounts — transfers between accounts aren't included.
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -1235,6 +1568,14 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     })
     return map
   }, [accounts])
+
+  // Net Worth — every account's balance (in its own currency) converted to
+  // the primary currency using the same exchange-rate map as the income
+  // breakdown, then summed into one blended figure for the KPI card.
+  const netWorthConverted = useMemo(() =>
+    accountsWithBalance.reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
+    [accountsWithBalance, exchangeRateMap]
+  )
 
   // True total: every currency's income converted to GHS using Net Worth rates.
   const grandTotalIncomeConverted = useMemo(() =>
@@ -1584,7 +1925,25 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
             />
           )
         })()}
+
+        <KPICard label="Net Worth" colorClass="kpi-blue" icon={Landmark}
+          value={formatCurrency(netWorthConverted, currency)}
+          sub={`${accountsWithBalance.length} account(s)`}
+          accentColor="#0891b2"
+          topSource={accountsWithBalance.some(a => a.currency !== currency) ? `Converted to ${currency}` : undefined}
+          tooltip={`Sum of every account's balance, converted to ${currency}\n${accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency)}`).join('\n')}`}
+        />
       </div>
+
+      {/* Cash Flow Waterfall Chart — opening balance → income → expenses →
+          closing balance, filterable by date range and account type. */}
+      <CashFlowWaterfall
+        accounts={accounts}
+        incomes={incomes}
+        expenses={expenses}
+        currency={currency}
+        theme={theme}
+      />
 
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
           Shown separately from Net Balance since they measure different things: this card reflects
