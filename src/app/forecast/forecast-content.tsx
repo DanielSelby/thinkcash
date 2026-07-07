@@ -11,6 +11,7 @@ import {
   RefreshCw, ChevronDown, ChevronUp, Info,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { KPICard } from '@/components/ui/kpi-card'
 import { formatCurrency } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
@@ -98,48 +99,7 @@ function EventDot(props: any) {
   return <circle cx={cx} cy={cy} r={4} fill="#fff" stroke={stroke} strokeWidth={2} />
 }
 
-// ── FlipKPICard ───────────────────────────────────────────────────────
-function FlipKPICard({ label, front, back, color, sub }: {
-  label: string
-  front: React.ReactNode
-  back:  React.ReactNode
-  color: string
-  sub?:  React.ReactNode
-}) {
-  const [flipped, setFlipped] = useState(false)
-  return (
-    <div
-      className="relative cursor-pointer select-none"
-      style={{ perspective: '900px', minHeight: 100 }}
-      onClick={() => setFlipped(v => !v)}
-      title="Click to flip"
-    >
-      <div className="relative w-full h-full transition-transform duration-500"
-        style={{ transformStyle: 'preserve-3d', transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)', minHeight: 'inherit' }}>
-        {/* Front */}
-        <div className="absolute inset-0 rounded-xl border border-border bg-white shadow-sm overflow-hidden"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
-          <div className="h-1" style={{ background: color }} />
-          <div className="p-3 sm:p-4">
-            <p className="text-[9px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">{label}</p>
-            <div className="mt-1">{front}</div>
-            {sub && <div className="mt-0.5">{sub}</div>}
-            <p className="text-[8px] text-muted-foreground/40 mt-1 text-right">Click to flip</p>
-          </div>
-        </div>
-        {/* Back */}
-        <div className="absolute inset-0 rounded-xl overflow-hidden shadow-sm"
-          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)', background: color }}>
-          <div className="p-3 sm:p-4 h-full flex flex-col justify-between">
-            <p className="text-[9px] font-bold text-white/70 uppercase tracking-wide">{label}</p>
-            <div className="text-white">{back}</div>
-            <p className="text-[8px] text-white/40 text-right">Click to flip back</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+
 
 // ── Props ─────────────────────────────────────────────────────────────
 interface Props {
@@ -149,6 +109,58 @@ interface Props {
   transfers:      any[]
   recurring:      any[]
   exchangeRates?: Record<string, number> // e.g. { USD: 15.2, EUR: 16.5 } — GHS per 1 unit
+}
+
+function FlipKPICard({ label, color, front, sub, back }: {
+  label: string
+  color: string
+  front: React.ReactNode
+  sub?: React.ReactNode
+  back: React.ReactNode
+}) {
+  const [flipped, setFlipped] = useState(false)
+  return (
+    <div
+      className="relative h-[148px] cursor-pointer select-none"
+      style={{ perspective: '900px' }}
+      onClick={() => setFlipped(v => !v)}
+    >
+      <div
+        className="relative w-full h-full transition-transform duration-500"
+        style={{
+          transformStyle: 'preserve-3d',
+          transform: flipped ? 'rotateY(180deg)' : 'none',
+        }}
+      >
+        {/* Front */}
+        <div
+          className="absolute inset-0 rounded-2xl border border-border bg-white shadow-sm p-4 flex flex-col justify-between overflow-hidden"
+          style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+        >
+          <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{ background: color }} />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight">
+            {label}
+          </span>
+          <div>{front}</div>
+          {sub && <div>{sub}</div>}
+          <span className="text-[10px] text-muted-foreground/50">Tap to flip ↻</span>
+        </div>
+        {/* Back */}
+        <div
+          className="absolute inset-0 rounded-2xl shadow-md p-4 flex flex-col justify-center overflow-hidden"
+          style={{
+            backfaceVisibility: 'hidden',
+            WebkitBackfaceVisibility: 'hidden',
+            transform: 'rotateY(180deg)',
+            background: color,
+          }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-white/70 mb-2">{label}</p>
+          {back}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function ForecastContent({ rawAccounts, incomes, expenses, transfers, recurring, exchangeRates = {} }: Props) {

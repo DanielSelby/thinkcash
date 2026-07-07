@@ -23,6 +23,7 @@ import { notify } from '@/lib/notify'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { CustodyTransaction } from '@/types'
+import { KPICard } from '@/components/ui/kpi-card'
 
 const schema = z.object({
   person_name: z.string().min(1, 'Name required'),
@@ -374,26 +375,8 @@ export function CustodyContent({ initialTransactions, accounts, userId }: Props)
 
       {/* Summary KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-          <div className="h-1" style={{ background: theme.colors.primary }} />
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <Users className="w-4 h-4 text-muted-foreground" />
-              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">People</p>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold tabular-nums">{peopleCount}</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-          <div className="h-1 bg-blue-500" />
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <HandCoins className="w-4 h-4 text-muted-foreground" />
-              <p className="text-[10px] sm:text-xs text-muted-foreground uppercase font-semibold tracking-wide">Transactions</p>
-            </div>
-            <p className="text-lg sm:text-2xl font-bold tabular-nums">{totalTxnCount}</p>
-          </CardContent>
-        </Card>
+        <KPICard label="People" value={String(peopleCount)} sub={`${totalTxnCount} total transactions`} colorClass="" icon={Users} accentColor={theme.colors.primary} tooltip="Number of people with custody transactions" />
+        <KPICard label="Transactions" value={String(totalTxnCount)} sub="All time" colorClass="" icon={HandCoins} accentColor="#2563eb" tooltip="Total number of custody transactions recorded" />
         {Object.entries(totalsByCurrency).map(([cur, bal]) => (
           <Card key={cur} className={`bg-white rounded-xl shadow-sm border border-border overflow-hidden`}>
             <div className={`h-1 ${bal >= 0 ? 'bg-amber-500' : 'bg-green-500'}`} />

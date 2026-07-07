@@ -19,6 +19,9 @@ import { formatCurrency, formatDate, FREQUENCIES, CATEGORY_COLORS } from '@/lib/
 import { notify } from '@/lib/notify'
 import { useCategories } from '@/hooks/useCategories'
 import type { RecurringTransaction } from '@/types'
+import { KPICard } from '@/components/ui/kpi-card'
+import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
+
 
 const schema = z.object({
   title:      z.string().min(1, 'Title required'),
@@ -189,29 +192,34 @@ export function RecurringContent({ initialRecurring, accounts = [], userId }: Pr
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        <Card className="bg-white p-3 sm:p-5 overflow-hidden">
-          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Total Active</p>
-          <p className="font-display text-lg sm:text-2xl font-bold mt-1 truncate">
-            {items.filter(i => i.is_active).length}
-          </p>
-        </Card>
-        <Card className="bg-white p-3 sm:p-5 kpi-green overflow-hidden">
-          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Monthly Income</p>
-          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums mt-1 truncate">
-            {formatCurrency(items
-              .filter(i => i.is_active && i.type === 'income' && i.frequency === 'monthly')
-              .reduce((s, i) => s + i.amount, 0))}
-          </p>
-        </Card>
-        <Card className="bg-white p-3 sm:p-5 kpi-red overflow-hidden">
-          <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Monthly Expenses</p>
-          <p className="kpi-value text-sm sm:text-xl font-bold tabular-nums mt-1 truncate">
-            {formatCurrency(items
-              .filter(i => i.is_active && i.type === 'expense' && i.frequency === 'monthly')
-              .reduce((s, i) => s + i.amount, 0))}
-          </p>
-        </Card>
+      <div className="grid grid-cols-3 gap-3">
+        <KPICard
+          label="Total Active"
+          value={String(items.filter(i => i.is_active).length)}
+          sub={`${items.filter(i => !i.is_active).length} paused`}
+          colorClass=""
+          icon={RefreshCw}
+          accentColor="#2563eb"
+          tooltip="Number of active recurring transactions"
+        />
+        <KPICard
+          label="Monthly Income"
+          value={formatCurrency(items.filter(i => i.is_active && i.type === 'income' && i.frequency === 'monthly').reduce((s, i) => s + i.amount, 0))}
+          sub="Recurring monthly"
+          colorClass=""
+          icon={TrendingUp}
+          accentColor="#16a34a"
+          tooltip="Total monthly recurring income"
+        />
+        <KPICard
+          label="Monthly Expenses"
+          value={formatCurrency(items.filter(i => i.is_active && i.type === 'expense' && i.frequency === 'monthly').reduce((s, i) => s + i.amount, 0))}
+          sub="Recurring monthly"
+          colorClass=""
+          icon={TrendingDown}
+          accentColor="#dc2626"
+          tooltip="Total monthly recurring expenses"
+        />
       </div>
 
       {items.length === 0 ? (

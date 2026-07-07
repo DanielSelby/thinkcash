@@ -8,6 +8,8 @@ import { Badge } from '@/components/ui/misc'
 import { TrendChart, SpendingPieChart } from '@/components/charts'
 import { formatCurrency, CATEGORY_COLORS, calculateHealthScore, getHealthScoreLabel, getHealthScoreColor } from '@/lib/utils'
 import type { Income, Expense } from '@/types'
+import { KPICard } from '@/components/ui/kpi-card'
+import { AlertTriangle } from 'lucide-react'
 
 interface Props { incomes: Income[]; expenses: Expense[] }
 
@@ -88,15 +90,18 @@ export function AnalyticsContent({ incomes, expenses }: Props) {
       </div>
 
       {/* Key metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {metrics.map(m => (
-          <Card key={m.label} className="p-5">
-            <p className="text-sm text-muted-foreground">{m.label}</p>
-            <p className={`font-display text-2xl font-bold tabular-nums mt-1 ${
-              m.status === 'success' ? 'text-success' : m.status === 'warning' ? 'text-warning' : 'text-destructive'
-            }`}>{m.value}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{m.description}</p>
-          </Card>
+          <KPICard
+            key={m.label}
+            label={m.label}
+            value={m.value}
+            sub={m.description}
+            colorClass=""
+            icon={m.status === 'success' ? TrendingUp : m.status === 'warning' ? AlertTriangle : TrendingDown}
+            accentColor={m.status === 'success' ? '#16a34a' : m.status === 'warning' ? '#f59e0b' : '#dc2626'}
+            tooltip={m.description}
+          />
         ))}
       </div>
 

@@ -6,6 +6,7 @@ import { Search, Download, TrendingUp, TrendingDown, ArrowUpDown, Receipt } from
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
+import { KPICard } from '@/components/ui/kpi-card'
 import { Badge } from '@/components/ui/misc'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatCurrency, formatDate, CATEGORY_COLORS } from '@/lib/utils'
@@ -116,38 +117,10 @@ export function TransactionsContent({ transactions, accounts }: Props) {
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-white kpi-green p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingUp className="w-4 h-4 text-success flex-shrink-0" />
-            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Income</p>
-          </div>
-          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{formatCurrency(totals.income)}</p>
-        </Card>
-        <Card className="bg-white kpi-red p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center gap-2 mb-1">
-            <TrendingDown className="w-4 h-4 text-destructive flex-shrink-0" />
-            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Expenses</p>
-          </div>
-          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{formatCurrency(totals.expenses)}</p>
-        </Card>
-        <Card className="bg-white kpi-blue p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center gap-2 mb-1">
-            <ArrowUpDown className="w-4 h-4 text-primary flex-shrink-0" />
-            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Net</p>
-          </div>
-          <p className={`kpi-value text-base sm:text-xl font-bold tabular-nums truncate ${
-            totals.income - totals.expenses >= 0 ? 'text-success' : 'text-destructive'
-          }`}>
-            {formatCurrency(totals.income - totals.expenses)}
-          </p>
-        </Card>
-        <Card className="bg-white kpi-orange p-4 sm:p-5 overflow-hidden">
-          <div className="flex items-center gap-2 mb-1">
-            <Receipt className="w-4 h-4 text-orange-500 flex-shrink-0" />
-            <p className="text-[10px] sm:text-sm text-muted-foreground truncate">Total Transactions</p>
-          </div>
-          <p className="kpi-value text-base sm:text-xl font-bold tabular-nums truncate">{filtered.length}</p>
-        </Card>
+        <KPICard label="Income" value={formatCurrency(totals.income)} sub={`${filtered.filter(t => t.type === 'income').length} entries`} colorClass="" icon={TrendingUp} accentColor="#16a34a" tooltip="Total income in current view" />
+        <KPICard label="Expenses" value={formatCurrency(totals.expenses)} sub={`${filtered.filter(t => t.type === 'expense').length} entries`} colorClass="" icon={TrendingDown} accentColor="#dc2626" tooltip="Total expenses in current view" />
+        <KPICard label="Net" value={formatCurrency(totals.income - totals.expenses)} sub={totals.income - totals.expenses >= 0 ? 'Surplus' : 'Deficit'} colorClass="" icon={ArrowUpDown} accentColor={totals.income - totals.expenses >= 0 ? '#16a34a' : '#dc2626'} tooltip="Income minus expenses" />
+        <KPICard label="Transactions" value={String(filtered.length)} sub="In current view" colorClass="" icon={Receipt} accentColor="#f97316" tooltip={`${filtered.length} of ${transactions.length} total transactions`} />
       </div>
 
       {hasMixedCurrencies && (

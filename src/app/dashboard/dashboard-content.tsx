@@ -1015,6 +1015,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
   const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
+  const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
   const [showAccBalances,     setShowAccBalances]     = useState(false)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
   // Budget Usage / Multi-Currency Breakdown / Savings Goals are heavy, detailed
@@ -1260,24 +1261,28 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // fills any gap days with zero income/expense so the line stays
   // continuous instead of jumping across missing dates. Labels are thinned
   // to every 7th day once there are more than 60 days, so the X axis
-  // doesn't turn into unreadable soup. ────────────────────────────────────
+  // doesn't turn into unreadable soup. Each bucket also keeps its raw
+  // incomeRows/expenseRows so the tooltip can list individual transactions
+  // for that period, not just the totals. ─────────────────────────────────
   const chartData = useMemo(() => {
-    const map: Record<string, { date: string; income: number; expense: number }> = {}
+    const map: Record<string, { date: string; income: number; expense: number; incomeRows: any[]; expenseRows: any[] }> = {}
     const sliceLen = chartView === 'monthly' ? 7 : 10
 
     filteredIncomes
       .filter(r => getTransactionCurrency(r) === currency)
       .forEach(r => {
         const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
         map[d].income += Number(r.amount)
+        map[d].incomeRows.push(r)
       })
     filteredExpenses
       .filter(r => getTransactionCurrency(r) === currency)
       .forEach(r => {
         const d = (r.date ?? '').slice(0, sliceLen); if (!d) return
-        if (!map[d]) map[d] = { date: d, income: 0, expense: 0 }
+        if (!map[d]) map[d] = { date: d, income: 0, expense: 0, incomeRows: [], expenseRows: [] }
         map[d].expense += Number(r.amount)
+        map[d].expenseRows.push(r)
       })
 
     const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
@@ -1300,7 +1305,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     const end = new Date(sorted[sorted.length - 1].date)
     while (cur <= end) {
       const key = cur.toISOString().slice(0, 10)
-      filled.push(map[key] ?? { date: key, income: 0, expense: 0 })
+      filled.push(map[key] ?? { date: key, income: 0, expense: 0, incomeRows: [], expenseRows: [] })
       cur.setDate(cur.getDate() + 1)
     }
 
@@ -1687,30 +1692,62 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </div>
       )}
 
-      {/* Area Chart */}
+      {/* Area Chart — one combined chart with two independent toggles:
+          which series to show (Both/Income/Expense) and what granularity
+          to bucket by (Monthly/Daily). Replaces separate Income/Expense
+          Trend cards with a single chart so switching between "the
+          combined view" and "just income" or "just expense" doesn't
+          require scrolling to a different card. ───────────────────────── */}
       <Card className="rounded-xl shadow-sm bg-white">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold">
-              Income vs Expenses by {chartView === 'monthly' ? 'Month' : 'Day'}
+              {chartSeries === 'both'
+                ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                : chartSeries === 'income'
+                ? `Income Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                : `Expense Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`}
             </CardTitle>
-            <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
-              <button
-                onClick={() => setChartView('monthly')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Monthly
-              </button>
-              <button
-                onClick={() => setChartView('daily')}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
-                  chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Daily
-              </button>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {/* Series toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+                {([
+                  { id: 'both',    label: 'Both'    },
+                  { id: 'income',  label: 'Income'  },
+                  { id: 'expense', label: 'Expense' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setChartSeries(opt.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                      chartSeries === opt.id
+                        ? 'bg-white shadow-sm text-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {/* Granularity toggle */}
+              <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+                <button
+                  onClick={() => setChartView('monthly')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setChartView('daily')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                    chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Daily
+                </button>
+              </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -1743,102 +1780,116 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
                 />
                 <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                <Area type="monotone" dataKey="income"  stroke="#16a34a" fill="url(#gInc)" strokeWidth={2} name="Income"  dot={false} />
-                <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExp)" strokeWidth={2} name="Expense" dot={false} />
+                <Tooltip
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null
+                    const point   = payload[0]?.payload as any
+                    const inc     = Number(point?.income ?? 0)
+                    const exp     = Number(point?.expense ?? 0)
+                    const net     = inc - exp
+                    const incRows = (point?.incomeRows ?? []) as any[]
+                    const expRows = (point?.expenseRows ?? []) as any[]
+                    const showInc = chartSeries === 'both' || chartSeries === 'income'
+                    const showExp = chartSeries === 'both' || chartSeries === 'expense'
+                    const MAX_ROWS = 5
+                    return (
+                      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[210px] max-w-[280px] space-y-2.5">
+                        {/* Date header */}
+                        <p className="font-semibold text-sm border-b border-border pb-1.5">
+                          {label || (chartView === 'monthly' ? 'Month' : 'Day')}
+                        </p>
+
+                        {/* Income bucket */}
+                        {showInc && inc > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-semibold text-green-700">
+                                <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+                                Income
+                              </span>
+                              <span className="font-bold text-green-600 tabular-nums">+{fmt(inc)}</span>
+                            </div>
+                            <div className="pl-4 space-y-0.5">
+                              {incRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                                  <span className="text-muted-foreground truncate max-w-[130px]">
+                                    {r.title || r.description || r.category || 'Income'}
+                                    {r.category && r.title ? ` · ${r.category}` : ''}
+                                  </span>
+                                  <span className="tabular-nums text-green-600 flex-shrink-0">+{fmt(Number(r.amount))}</span>
+                                </div>
+                              ))}
+                              {incRows.length > MAX_ROWS && (
+                                <p className="text-[10px] text-muted-foreground">+{incRows.length - MAX_ROWS} more</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Expense bucket */}
+                        {showExp && exp > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 font-semibold text-red-700">
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+                                Expenses
+                              </span>
+                              <span className="font-bold text-red-500 tabular-nums">-{fmt(exp)}</span>
+                            </div>
+                            <div className="pl-4 space-y-0.5">
+                              {expRows.slice(0, MAX_ROWS).map((r: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+                                  <span className="text-muted-foreground truncate max-w-[130px]">
+                                    {r.title || r.description || r.category || 'Expense'}
+                                    {r.category && r.title ? ` · ${r.category}` : ''}
+                                  </span>
+                                  <span className="tabular-nums text-red-500 flex-shrink-0">-{fmt(Number(r.amount))}</span>
+                                </div>
+                              ))}
+                              {expRows.length > MAX_ROWS && (
+                                <p className="text-[10px] text-muted-foreground">+{expRows.length - MAX_ROWS} more</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Net row */}
+                        {showInc && showExp && inc > 0 && exp > 0 && (
+                          <div className="flex items-center justify-between gap-4 border-t border-border pt-1.5">
+                            <span className="text-muted-foreground font-medium">Net</span>
+                            <span className={`font-bold tabular-nums ${net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {net >= 0 ? '+' : ''}{fmt(net)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Empty day */}
+                        {chartView === 'daily' && inc === 0 && exp === 0 && (
+                          <p className="text-muted-foreground text-center py-1">No transactions</p>
+                        )}
+                      </div>
+                    )
+                  }}
+                />
+                {(chartSeries === 'both' || chartSeries === 'income') && (
+                  <Area
+                    type="monotone" dataKey="income"
+                    stroke="#16a34a" fill="url(#gInc)" strokeWidth={2}
+                    name="Income" dot={false}
+                  />
+                )}
+                {(chartSeries === 'both' || chartSeries === 'expense') && (
+                  <Area
+                    type="monotone" dataKey="expense"
+                    stroke="#dc2626" fill="url(#gExp)" strokeWidth={2}
+                    name="Expense" dot={false}
+                  />
+                )}
               </AreaChart>
             </ResponsiveContainer>
           )}
         </CardContent>
       </Card>
-
-      {/* Income Trend & Expense Trend — same period/granularity as the combined
-          chart above (driven by the shared chartView toggle), but each metric
-          isolated on its own axis so a move in one doesn't get visually
-          flattened by the scale of the other. ─────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="rounded-xl shadow-sm bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-green-600" /> Income Trend
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {chartData.length === 0
-                ? 'No income yet'
-                : `${chartView === 'monthly' ? 'Monthly' : 'Daily'} · ${currency} only`}
-            </p>
-          </CardHeader>
-          <CardContent>
-            {chartData.length === 0 ? (
-              <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <TrendingUp className="w-7 h-7 opacity-20" />
-                <p className="text-sm">Add income to see its trend</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gIncSolo" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 10 }}
-                    tickLine={false}
-                    interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                  <Area type="monotone" dataKey="income" stroke="#16a34a" fill="url(#gIncSolo)" strokeWidth={2} name="Income" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-xl shadow-sm bg-white">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingDown className="w-4 h-4 text-red-500" /> Expense Trend
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {chartData.length === 0
-                ? 'No expenses yet'
-                : `${chartView === 'monthly' ? 'Monthly' : 'Daily'} · ${currency} only`}
-            </p>
-          </CardHeader>
-          <CardContent>
-            {chartData.length === 0 ? (
-              <div className="h-40 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <TrendingDown className="w-7 h-7 opacity-20" />
-                <p className="text-sm">Add expenses to see their trend</p>
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gExpSolo" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#dc2626" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 10 }}
-                    tickLine={false}
-                    interval={chartView === 'daily' && chartData.length > 30 ? 'preserveStartEnd' : 0}
-                  />
-                  <YAxis tick={{ fontSize: 10 }} width={44} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v: any) => fmt(Number(v))} />
-                  <Area type="monotone" dataKey="expense" stroke="#dc2626" fill="url(#gExpSolo)" strokeWidth={2} name="Expense" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Toggle for the heavier detail sections below — collapsed by default.
           Styled as a solid, full-width button (not a muted link) since this
