@@ -1730,10 +1730,12 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // Net Worth — every account's balance (in its own currency) converted to
   // the primary currency using the same exchange-rate map as the income
   // breakdown, then summed into one blended figure for the KPI card.
-  const netWorthConverted = useMemo(() =>
-    accountsWithBalance.reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
-    [accountsWithBalance, exchangeRateMap]
-  )
+ const netWorthConverted = useMemo(() =>
+  accountsWithBalance
+    .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
+    .reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
+  [accountsWithBalance, exchangeRateMap]
+)
 
   // ── True Net Worth ────────────────────────────────────────────────────
   // Cash & Liquid (from accountsWithBalance, converted to primary currency)
@@ -1744,9 +1746,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // This mirrors exactly what the Net Worth Tracker page computes.
   const trueNetWorth = useMemo(() => {
     // Cash & liquid — live account balances
-    const liquidTotal = accountsWithBalance.reduce((sum, a) =>
-      sum + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0)
-
+    const liquidTotal = accountsWithBalance
+  .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
+  .reduce((sum, a) => sum + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0)
+  
     // Physical assets — exclude sold, disposed, donated, and migrated cash assets
     const physicalTotal = assets
       .filter(a =>
