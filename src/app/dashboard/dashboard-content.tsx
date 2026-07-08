@@ -21,14 +21,18 @@ import { formatCurrency } from '@/lib/utils'
 import { KPICard } from '@/components/ui/kpi-card'
 
 interface Props {
-  accounts:  any[]
-  transfers: any[]
-  incomes:   any[]
-  expenses:  any[]
-  budgets:   any[]
-  goals:     any[]
-  profile:   any
+  accounts:            any[]
+  transfers:           any[]
+  incomes:             any[]
+  expenses:            any[]
+  budgets:             any[]
+  goals:               any[]
+  profile:             any
   custodyTransactions?: any[]
+  assets?:             any[]
+  investments?:        any[]
+  debts?:              any[]
+  loans?:              any[]
 }
 
 const MONTHS = [
@@ -1477,7 +1481,7 @@ function FinancialHealthScore({
   )
 }
 
-export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
+export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [], assets = [], investments = [], debts = [], loans = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -1730,6 +1734,41 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     accountsWithBalance.reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
     [accountsWithBalance, exchangeRateMap]
   )
+
+  // ── True Net Worth ────────────────────────────────────────────────────
+  // Cash & Liquid (from accountsWithBalance, converted to primary currency)
+  // + Physical Assets (non-sold, non-liquid, converted via their own exchange_rate)
+  // + Investments (current_value, assumed in primary currency)
+  // − Debts (remaining balance)
+  // − Loans (remaining balance)
+  // This mirrors exactly what the Net Worth Tracker page computes.
+  const trueNetWorth = useMemo(() => {
+    // Cash & liquid — live account balances
+    const liquidTotal = accountsWithBalance.reduce((sum, a) =>
+      sum + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0)
+
+    // Physical assets — exclude sold, disposed, donated, and migrated cash assets
+    const physicalTotal = assets
+      .filter(a =>
+        a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated' &&
+        !a.is_liquid && a.asset_type !== 'cash' && !a.migrated_to_account
+      )
+      .reduce((sum, a) => {
+        const cur  = a.currency || 'GHS'
+        const rate = cur === 'GHS' ? 1 : (Number(a.exchange_rate ?? 1))
+        return sum + Number(a.current_value ?? 0) * rate
+      }, 0)
+
+    // Investments — current value
+    const investmentTotal = investments.reduce((sum, i) =>
+      sum + Number(i.current_value ?? 0), 0)
+
+    // Liabilities
+    const debtTotal = debts.reduce((sum, d) => sum + Number(d.remaining ?? 0), 0)
+    const loanTotal = loans.reduce((sum, l) => sum + Number(l.remaining ?? 0), 0)
+
+    return liquidTotal + physicalTotal + investmentTotal - debtTotal - loanTotal
+  }, [accountsWithBalance, assets, investments, debts, loans, exchangeRateMap])
 
   // True total: every currency's income converted to GHS using Net Worth rates.
   const grandTotalIncomeConverted = useMemo(() =>
@@ -2081,11 +2120,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         })()}
 
         <KPICard label="Net Worth" colorClass="kpi-blue" icon={Landmark}
-          value={formatCurrency(netWorthConverted, currency)}
-          sub={`${accountsWithBalance.length} account(s)`}
+          value={formatCurrency(trueNetWorth, currency)}
+          sub={`Cash + Assets + Investments − Debts`}
           accentColor="#0891b2"
-          topSource={accountsWithBalance.some(a => a.currency !== currency) ? `Converted to ${currency}` : undefined}
-          tooltip={`Sum of every account's balance, converted to ${currency}\n${accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency)}`).join('\n')}`}
+          topSource={trueNetWorth >= 0 ? 'Positive net worth ✓' : 'Liabilities exceed assets'}
+          tooltip={[
+            `Cash & Liquid: ${formatCurrency(accountsWithBalance.reduce((s, a) => s + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0), currency)}`,
+            `Physical Assets: ${formatCurrency(assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated' && !a.is_liquid && a.asset_type !== 'cash' && !a.migrated_to_account).reduce((s, a) => s + Number(a.current_value ?? 0) * (a.currency === 'GHS' ? 1 : Number(a.exchange_rate ?? 1)), 0), currency)}`,
+            `Investments: ${formatCurrency(investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), currency)}`,
+            `Debts: −${formatCurrency(debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), currency)}`,
+            `Loans: −${formatCurrency(loans.reduce((s, l) => s + Number(l.remaining ?? 0), 0), currency)}`,
+            `───────────────`,
+            `Net Worth: ${formatCurrency(trueNetWorth, currency)}`,
+          ].join('\n')}
         />
       </div>
 

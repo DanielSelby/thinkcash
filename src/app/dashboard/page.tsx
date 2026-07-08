@@ -22,6 +22,10 @@ export default async function DashboardPage() {
     { data: accounts },
     { data: transfers },
     { data: custodyTransactions },
+    { data: assets },
+    { data: investments },
+    { data: debts },
+    { data: loans },
   ] = await Promise.all([
     supabase.from('incomes').select('*')
       .eq('user_id', user.id).order('date', { ascending: false }),
@@ -33,19 +37,31 @@ export default async function DashboardPage() {
       .eq('user_id', user.id).eq('is_active', true),
     supabase.from('transfers').select('*').eq('user_id', user.id),
     supabase.from('custody_transactions').select('*').eq('user_id', user.id),
+    supabase.from('assets').select('id, current_value, purchase_value, status, asset_type, currency, exchange_rate, is_liquid, migrated_to_account')
+      .eq('user_id', user.id),
+    supabase.from('investments').select('id, current_value')
+      .eq('user_id', user.id),
+    supabase.from('debts').select('id, remaining')
+      .eq('user_id', user.id),
+    supabase.from('loans').select('id, remaining')
+      .eq('user_id', user.id),
   ])
 
   return (
     <AppShell>
       <DashboardContent
-        incomes={incomes   ?? []}
-        expenses={expenses ?? []}
-        budgets={budgets   ?? []}
-        goals={goals       ?? []}
+        incomes={incomes              ?? []}
+        expenses={expenses            ?? []}
+        budgets={budgets              ?? []}
+        goals={goals                  ?? []}
         profile={profile}
-        accounts={accounts  ?? []}
-        transfers={transfers ?? []}
+        accounts={accounts            ?? []}
+        transfers={transfers          ?? []}
         custodyTransactions={custodyTransactions ?? []}
+        assets={assets                ?? []}
+        investments={investments      ?? []}
+        debts={debts                  ?? []}
+        loans={loans                  ?? []}
       />
     </AppShell>
   )
