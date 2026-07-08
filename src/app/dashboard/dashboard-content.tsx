@@ -1359,15 +1359,7 @@ function FinancialHealthScore({
   currency: string
   theme: any
 }) {
-  // Bars animate from 0 → target width on mount rather than snapping straight
-  // to their final size, so the card feels alive the first time it renders.
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    const t = requestAnimationFrame(() => setMounted(true))
-    return () => cancelAnimationFrame(t)
-  }, [])
-
-  const { overallScore, metrics } = useMemo(() => {
+  const { overallScore } = useMemo(() => {
     // 1. Savings Rate — 30%+ saved maps to a full score
     const savingsScore = Math.max(0, Math.min(100, Math.round((savingsRate / 30) * 100)))
 
@@ -1440,69 +1432,36 @@ function FinancialHealthScore({
         <p className="text-xs text-muted-foreground">Updates automatically from your income, expenses, budgets, and balances</p>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          {/* Semi-circular gauge */}
-          <div className="relative w-full sm:w-[200px] flex-shrink-0" style={{ height: 130 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                <Pie
-                  data={gaugeData}
-                  dataKey="value"
-                  cx="50%"
-                  cy="100%"
-                  startAngle={180}
-                  endAngle={0}
-                  innerRadius="70%"
-                  outerRadius="100%"
-                  stroke="none"
-                  isAnimationActive
-                  animationDuration={1000}
-                  animationEasing="ease-out"
-                >
-                  <Cell fill={status.color} />
-                  <Cell fill="#e5e7eb" />
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pointer-events-none">
-              <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: status.color }}>
-                {overallScore}<span className="text-sm text-muted-foreground font-semibold">/100</span>
-              </p>
-              <p className="text-xs font-semibold mt-1" style={{ color: status.color }}>{status.label}</p>
-            </div>
-          </div>
-
-          {/* Metric bars */}
-          <div className="w-full space-y-3">
-            {metrics.map(({ key, score }) => {
-              const meta = HEALTH_METRIC_META[key]
-              const Icon = meta.icon
-              const display = score ?? 0
-              const barColor = score === null ? '#cbd5e1' : healthStatus(score).color
-              return (
-                <div key={key} className="group relative">
-                  <div className="flex items-center justify-between text-xs mb-1 gap-2">
-                    <span className="flex items-center gap-1.5 font-medium text-foreground min-w-0">
-                      <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: barColor }} />
-                      <span className="truncate">{meta.label}</span>
-                    </span>
-                    <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: barColor }}>
-                      {score === null ? 'Not set up' : `${score}/100`}
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700 ease-out"
-                      style={{ width: mounted ? `${display}%` : '0%', background: barColor }}
-                    />
-                  </div>
-                  {/* Hover tooltip */}
-                  <div className="pointer-events-none absolute left-0 bottom-full mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-neutral-900 text-white text-[10px] leading-relaxed rounded-lg px-2.5 py-1.5 shadow-lg z-10 max-w-[240px]">
-                    {meta.description}
-                  </div>
-                </div>
-              )
-            })}
+        {/* Semi-circular gauge — compact dashboard version shows only the
+            score itself. Full metric-by-metric breakdown lives on the
+            Analytics page, reached via the button below. */}
+        <div className="relative w-full mx-auto" style={{ maxWidth: 260, height: 150 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <Pie
+                data={gaugeData}
+                dataKey="value"
+                cx="50%"
+                cy="100%"
+                startAngle={180}
+                endAngle={0}
+                innerRadius="70%"
+                outerRadius="100%"
+                stroke="none"
+                isAnimationActive
+                animationDuration={1000}
+                animationEasing="ease-out"
+              >
+                <Cell fill={status.color} />
+                <Cell fill="#e5e7eb" />
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pointer-events-none">
+            <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: status.color }}>
+              {overallScore}<span className="text-base text-muted-foreground font-semibold">/100</span>
+            </p>
+            <p className="text-sm font-semibold mt-1" style={{ color: status.color }}>{status.label}</p>
           </div>
         </div>
 
@@ -1864,10 +1823,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       return { name: b.category, budget, spent }
     }), [budgets, filteredExpenses])
 
-  const visibleAccounts = accountsWithBalance.filter(a =>
-  !(a as any).is_custody && !(a as any).exclude_from_net &&
-  (accountTypeFilter === 'all' || a.type === accountTypeFilter)
-)
+  const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
   const balanceByCurrency: Record<string, number> = {}
   visibleAccounts.forEach(a => {
     const cur = a.currency || 'GHS'
@@ -1878,10 +1834,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // Total Account Balance — every account, every type, unaffected by the type filter pills.
   // This is what the user sees as "what's actually sitting in my wallets right now."
   const totalAccountBalanceByCurrency: Record<string, number> = {}
-  accountsWithBalance
-  .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
-  .forEach(a => {
-    const cur = a.currency || 'GHS'
+  accountsWithBalance.forEach(a => {
+    const cur = a.currency || 'GHC'
     totalAccountBalanceByCurrency[cur] = (totalAccountBalanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
 
@@ -2135,18 +2089,6 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         />
       </div>
 
-      {/* Financial Health Score — compact overview blending Savings Rate,
-          Budget Adherence, Debt Ratio, Emergency Fund, and Net Worth Growth
-          into one score. */}
-      <FinancialHealthScore
-        accountsWithBalance={accountsWithBalance}
-        budgetData={budgetData}
-        savingsRate={savingsRate}
-        monthlySeries={monthlyByCurrency[currency] || []}
-        currency={currency}
-        theme={theme}
-      />
-
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
           Shown separately from Net Balance since they measure different things: this card reflects
           what's really sitting in your wallets right now; Net Balance reflects income minus expenses. */}
@@ -2166,9 +2108,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
             <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet2}
               value={formatCurrency(bal, cur)}
-              sub={`Across ${accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net && (a.currency || 'GHC') === cur).length} account(s)`}
+              sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
-              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net && (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
+              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
           ))}
         </div>
@@ -2253,10 +2195,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </div>
       )}
 
-      {/* Area Chart + Cash Flow Waterfall — side by side on larger screens so
-          the two most detailed charts share a row instead of stacking the
-          full width of the dashboard, one under the other. ───────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+      {/* Area Chart — full width on its own row so the combined/income/expense
+          toggle view has room to breathe rather than competing for space
+          with another chart beside it. ───────────────────────────────────── */}
       <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -2450,15 +2391,26 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </CardContent>
       </Card>
 
-      {/* Cash Flow Waterfall Chart — opening balance → income → expenses →
-          closing balance, filterable by date range and account type. */}
-      <CashFlowWaterfall
-        accounts={accounts}
-        incomes={incomes}
-        expenses={expenses}
-        currency={currency}
-        theme={theme}
-      />
+      {/* Financial Health gauge + Cash Flow Waterfall — side by side on
+          larger screens so these two sit together as a row instead of each
+          claiming the dashboard's full width. ─────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+        <FinancialHealthScore
+          accountsWithBalance={accountsWithBalance}
+          budgetData={budgetData}
+          savingsRate={savingsRate}
+          monthlySeries={monthlyByCurrency[currency] || []}
+          currency={currency}
+          theme={theme}
+        />
+
+        <CashFlowWaterfall
+          accounts={accounts}
+          incomes={incomes}
+          expenses={expenses}
+          currency={currency}
+          theme={theme}
+        />
       </div>
 
       {/* Toggle for the heavier detail sections below — collapsed by default.
