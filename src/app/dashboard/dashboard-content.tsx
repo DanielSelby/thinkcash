@@ -7,6 +7,7 @@ import {
   RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
+  HeartPulse, CreditCard, ShieldCheck, ArrowRight,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -1324,6 +1325,199 @@ function CashFlowWaterfall({
   )
 }
 
+// ── Financial Health Score ────────────────────────────────────────────────
+// Blends five signals into one 0-100 score with a semi-circular gauge:
+// Savings Rate, Budget Adherence, Debt Ratio, Emergency Fund, and Net Worth
+// Growth. Each metric is a best-effort approximation from data this app
+// actually has (there's no separate "loans" or "debt" table, so Debt Ratio
+// reads from overdrawn/negative account balances; there's no stored net
+// worth history, so Net Worth Growth compares this month's net cash flow
+// to last month's as a proxy) — the tooltip on each metric explains exactly
+// what's being measured so the approximation is never a mystery.
+const HEALTH_METRIC_META = {
+  savings:  { label: 'Savings Rate',      icon: PiggyBank,   description: 'Share of your income you keep rather than spend. 30%+ is considered excellent.' },
+  budget:   { label: 'Budget Adherence',  icon: Receipt,     description: 'How well your spending stays within the budgets you\'ve set for each category.' },
+  debt:     { label: 'Debt Ratio',        icon: CreditCard,  description: 'Share of your total balances coming from overdrawn or negative accounts. Lower is better.' },
+  emergency:{ label: 'Emergency Fund',    icon: ShieldCheck, description: 'How many months your current balance could cover at your average monthly spending. 6 months is the usual target.' },
+  growth:   { label: 'Net Worth Growth',  icon: TrendingUp,  description: 'Whether your net cash flow (income minus expenses) is improving compared to last month.' },
+}
+
+function healthStatus(score: number) {
+  if (score >= 85) return { label: 'Excellent',       color: '#22c55e' }
+  if (score >= 70) return { label: 'Good',             color: '#3b82f6' }
+  if (score >= 50) return { label: 'Fair',             color: '#f59e0b' }
+  return               { label: 'Needs Attention', color: '#ef4444' }
+}
+
+function FinancialHealthScore({
+  accountsWithBalance, budgetData, savingsRate, monthlySeries, currency, theme,
+}: {
+  accountsWithBalance: any[]
+  budgetData: { name: string; budget: number; spent: number }[]
+  savingsRate: number
+  monthlySeries: { date: string; income: number; expense: number }[]
+  currency: string
+  theme: any
+}) {
+  // Bars animate from 0 → target width on mount rather than snapping straight
+  // to their final size, so the card feels alive the first time it renders.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    const t = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(t)
+  }, [])
+
+  const { overallScore, metrics } = useMemo(() => {
+    // 1. Savings Rate — 30%+ saved maps to a full score
+    const savingsScore = Math.max(0, Math.min(100, Math.round((savingsRate / 30) * 100)))
+
+    // 2. Budget Adherence — average of (how far under/over each budget the
+    // person is), null when no budgets exist yet so it doesn't drag the
+    // overall score down just for not having set one up.
+    const activeBudgets = budgetData.filter(b => b.budget > 0)
+    const budgetScore = activeBudgets.length === 0 ? null : Math.round(
+      activeBudgets.reduce((sum, b) => {
+        const used = b.spent / b.budget
+        const s = used <= 1 ? 100 : Math.max(0, 100 - (used - 1) * 100)
+        return sum + s
+      }, 0) / activeBudgets.length
+    )
+
+    // 3. Debt Ratio — negative account balances treated as debt
+    const totalAssets = accountsWithBalance.reduce((s, a) => s + Math.max(0, a.balance ?? 0), 0)
+    const totalDebt   = accountsWithBalance.reduce((s, a) => s + Math.max(0, -(a.balance ?? 0)), 0)
+    const debtRatio   = (totalAssets + totalDebt) > 0 ? totalDebt / (totalAssets + totalDebt) : 0
+    const debtScore   = Math.max(0, Math.min(100, Math.round(100 - debtRatio * 200)))
+
+    // 4. Emergency Fund — liquid balance ÷ average monthly expense, vs a
+    // 6-month target
+    const avgMonthlyExpense = monthlySeries.length > 0
+      ? monthlySeries.reduce((s, m) => s + m.expense, 0) / monthlySeries.length
+      : 0
+    const emergencyMonths = avgMonthlyExpense > 0
+      ? totalAssets / avgMonthlyExpense
+      : (totalAssets > 0 ? 6 : 0)
+    const emergencyScore = Math.max(0, Math.min(100, Math.round((emergencyMonths / 6) * 100)))
+
+    // 5. Net Worth Growth — this month's net cash flow vs last month's, as
+    // a proxy for whether net worth is trending up or down
+    const curMonth  = monthlySeries.length > 0 ? monthlySeries[monthlySeries.length - 1] : null
+    const prevMonth = monthlySeries.length > 1 ? monthlySeries[monthlySeries.length - 2] : null
+    const curNet  = curMonth ? curMonth.income - curMonth.expense : 0
+    const prevNet = prevMonth ? prevMonth.income - prevMonth.expense : null
+    let growthScore: number
+    if (prevNet === null) growthScore = curNet > 0 ? 70 : curNet < 0 ? 30 : 50
+    else if (prevNet === 0) growthScore = curNet > 0 ? 100 : curNet < 0 ? 0 : 50
+    else growthScore = Math.max(0, Math.min(100, Math.round(50 + ((curNet - prevNet) / Math.abs(prevNet)) * 50)))
+
+    const metrics = [
+      { key: 'savings',   score: savingsScore },
+      { key: 'budget',    score: budgetScore },
+      { key: 'debt',      score: debtScore },
+      { key: 'emergency', score: emergencyScore },
+      { key: 'growth',    score: growthScore },
+    ] as { key: keyof typeof HEALTH_METRIC_META; score: number | null }[]
+
+    const scored = metrics.map(m => m.score).filter((s): s is number => s !== null)
+    const overallScore = scored.length > 0 ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : 0
+
+    return { overallScore, metrics }
+  }, [accountsWithBalance, budgetData, savingsRate, monthlySeries])
+
+  const status = healthStatus(overallScore)
+  const gaugeData = [
+    { value: overallScore },
+    { value: 100 - overallScore },
+  ]
+
+  return (
+    <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <HeartPulse className="w-4 h-4" style={{ color: status.color }} />
+          <CardTitle className="text-sm font-semibold tracking-tight">Financial Health Score</CardTitle>
+        </div>
+        <p className="text-xs text-muted-foreground">Updates automatically from your income, expenses, budgets, and balances</p>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          {/* Semi-circular gauge */}
+          <div className="relative w-full sm:w-[200px] flex-shrink-0" style={{ height: 130 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                <Pie
+                  data={gaugeData}
+                  dataKey="value"
+                  cx="50%"
+                  cy="100%"
+                  startAngle={180}
+                  endAngle={0}
+                  innerRadius="70%"
+                  outerRadius="100%"
+                  stroke="none"
+                  isAnimationActive
+                  animationDuration={1000}
+                  animationEasing="ease-out"
+                >
+                  <Cell fill={status.color} />
+                  <Cell fill="#e5e7eb" />
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pointer-events-none">
+              <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: status.color }}>
+                {overallScore}<span className="text-sm text-muted-foreground font-semibold">/100</span>
+              </p>
+              <p className="text-xs font-semibold mt-1" style={{ color: status.color }}>{status.label}</p>
+            </div>
+          </div>
+
+          {/* Metric bars */}
+          <div className="w-full space-y-3">
+            {metrics.map(({ key, score }) => {
+              const meta = HEALTH_METRIC_META[key]
+              const Icon = meta.icon
+              const display = score ?? 0
+              const barColor = score === null ? '#cbd5e1' : healthStatus(score).color
+              return (
+                <div key={key} className="group relative">
+                  <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                    <span className="flex items-center gap-1.5 font-medium text-foreground min-w-0">
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: barColor }} />
+                      <span className="truncate">{meta.label}</span>
+                    </span>
+                    <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: barColor }}>
+                      {score === null ? 'Not set up' : `${score}/100`}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      style={{ width: mounted ? `${display}%` : '0%', background: barColor }}
+                    />
+                  </div>
+                  {/* Hover tooltip */}
+                  <div className="pointer-events-none absolute left-0 bottom-full mb-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-neutral-900 text-white text-[10px] leading-relaxed rounded-lg px-2.5 py-1.5 shadow-lg z-10 max-w-[240px]">
+                    {meta.description}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <a
+          href="/analytics"
+          className="mt-4 w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors hover:bg-muted/50"
+          style={{ borderColor: theme.colors.primary, color: theme.colors.primary }}
+        >
+          View Detailed Analysis <ArrowRight className="w-3.5 h-3.5" />
+        </a>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -1670,7 +1864,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       return { name: b.category, budget, spent }
     }), [budgets, filteredExpenses])
 
-  const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
+  const visibleAccounts = accountsWithBalance.filter(a =>
+  !(a as any).is_custody && !(a as any).exclude_from_net &&
+  (accountTypeFilter === 'all' || a.type === accountTypeFilter)
+)
   const balanceByCurrency: Record<string, number> = {}
   visibleAccounts.forEach(a => {
     const cur = a.currency || 'GHS'
@@ -1681,8 +1878,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // Total Account Balance — every account, every type, unaffected by the type filter pills.
   // This is what the user sees as "what's actually sitting in my wallets right now."
   const totalAccountBalanceByCurrency: Record<string, number> = {}
-  accountsWithBalance.forEach(a => {
-    const cur = a.currency || 'GHC'
+  accountsWithBalance
+  .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
+  .forEach(a => {
+    const cur = a.currency || 'GHS'
     totalAccountBalanceByCurrency[cur] = (totalAccountBalanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
 
@@ -1936,6 +2135,18 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         />
       </div>
 
+      {/* Financial Health Score — compact overview blending Savings Rate,
+          Budget Adherence, Debt Ratio, Emergency Fund, and Net Worth Growth
+          into one score. */}
+      <FinancialHealthScore
+        accountsWithBalance={accountsWithBalance}
+        budgetData={budgetData}
+        savingsRate={savingsRate}
+        monthlySeries={monthlyByCurrency[currency] || []}
+        currency={currency}
+        theme={theme}
+      />
+
       {/* Total Account Balance — sum of every account's actual balance, including opening balances.
           Shown separately from Net Balance since they measure different things: this card reflects
           what's really sitting in your wallets right now; Net Balance reflects income minus expenses. */}
@@ -1955,9 +2166,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           {Object.entries(totalAccountBalanceByCurrency).map(([cur, bal]) => (
             <KPICard key={cur} label={`Total Account Balance (${cur})`} colorClass="kpi-blue" icon={Wallet2}
               value={formatCurrency(bal, cur)}
-              sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
+              sub={`Across ${accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net && (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
-              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
+              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net && (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
           ))}
         </div>

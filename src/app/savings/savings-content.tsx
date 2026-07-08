@@ -856,7 +856,7 @@ export function SavingsContent({ initialGoals, initialAccounts = [], incomes = [
         <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
         <SelectContent>
         <SelectItem value="none">No account</SelectItem>
-        {accountsWithBalance.map(a => <SelectItem key={a.id} value={a.id}>{a.name} — {formatCurrency(a.balance ?? 0, a.currency || 'GHS')}</SelectItem>)}
+        {accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net).map(a => <SelectItem key={a.id} value={a.id}>{a.name} — {formatCurrency(a.balance ?? 0, a.currency || 'GHS')}</SelectItem>)}
       </SelectContent>
       </Select>
         <p className="text-xs text-muted-foreground">If selected, records an expense in that account.</p>

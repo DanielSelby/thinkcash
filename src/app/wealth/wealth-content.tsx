@@ -493,7 +493,11 @@ export function WealthContent({
   const totalPhysical = useMemo(() => activeAssets.reduce((s, a) => s + toGHS(a), 0), [activeAssets])
   // Cash & Liquid total now comes from real accounts, converted to GHS via each
   // account's own exchange_rate — same live numbers My Accounts shows.
-  const totalLiquid = useMemo(() => accountsWithBalance.reduce((s, a) => s + accountToGHS(a), 0), [accountsWithBalance])
+  const totalLiquid = useMemo(() =>
+    accountsWithBalance
+      .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
+      .reduce((s, a) => s + accountToGHS(a), 0),
+  [accountsWithBalance])
   const totalAssets = totalPhysical + totalLiquid
   const totalInvested    = useMemo(() => investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), [investments])
   const totalDebts       = useMemo(() => debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), [debts])
@@ -958,7 +962,7 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
         <KPICard label="Physical Assets" value={fmt(totalPhysical)} sub={`${activeAssets.length} items`}
           colorClass="" icon={Landmark} accentColor={SECTION_COLORS.asset.bg}
           tooltip={activeAssets.map(a => `${a.name}: ${fmt(Number(a.current_value ?? 0))}`).join('\n') || 'No physical assets yet'} />
-        <KPICard label="Cash & Liquid" value={fmt(totalLiquid)} sub={`${accountsWithBalance.length} account(s)`}
+        <KPICard label="Cash & Liquid" value={fmt(totalLiquid)} sub={`${accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net).length} account(s)`}
           colorClass="" icon={Banknote} accentColor="#059669"
           tooltip={accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency || 'GHS')}`).join('\n') || 'No accounts yet'} />
         <KPICard label="Investments" value={fmt(totalInvested)} sub={investmentGain >= 0 ? `+${fmt(investmentGain)} gain` : `${fmt(investmentGain)} loss`}
@@ -1006,10 +1010,12 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
           how Net Worth converts foreign cash into GHS. */}
       {accountsWithBalance.length > 0 && (() => {
         const liquidByCurrency: Record<string, number> = {}
-        accountsWithBalance.forEach(a => {
-          const cur = a.currency || 'GHS'
-          liquidByCurrency[cur] = (liquidByCurrency[cur] || 0) + Number(a.balance ?? 0)
-        })
+        accountsWithBalance
+          .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
+          .forEach(a => {
+            const cur = a.currency || 'GHS'
+            liquidByCurrency[cur] = (liquidByCurrency[cur] || 0) + Number(a.balance ?? 0)
+          })
         return (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -2005,7 +2011,7 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
             <p className="text-sm text-muted-foreground text-center py-6">No accounts yet</p>
           ) : (
             <div className="space-y-1.5">
-              {accountsWithBalance.map(a => {
+              {accountsWithBalance.filter(a => !(a as any).is_custody && !(a as any).exclude_from_net).map(a => {
                 const typeInfo = [
                   { value: 'bank', icon: Building2 },
                   { value: 'mobile_money', icon: PhoneIcon },
