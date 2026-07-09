@@ -7,7 +7,7 @@ import {
   RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
-  HeartPulse, CreditCard, ShieldCheck, ArrowRight,
+  HeartPulse, CreditCard, ShieldCheck, ArrowRight, Info, ArrowUp, ArrowDown, BarChart3,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -21,18 +21,18 @@ import { formatCurrency } from '@/lib/utils'
 import { KPICard } from '@/components/ui/kpi-card'
 
 interface Props {
-  accounts:            any[]
-  transfers:           any[]
-  incomes:             any[]
-  expenses:            any[]
-  budgets:             any[]
-  goals:               any[]
-  profile:             any
+  accounts:  any[]
+  transfers: any[]
+  incomes:   any[]
+  expenses:  any[]
+  budgets:   any[]
+  goals:     any[]
+  profile:   any
   custodyTransactions?: any[]
-  assets?:             any[]
-  investments?:        any[]
-  debts?:              any[]
-  loans?:              any[]
+  assets?: any[]
+  investments?: any[]
+  debts?: any[]
+  loans?: any[]
 }
 
 const MONTHS = [
@@ -996,26 +996,17 @@ function FlipAccountCard({
   )
 }
 
-// ── Cash Flow Waterfall Chart ─────────────────────────────────────────────
-// Visualizes Opening Balance → (+ income by category) → (– expenses by
-// category) → Closing Balance as a floating "waterfall" bar chart. Each bar
-// sits on an invisible `base` segment so it appears to float at the right
-// height; a stepped light-gray line traces the running balance across bars
-// as a connector. Deliberately scoped to income & expenses only (no
-// transfers/custody) to match the stated purpose: explain how money flows
-// in and out, not reconcile every ledger movement.
-const WATERFALL_COLORS = {
-  opening: '#374151',
-  income:  '#22C55E',
-  expense: '#EF4444',
-  closing: '#3B82F6',
-  connector: '#D1D5DB',
-}
+// ── Cash Flow Diverging Chart ─────────────────────────────────────────────
+// Each bar is that period's net cash flow (inflow − outflow): green and
+// rising above the zero line when net-positive, red and dropping below it
+// when net-negative. Hovering a bar reveals the full inflow/outflow split
+// behind that net figure; clicking a bar reveals the actual transactions
+// behind it. Deliberately income/expense only (no transfers/custody), same
+// scoping choice as the rest of this dashboard's cash-flow features.
+type CfDateFilter = 'today' | 'week' | 'month' | 'lastMonth' | 'year' | 'custom'
+type CfAccountFilter = 'all' | 'bank' | 'mobile_money' | 'cash' | 'investment' | 'credit_card'
 
-type WfDateFilter = 'today' | 'week' | 'month' | 'year' | 'custom'
-type WfAccountFilter = 'all' | 'bank' | 'mobile_money' | 'cash' | 'investment' | 'credit_card'
-
-const WF_ACCOUNT_FILTERS: { value: WfAccountFilter; label: string }[] = [
+const CF_ACCOUNT_FILTERS: { value: CfAccountFilter; label: string }[] = [
   { value: 'all',          label: 'All Accounts'  },
   { value: 'bank',         label: 'Bank'          },
   { value: 'mobile_money', label: 'Mobile Money'  },
@@ -1037,7 +1028,7 @@ function weekRange(d: Date): [Date, Date] {
   return [monday, sunday]
 }
 
-function CashFlowWaterfall({
+function CashFlowDiverging({
   accounts, incomes, expenses, currency, theme,
 }: {
   accounts: any[]
@@ -1046,32 +1037,51 @@ function CashFlowWaterfall({
   currency: string
   theme: any
 }) {
-  const [dateFilter,    setDateFilter]    = useState<WfDateFilter>('month')
+  const [dateFilter,    setDateFilter]    = useState<CfDateFilter>('month')
   const [customFrom,    setCustomFrom]    = useState('')
   const [customTo,      setCustomTo]      = useState('')
-  const [accountFilter, setAccountFilter] = useState<WfAccountFilter>('all')
+  const [accountFilter, setAccountFilter] = useState<CfAccountFilter>('all')
+  const [showInflow,    setShowInflow]    = useState(true)
+  const [showOutflow,   setShowOutflow]   = useState(true)
+  const [selectedBucket, setSelectedBucket] = useState<{ label: string; start: string; end: string } | null>(null)
 
   const fmt = (n: number) => formatCurrency(n, currency)
   const shortFmt = (v: number) => {
-    if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
-    if (Math.abs(v) >= 1_000)     return `${(v / 1_000).toFixed(0)}k`
-    return String(Math.round(v))
+    const sign = v < 0 ? '-' : ''
+    const av = Math.abs(v)
+    if (av >= 1_000_000) return `${sign}${(av / 1_000_000).toFixed(1)}M`
+    if (av >= 1_000)     return `${sign}${(av / 1_000).toFixed(0)}K`
+    return `${sign}${Math.round(av)}`
   }
 
+  const wfAccounts = useMemo(
+    () => accounts.filter(a => accountFilter === 'all' || a.type === accountFilter),
+    [accounts, accountFilter],
+  )
+  const wfAccountIds = useMemo(() => new Set(wfAccounts.map(a => a.id)), [wfAccounts])
+  const scopedIncomes  = useMemo(() => incomes.filter(r => wfAccountIds.has(r.account_id)),  [incomes, wfAccountIds])
+  const scopedExpenses = useMemo(() => expenses.filter(r => wfAccountIds.has(r.account_id)), [expenses, wfAccountIds])
+
   // ── Resolve the active date range ───────────────────────────────────
-  const { rangeStart, rangeEnd, rangeLabel } = useMemo(() => {
+  const { rangeStart, rangeEnd, rangeLabel, granularity } = useMemo(() => {
     const now = new Date()
     const todayStr = toISODate(now)
-    if (dateFilter === 'today') return { rangeStart: todayStr, rangeEnd: todayStr, rangeLabel: 'Today' }
+    if (dateFilter === 'today') return { rangeStart: todayStr, rangeEnd: todayStr, rangeLabel: 'Today', granularity: 'day' as const }
     if (dateFilter === 'week') {
       const [mon, sun] = weekRange(now)
-      return { rangeStart: toISODate(mon), rangeEnd: toISODate(sun), rangeLabel: 'This Week' }
+      return { rangeStart: toISODate(mon), rangeEnd: toISODate(sun), rangeLabel: 'This Week', granularity: 'day' as const }
+    }
+    if (dateFilter === 'lastMonth') {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0)
+      return { rangeStart: toISODate(first), rangeEnd: toISODate(last), rangeLabel: 'Last Month', granularity: 'day' as const }
     }
     if (dateFilter === 'year') {
       return {
         rangeStart: `${now.getFullYear()}-01-01`,
         rangeEnd:   `${now.getFullYear()}-12-31`,
         rangeLabel: 'This Year',
+        granularity: 'month' as const,
       }
     }
     if (dateFilter === 'custom') {
@@ -1079,190 +1089,234 @@ function CashFlowWaterfall({
         rangeStart: customFrom || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`,
         rangeEnd:   customTo   || todayStr,
         rangeLabel: 'Custom Range',
+        granularity: 'day' as const,
       }
     }
-    // month (default)
     const first = new Date(now.getFullYear(), now.getMonth(), 1)
     const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    return { rangeStart: toISODate(first), rangeEnd: toISODate(last), rangeLabel: 'This Month' }
+    return { rangeStart: toISODate(first), rangeEnd: toISODate(last), rangeLabel: 'This Month', granularity: 'day' as const }
   }, [dateFilter, customFrom, customTo])
 
-  // ── Accounts matching the type filter ────────────────────────────────
-  const wfAccounts = useMemo(
-    () => accounts.filter(a => accountFilter === 'all' || a.type === accountFilter),
-    [accounts, accountFilter],
-  )
-  const wfAccountIds = useMemo(() => new Set(wfAccounts.map(a => a.id)), [wfAccounts])
-
-  const periodIncomes = useMemo(
-    () => incomes.filter(r => wfAccountIds.has(r.account_id) && r.date >= rangeStart && r.date <= rangeEnd),
-    [incomes, wfAccountIds, rangeStart, rangeEnd],
-  )
-  const periodExpenses = useMemo(
-    () => expenses.filter(r => wfAccountIds.has(r.account_id) && r.date >= rangeStart && r.date <= rangeEnd),
-    [expenses, wfAccountIds, rangeStart, rangeEnd],
-  )
-
-  // Opening balance = opening_balance + everything before rangeStart, for
-  // the accounts currently in scope. Income/expenses only, by design.
-  const openingBalance = useMemo(() => wfAccounts.reduce((sum, acc) => {
-    const priorIncome  = incomes.filter(r => r.account_id === acc.id && r.date < rangeStart).reduce((s, r) => s + Number(r.amount), 0)
-    const priorExpense = expenses.filter(r => r.account_id === acc.id && r.date < rangeStart).reduce((s, r) => s + Number(r.amount), 0)
-    return sum + Number(acc.opening_balance ?? 0) + priorIncome - priorExpense
-  }, 0), [wfAccounts, incomes, expenses, rangeStart])
-
-  // ── Build the waterfall steps ────────────────────────────────────────
-  const { data, totalIncome, totalExpense, closingBalance } = useMemo(() => {
-    const byCat = (rows: any[]) => {
-      const map: Record<string, number> = {}
-      rows.forEach(r => { map[r.category || 'Other'] = (map[r.category || 'Other'] || 0) + Number(r.amount) })
-      return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-    }
-
-    const MAX_CATS = 5
-    const bucket = (cats: { name: string; value: number }[], otherLabel: string) => {
-      if (cats.length <= MAX_CATS) return cats
-      const top = cats.slice(0, MAX_CATS)
-      const rest = cats.slice(MAX_CATS).reduce((s, c) => s + c.value, 0)
-      return rest > 0 ? [...top, { name: otherLabel, value: rest }] : top
-    }
-
-    const incomeCats  = bucket(byCat(periodIncomes),  'Other Income')
-    const expenseCats = bucket(byCat(periodExpenses), 'Other Expenses')
-    const totalInc = incomeCats.reduce((s, c) => s + c.value, 0)
-    const totalExp = expenseCats.reduce((s, c) => s + c.value, 0)
-
-    let running = openingBalance
-    const steps: any[] = []
-
-    const push = (name: string, type: keyof typeof WATERFALL_COLORS, start: number, end: number, pct: number | null) => {
-      const base = Math.min(start, end)
-      const size = Math.abs(end - start)
-      steps.push({ name, type, base, size, delta: end - start, runningAfter: end, pct })
-    }
-
-    push('Opening Balance', 'opening', 0, openingBalance, null)
-
-    incomeCats.forEach(cat => {
-      const start = running
-      running += cat.value
-      push(cat.name, 'income', start, running, totalInc > 0 ? (cat.value / totalInc) * 100 : 0)
+  // ── Bucketed inflow/outflow/net for the chart ────────────────────────
+  const buckets = useMemo(() => {
+    const map: Record<string, { date: string; label: string; inflow: number; outflow: number }> = {}
+    const keyFor = (dateStr: string) => granularity === 'month' ? dateStr.slice(0, 7) : dateStr
+    scopedIncomes.forEach(r => {
+      if (r.date < rangeStart || r.date > rangeEnd) return
+      const k = keyFor(r.date)
+      if (!map[k]) map[k] = { date: k, label: '', inflow: 0, outflow: 0 }
+      map[k].inflow += Number(r.amount)
     })
-
-    expenseCats.forEach(cat => {
-      const start = running
-      running -= cat.value
-      push(cat.name, 'expense', start, running, totalExp > 0 ? (cat.value / totalExp) * 100 : 0)
+    scopedExpenses.forEach(r => {
+      if (r.date < rangeStart || r.date > rangeEnd) return
+      const k = keyFor(r.date)
+      if (!map[k]) map[k] = { date: k, label: '', inflow: 0, outflow: 0 }
+      map[k].outflow += Number(r.amount)
     })
+    const sorted = Object.values(map).sort((a, b) => a.date.localeCompare(b.date))
+    return sorted.map(b => ({
+      ...b,
+      label: granularity === 'month'
+        ? new Date(b.date + '-01').toLocaleDateString('en-GH', { month: 'short' })
+        : new Date(b.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' }),
+      net: b.inflow - b.outflow,
+    }))
+  }, [scopedIncomes, scopedExpenses, rangeStart, rangeEnd, granularity])
 
-    push('Closing Balance', 'closing', 0, running, null)
+  const chartData = useMemo(() => buckets.map(b => ({
+    ...b,
+    display: b.net >= 0 ? (showInflow ? b.net : 0) : (showOutflow ? b.net : 0),
+  })), [buckets, showInflow, showOutflow])
 
-    return { data: steps, totalIncome: totalInc, totalExpense: totalExp, closingBalance: running }
-  }, [periodIncomes, periodExpenses, openingBalance])
+  const totalInflow  = useMemo(() => buckets.reduce((s, b) => s + b.inflow, 0), [buckets])
+  const totalOutflow = useMemo(() => buckets.reduce((s, b) => s + b.outflow, 0), [buckets])
+  const netCashFlow   = totalInflow - totalOutflow
 
-  const netChange = closingBalance - openingBalance
+  // ── MoM / YoY — fixed calendar comparisons, independent of the active
+  // date filter above (this mirrors what "Month over Month"/"Year over
+  // Year" conventionally mean, rather than comparing arbitrary ranges). ──
+  const { momPct, yoyPct, sparkline } = useMemo(() => {
+    const now = new Date()
+    const netFor = (start: Date, end: Date) => {
+      const s = toISODate(start), e = toISODate(end)
+      const inc = scopedIncomes.filter(r => r.date >= s && r.date <= e).reduce((sum, r) => sum + Number(r.amount), 0)
+      const exp = scopedExpenses.filter(r => r.date >= s && r.date <= e).reduce((sum, r) => sum + Number(r.amount), 0)
+      return inc - exp
+    }
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const thisMonthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const lastMonthEnd   = new Date(now.getFullYear(), now.getMonth(), 0)
+    const curMonthNet  = netFor(thisMonthStart, thisMonthEnd)
+    const prevMonthNet = netFor(lastMonthStart, lastMonthEnd)
+    const momPct = prevMonthNet !== 0 ? ((curMonthNet - prevMonthNet) / Math.abs(prevMonthNet)) * 100 : (curMonthNet > 0 ? 100 : curMonthNet < 0 ? -100 : 0)
 
-  const CustomWfTooltip = ({ active, payload }: any) => {
+    const thisYearNet = netFor(new Date(now.getFullYear(), 0, 1), new Date(now.getFullYear(), 11, 31))
+    const lastYearNet = netFor(new Date(now.getFullYear() - 1, 0, 1), new Date(now.getFullYear() - 1, 11, 31))
+    const yoyPct = lastYearNet !== 0 ? ((thisYearNet - lastYearNet) / Math.abs(lastYearNet)) * 100 : (thisYearNet > 0 ? 100 : thisYearNet < 0 ? -100 : 0)
+
+    // last 14 days of net cash flow, for the sparkline — always "recent
+    // momentum" regardless of whatever range is selected above
+    const spark: { date: string; net: number }[] = []
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(now.getDate() - i)
+      const s = toISODate(d)
+      const inc = scopedIncomes.filter(r => r.date === s).reduce((sum, r) => sum + Number(r.amount), 0)
+      const exp = scopedExpenses.filter(r => r.date === s).reduce((sum, r) => sum + Number(r.amount), 0)
+      spark.push({ date: s, net: inc - exp })
+    }
+    return { momPct, yoyPct, sparkline: spark }
+  }, [scopedIncomes, scopedExpenses])
+
+  // ── Transactions behind the clicked bar ───────────────────────────────
+  const selectedTransactions = useMemo(() => {
+    if (!selectedBucket) return []
+    const rows = [
+      ...scopedIncomes.filter(r => r.date >= selectedBucket.start && r.date <= selectedBucket.end).map(r => ({ ...r, _type: 'income' as const })),
+      ...scopedExpenses.filter(r => r.date >= selectedBucket.start && r.date <= selectedBucket.end).map(r => ({ ...r, _type: 'expense' as const })),
+    ]
+    return rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [selectedBucket, scopedIncomes, scopedExpenses])
+
+  const handleBarClick = (data: any) => {
+    if (!data) return
+    const start = granularity === 'month' ? `${data.date}-01` : data.date
+    const end = granularity === 'month'
+      ? toISODate(new Date(Number(data.date.slice(0, 4)), Number(data.date.slice(5, 7)), 0))
+      : data.date
+    setSelectedBucket(p => p?.start === start ? null : { label: data.label, start, end })
+  }
+
+  const CfTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null
     const p = payload[0]?.payload
     if (!p) return null
-    const color = (WATERFALL_COLORS as any)[p.type]
-    const signed = p.type === 'expense' ? -Math.abs(p.delta) : p.delta
     return (
-      <div className="bg-white dark:bg-neutral-900 border border-border dark:border-neutral-700 rounded-xl shadow-lg p-3 text-xs min-w-[190px] space-y-1.5">
-        <p className="font-semibold text-sm flex items-center gap-2 text-foreground dark:text-neutral-100">
-          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-          {p.name}
-        </p>
-        <div className="flex justify-between gap-4">
-          <span className="text-muted-foreground dark:text-neutral-400">Amount</span>
-          <span className="font-semibold tabular-nums" style={{ color }}>
-            {p.type === 'income' ? '+' : p.type === 'expense' ? '' : ''}{fmt(signed)}
-          </span>
-        </div>
-        <div className="flex justify-between gap-4">
-          <span className="text-muted-foreground dark:text-neutral-400">Running Balance</span>
-          <span className="font-semibold tabular-nums text-foreground dark:text-neutral-100">{fmt(p.runningAfter)}</span>
-        </div>
-        {p.pct !== null && (
-          <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground dark:text-neutral-400">% Contribution</span>
-            <span className="font-semibold tabular-nums text-foreground dark:text-neutral-100">{p.pct.toFixed(1)}%</span>
-          </div>
-        )}
+      <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[170px] space-y-1.5">
+        <p className="font-semibold text-sm border-b border-border pb-1.5">{p.label}</p>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Inflow</span><span className="font-semibold text-green-600 tabular-nums">+{fmt(p.inflow)}</span></div>
+        <div className="flex justify-between gap-4"><span className="text-muted-foreground">Outflow</span><span className="font-semibold text-red-500 tabular-nums">-{fmt(p.outflow)}</span></div>
+        <div className="flex justify-between gap-4 border-t border-border pt-1.5"><span className="text-muted-foreground font-medium">Net Cash Flow</span><span className={`font-bold tabular-nums ${p.net >= 0 ? 'text-green-600' : 'text-red-500'}`}>{p.net >= 0 ? '+' : ''}{fmt(p.net)}</span></div>
+        <p className="text-muted-foreground/70 pt-1">Click bar to view transactions</p>
       </div>
     )
   }
 
-  const dateFilterOptions: { id: WfDateFilter; label: string }[] = [
-    { id: 'today', label: 'Today'      },
-    { id: 'week',  label: 'This Week'  },
-    { id: 'month', label: 'This Month' },
-    { id: 'year',  label: 'This Year'  },
-    { id: 'custom', label: 'Custom'    },
+  const dateFilterOptions: { id: CfDateFilter; label: string }[] = [
+    { id: 'today',     label: 'Today'      },
+    { id: 'week',      label: 'This Week'  },
+    { id: 'month',     label: 'This Month' },
+    { id: 'lastMonth', label: 'Last Month' },
+    { id: 'year',      label: 'This Year'  },
+    { id: 'custom',    label: 'Custom Date' },
   ]
 
   return (
-    <Card className="rounded-xl shadow-sm hover:shadow-md bg-white dark:bg-neutral-900 dark:border-neutral-800 transition-shadow duration-200">
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <CardTitle className="text-sm font-semibold tracking-tight dark:text-neutral-100">
-              Cash Flow Waterfall
-            </CardTitle>
-            <p className="text-xs text-muted-foreground dark:text-neutral-400 mt-0.5">
-              {rangeLabel} · {fmt(openingBalance)} → {fmt(closingBalance)}
-              <span className={netChange >= 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-red-500 dark:text-red-400 font-medium'}>
-                {' '}({netChange >= 0 ? '+' : ''}{fmt(netChange)})
-              </span>
-            </p>
+    <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
+      <CardContent className="p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+          <div className="group relative flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold tracking-tight">Cash Flow</h3>
+            <Info className="w-3.5 h-3.5 text-muted-foreground" />
+            <div className="pointer-events-none absolute left-0 top-full mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-neutral-900 text-white text-[10px] leading-relaxed rounded-lg px-2.5 py-1.5 shadow-lg z-10 w-56">
+              Each bar is that period's net cash flow — green when income exceeded expenses, red when it didn't.
+            </div>
           </div>
-        </div>
-
-        {/* Date filter pills */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          {dateFilterOptions.map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => setDateFilter(opt.id)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors border ${
-                dateFilter === opt.id
-                  ? 'text-white border-transparent'
-                  : 'border-border dark:border-neutral-700 text-muted-foreground dark:text-neutral-400 hover:text-foreground dark:hover:text-neutral-200'
-              }`}
-              style={dateFilter === opt.id ? { background: theme.colors.primary } : {}}
-            >
-              {opt.id === 'custom' && <Calendar className="w-3 h-3 inline mr-1 -mt-0.5" />}
-              {opt.label}
-            </button>
-          ))}
+          <select
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value as CfDateFilter)}
+            className="h-8 pl-3 pr-7 rounded-lg border border-border text-xs font-semibold bg-white focus:outline-none focus:ring-1 cursor-pointer appearance-none"
+          >
+            {dateFilterOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+          </select>
         </div>
 
         {dateFilter === 'custom' && (
-          <div className="flex flex-wrap items-end gap-2 mt-2">
+          <div className="flex flex-wrap items-end gap-2 mb-4">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-muted-foreground dark:text-neutral-400 font-semibold uppercase tracking-wide">From</label>
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">From</label>
               <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                className="h-8 px-2 rounded-lg border border-border dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 text-xs bg-white focus:outline-none focus:ring-1" />
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] text-muted-foreground dark:text-neutral-400 font-semibold uppercase tracking-wide">To</label>
+              <label className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">To</label>
               <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                className="h-8 px-2 rounded-lg border border-border dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 text-xs bg-white focus:outline-none focus:ring-1" />
+                className="h-8 px-2 rounded-lg border border-border text-xs bg-white focus:outline-none focus:ring-1" />
             </div>
           </div>
         )}
 
-        {/* Account type filter pills */}
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          {WF_ACCOUNT_FILTERS.map(opt => (
+        {/* Net Cash Flow + MoM/YoY + sparkline */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className={`text-2xl sm:text-3xl font-bold tabular-nums leading-none ${netCashFlow >= 0 ? 'text-foreground' : 'text-red-500'}`}>
+              {fmt(netCashFlow)}
+            </p>
+            <p className={`text-xs font-semibold mt-1 ${netCashFlow >= 0 ? 'text-green-600' : 'text-red-500'}`}>Net Cash Flow</p>
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className={`flex items-center gap-0.5 text-[11px] font-semibold ${momPct >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {momPct >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                {Math.abs(momPct).toFixed(1)}% <span className="text-muted-foreground font-normal">MoM</span>
+              </span>
+              <span className={`flex items-center gap-0.5 text-[11px] font-semibold ${yoyPct >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {yoyPct >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                {Math.abs(yoyPct).toFixed(1)}% <span className="text-muted-foreground font-normal">YoY</span>
+              </span>
+            </div>
+          </div>
+          {/* Sparkline — last 14 days, always-recent regardless of filter */}
+          <div className="w-24 h-12 flex-shrink-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={sparkline} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gSpark" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={theme.colors.primary} stopOpacity={0.3} />
+                    <stop offset="95%" stopColor={theme.colors.primary} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="net" stroke={theme.colors.primary} strokeWidth={1.5} fill="url(#gSpark)" isAnimationActive dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Total Inflow / Total Outflow */}
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          <div className="rounded-lg border border-border p-2.5">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Total Inflow</p>
+            <p className="text-sm font-bold tabular-nums text-green-600 mt-0.5">+{fmt(totalInflow)}</p>
+          </div>
+          <div className="rounded-lg border border-border p-2.5">
+            <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Total Outflow</p>
+            <p className="text-sm font-bold tabular-nums text-red-500 mt-0.5">-{fmt(totalOutflow)}</p>
+          </div>
+        </div>
+
+        {/* Legend — click to toggle visibility */}
+        <div className="flex items-center gap-3 mt-4">
+          <button
+            onClick={() => setShowInflow(v => !v)}
+            className={`flex items-center gap-1.5 text-xs font-semibold transition-opacity ${showInflow ? 'opacity-100' : 'opacity-40'}`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Inflow
+          </button>
+          <button
+            onClick={() => setShowOutflow(v => !v)}
+            className={`flex items-center gap-1.5 text-xs font-semibold transition-opacity ${showOutflow ? 'opacity-100' : 'opacity-40'}`}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Outflow
+          </button>
+        </div>
+
+        {/* Account type filter */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          {CF_ACCOUNT_FILTERS.map(opt => (
             <button
               key={opt.value}
               onClick={() => setAccountFilter(opt.value)}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors border ${
-                accountFilter === opt.value
-                  ? 'text-white border-transparent'
-                  : 'border-border dark:border-neutral-700 text-muted-foreground dark:text-neutral-400 hover:text-foreground dark:hover:text-neutral-200'
+                accountFilter === opt.value ? 'text-white border-transparent' : 'border-border text-muted-foreground hover:text-foreground'
               }`}
               style={accountFilter === opt.value ? { background: theme.colors.accent } : {}}
             >
@@ -1270,58 +1324,68 @@ function CashFlowWaterfall({
             </button>
           ))}
         </div>
-      </CardHeader>
 
-      <CardContent>
-        {data.length <= 2 && totalIncome === 0 && totalExpense === 0 ? (
-          <div className="h-56 flex flex-col items-center justify-center gap-2 text-muted-foreground dark:text-neutral-400">
-            <Landmark className="w-8 h-8 opacity-20" />
+        {/* Chart */}
+        {chartData.length === 0 ? (
+          <div className="h-56 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <BarChart3 className="w-8 h-8 opacity-20" />
             <p className="text-sm">No income or expenses in this period</p>
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={data} margin={{ top: 16, right: 12, left: 0, bottom: 8 }}>
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={chartData} margin={{ top: 16, right: 8, left: 0, bottom: 8 }} barCategoryGap="30%">
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #f0f0f0)" vertical={false} />
               <XAxis
-                dataKey="name"
+                dataKey="label"
                 tick={{ fontSize: 10 }}
                 tickLine={false}
-                interval={0}
-                angle={data.length > 6 ? -25 : 0}
-                textAnchor={data.length > 6 ? 'end' : 'middle'}
-                height={data.length > 6 ? 50 : 30}
+                interval={chartData.length > 10 ? Math.ceil(chartData.length / 8) : 0}
               />
-              <YAxis tick={{ fontSize: 11 }} width={52} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomWfTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-              {/* invisible base — floats each bar at the right height */}
-              <Bar dataKey="base" stackId="wf" fill="transparent" isAnimationActive={false} />
-              {/* visible segment — colored per step type, animated on load */}
+              <YAxis tick={{ fontSize: 11 }} width={48} tickFormatter={shortFmt} axisLine={false} tickLine={false} />
+              <Tooltip content={<CfTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
               <Bar
-                dataKey="size" stackId="wf" radius={[4, 4, 4, 4]}
-                isAnimationActive animationDuration={900} animationEasing="ease-out"
+                dataKey="display" radius={[4, 4, 4, 4]} cursor="pointer"
+                isAnimationActive animationDuration={800} animationEasing="ease-out"
+                onClick={handleBarClick}
               >
-                {data.map((d, i) => (
-                  <Cell key={i} fill={(WATERFALL_COLORS as any)[d.type]} />
+                {chartData.map((d, i) => (
+                  <Cell key={i} fill={d.net >= 0 ? '#22C55E' : '#EF4444'} opacity={selectedBucket && selectedBucket.label !== d.label ? 0.45 : 1} />
                 ))}
               </Bar>
-              {/* connector — thin stepped line tracing the running balance */}
-              <Line
-                type="stepAfter" dataKey="runningAfter"
-                stroke={WATERFALL_COLORS.connector} strokeWidth={1.5}
-                dot={false} isAnimationActive animationDuration={900} animationEasing="ease-out"
-              />
-            </ComposedChart>
+            </BarChart>
           </ResponsiveContainer>
         )}
 
-        {/* Legend */}
-        <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-border dark:border-neutral-800 text-[11px] text-muted-foreground dark:text-neutral-400">
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.opening }} /> Opening Balance</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.income }} /> Income</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.expense }} /> Expenses</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: WATERFALL_COLORS.closing }} /> Closing Balance</span>
-        </div>
-        <p className="text-[10px] text-muted-foreground dark:text-neutral-500 mt-2 italic">
+        {/* Transactions for the clicked bar */}
+        {selectedBucket && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold">Transactions — {selectedBucket.label}</p>
+              <button onClick={() => setSelectedBucket(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {selectedTransactions.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-3">No transactions in this period</p>
+            ) : (
+              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                {selectedTransactions.map((r, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs py-1.5 border-b border-border/50 last:border-0">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{r.title || r.description || r.category || '—'}</p>
+                      <p className="text-[10px] text-muted-foreground">{new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}{r.category ? ` · ${r.category}` : ''}</p>
+                    </div>
+                    <span className={`font-semibold tabular-nums flex-shrink-0 ${r._type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
+                      {r._type === 'income' ? '+' : '−'}{fmt(Number(r.amount))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <p className="text-[10px] text-muted-foreground mt-3 italic">
           Reflects income and expenses only for the selected accounts — transfers between accounts aren't included.
         </p>
       </CardContent>
@@ -1481,7 +1545,7 @@ function FinancialHealthScore({
   )
 }
 
-export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [], assets = [], investments = [], debts = [], loans = [] }: Props) {
+export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
@@ -1730,48 +1794,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   // Net Worth — every account's balance (in its own currency) converted to
   // the primary currency using the same exchange-rate map as the income
   // breakdown, then summed into one blended figure for the KPI card.
- const netWorthConverted = useMemo(() =>
-  accountsWithBalance
-    .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
-    .reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
-  [accountsWithBalance, exchangeRateMap]
-)
-
-  // ── True Net Worth ────────────────────────────────────────────────────
-  // Cash & Liquid (from accountsWithBalance, converted to primary currency)
-  // + Physical Assets (non-sold, non-liquid, converted via their own exchange_rate)
-  // + Investments (current_value, assumed in primary currency)
-  // − Debts (remaining balance)
-  // − Loans (remaining balance)
-  // This mirrors exactly what the Net Worth Tracker page computes.
-  const trueNetWorth = useMemo(() => {
-    // Cash & liquid — live account balances
-    const liquidTotal = accountsWithBalance
-  .filter(a => !(a as any).is_custody && !(a as any).exclude_from_net)
-  .reduce((sum, a) => sum + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0)
-  
-    // Physical assets — exclude sold, disposed, donated, and migrated cash assets
-    const physicalTotal = assets
-      .filter(a =>
-        a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated' &&
-        !a.is_liquid && a.asset_type !== 'cash' && !a.migrated_to_account
-      )
-      .reduce((sum, a) => {
-        const cur  = a.currency || 'GHS'
-        const rate = cur === 'GHS' ? 1 : (Number(a.exchange_rate ?? 1))
-        return sum + Number(a.current_value ?? 0) * rate
-      }, 0)
-
-    // Investments — current value
-    const investmentTotal = investments.reduce((sum, i) =>
-      sum + Number(i.current_value ?? 0), 0)
-
-    // Liabilities
-    const debtTotal = debts.reduce((sum, d) => sum + Number(d.remaining ?? 0), 0)
-    const loanTotal = loans.reduce((sum, l) => sum + Number(l.remaining ?? 0), 0)
-
-    return liquidTotal + physicalTotal + investmentTotal - debtTotal - loanTotal
-  }, [accountsWithBalance, assets, investments, debts, loans, exchangeRateMap])
+  const netWorthConverted = useMemo(() =>
+    accountsWithBalance.reduce((sum, a) => sum + (a.balance ?? 0) * (exchangeRateMap[a.currency] ?? 1), 0),
+    [accountsWithBalance, exchangeRateMap]
+  )
 
   // True total: every currency's income converted to GHS using Net Worth rates.
   const grandTotalIncomeConverted = useMemo(() =>
@@ -2123,19 +2149,11 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         })()}
 
         <KPICard label="Net Worth" colorClass="kpi-blue" icon={Landmark}
-          value={formatCurrency(trueNetWorth, currency)}
-          sub={`Cash + Assets + Investments − Debts`}
+          value={formatCurrency(netWorthConverted, currency)}
+          sub={`${accountsWithBalance.length} account(s)`}
           accentColor="#0891b2"
-          topSource={trueNetWorth >= 0 ? 'Positive net worth ✓' : 'Liabilities exceed assets'}
-          tooltip={[
-            `Cash & Liquid: ${formatCurrency(accountsWithBalance.reduce((s, a) => s + Number(a.balance ?? 0) * (exchangeRateMap[a.currency || 'GHS'] ?? 1), 0), currency)}`,
-            `Physical Assets: ${formatCurrency(assets.filter(a => a.status !== 'sold' && a.status !== 'disposed' && a.status !== 'donated' && !a.is_liquid && a.asset_type !== 'cash' && !a.migrated_to_account).reduce((s, a) => s + Number(a.current_value ?? 0) * (a.currency === 'GHS' ? 1 : Number(a.exchange_rate ?? 1)), 0), currency)}`,
-            `Investments: ${formatCurrency(investments.reduce((s, i) => s + Number(i.current_value ?? 0), 0), currency)}`,
-            `Debts: −${formatCurrency(debts.reduce((s, d) => s + Number(d.remaining ?? 0), 0), currency)}`,
-            `Loans: −${formatCurrency(loans.reduce((s, l) => s + Number(l.remaining ?? 0), 0), currency)}`,
-            `───────────────`,
-            `Net Worth: ${formatCurrency(trueNetWorth, currency)}`,
-          ].join('\n')}
+          topSource={accountsWithBalance.some(a => a.currency !== currency) ? `Converted to ${currency}` : undefined}
+          tooltip={`Sum of every account's balance, converted to ${currency}\n${accountsWithBalance.map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, a.currency)}`).join('\n')}`}
         />
       </div>
 
@@ -2251,13 +2269,19 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
-            <CardTitle className="text-sm font-semibold tracking-tight">
-              {chartSeries === 'both'
-                ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
-                : chartSeries === 'income'
-                ? `Income Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`
-                : `Expense Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`}
-            </CardTitle>
+            <div className="group relative flex items-center gap-1.5">
+              <CardTitle className="text-sm font-semibold tracking-tight">
+                {chartSeries === 'both'
+                  ? `Income vs Expenses by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                  : chartSeries === 'income'
+                  ? `Income Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`
+                  : `Expense Trend by ${chartView === 'monthly' ? 'Month' : 'Day'}`}
+              </CardTitle>
+              <Info className="w-3.5 h-3.5 text-muted-foreground" />
+              <div className="pointer-events-none absolute left-0 top-full mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-neutral-900 text-white text-[10px] leading-relaxed rounded-lg px-2.5 py-1.5 shadow-lg z-10 w-56">
+                Totals reflect the current filter panel above, in {currency} only.
+              </div>
+            </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
               {/* Series toggle */}
               <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
@@ -2300,7 +2324,31 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
+
+          {/* Big numbers + legend — same visual language as the reference
+              line chart, layered on top of the existing toggle filters
+              rather than replacing them. */}
+          <div className="flex items-center gap-3 flex-wrap mt-1">
+            <p className="text-xl sm:text-2xl font-bold tabular-nums">
+              {chartSeries !== 'expense' && <span className="text-green-600">{fmt(totalIncome)}</span>}
+              {chartSeries === 'both' && <span className="text-muted-foreground font-medium text-sm mx-1.5">vs</span>}
+              {chartSeries !== 'income' && <span className="text-red-500">{fmt(totalExpense)}</span>}
+            </p>
+          </div>
+          <div className="flex items-center gap-3 mt-1">
+            {chartSeries !== 'expense' && (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Income
+              </span>
+            )}
+            {chartSeries !== 'income' && (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Expenses
+              </span>
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground mt-1">
             {chartData.length === 0 ? (hasMixedIncome ? `No ${currency} transactions yet` : 'No transactions yet') : `${chartData.length} ${chartView === 'monthly' ? 'month(s)' : 'day(s)'} · ${currency} only`}
           </p>
         </CardHeader>
@@ -2441,9 +2489,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </CardContent>
       </Card>
 
-      {/* Financial Health gauge + Cash Flow Waterfall — side by side on
-          larger screens so these two sit together as a row instead of each
-          claiming the dashboard's full width. ─────────────────────────── */}
+      {/* Financial Health gauge + Cash Flow diverging chart — side by side
+          on larger screens so these two sit together as a row instead of
+          each claiming the dashboard's full width. ───────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <FinancialHealthScore
           accountsWithBalance={accountsWithBalance}
@@ -2454,7 +2502,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           theme={theme}
         />
 
-        <CashFlowWaterfall
+        <CashFlowDiverging
           accounts={accounts}
           incomes={incomes}
           expenses={expenses}
