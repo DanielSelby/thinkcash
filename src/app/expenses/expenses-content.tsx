@@ -820,6 +820,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
             </CardContent>
           </Card>
 
+          
           {/* Category Share donut */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
@@ -827,61 +828,111 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
               <p className="text-xs text-muted-foreground">Click a slice to zoom in</p>
             </CardHeader>
             <CardContent>
-              <div className="relative w-full mx-auto" style={{ maxWidth: 320 }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={expenseByCategory}
-                      dataKey="value" nameKey="name"
-                      cx="50%" cy="50%"
-                      innerRadius="55%" outerRadius="80%"
-                      paddingAngle={2}
-                      labelLine={false}
-                      label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
-                      animationDuration={500}
-                      onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
-                    >
-                      {expenseByCategory.map((_, i) => (
-                        <Cell key={i}
-                          fill={
-                            activeCategoryIndex !== null && activeCategoryIndex !== i
-                              ? chartColors[i % chartColors.length] + '55'
-                              : chartColors[i % chartColors.length]
-                          }
-                          stroke="#fff" strokeWidth={2}
-                          style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any, name: any) => [formatCurrency(Number(v)), name]} />
-                    <Legend layout="horizontal" align="center" verticalAlign="bottom"
-                      iconSize={9} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
 
-                <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
-                  style={{ top: 0, height: 'calc(100% - 40px)' }}>
-                  <div className="text-center leading-tight">
-                    <p className="text-[10px] sm:text-xs text-muted-foreground font-semibold uppercase tracking-wide">
-                      {activeCategoryIndex !== null
-                        ? expenseByCategory[activeCategoryIndex]?.name
-                        : 'Total'}
-                    </p>
-                    <p className="text-lg sm:text-xl font-bold tabular-nums mt-0.5 text-destructive">
-                      {activeCategoryIndex !== null
-                        ? formatCurrency(expenseByCategory[activeCategoryIndex]?.value ?? 0)
-                        : formatCurrency(grandTotalFiltered)}
-                    </p>
-                    {activeCategoryIndex !== null ? (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        {grandTotalFiltered > 0
-                          ? Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)
-                          : 0}% of total
+                {/* Donut chart */}
+                <div className="relative flex-shrink-0" style={{ width: 220, height: 220 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expenseByCategory}
+                        dataKey="value" nameKey="name"
+                        cx="50%" cy="50%"
+                        innerRadius="52%" outerRadius="78%"
+                        paddingAngle={2}
+                        labelLine={false}
+                        label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
+                        animationDuration={500}
+                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                      >
+                        {expenseByCategory.map((_, i) => (
+                          <Cell key={i}
+                            fill={
+                              activeCategoryIndex !== null && activeCategoryIndex !== i
+                                ? chartColors[i % chartColors.length] + '40'
+                                : chartColors[i % chartColors.length]
+                            }
+                            stroke="#fff" strokeWidth={2}
+                            style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any, name: any) => [formatCurrency(Number(v)), name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* Center label */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center leading-tight">
+                      <p className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
+                        {activeCategoryIndex !== null
+                          ? expenseByCategory[activeCategoryIndex]?.name
+                          : 'Total'}
                       </p>
-                    ) : hasMixedExpenseCurrency ? (
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Blended across currencies</p>
-                    ) : null}
+                      <p className="text-sm font-bold tabular-nums mt-0.5 text-destructive">
+                        {activeCategoryIndex !== null
+                          ? formatCurrency(expenseByCategory[activeCategoryIndex]?.value ?? 0)
+                          : formatCurrency(grandTotalFiltered)}
+                      </p>
+                      {activeCategoryIndex !== null ? (
+                        <p className="text-[9px] text-muted-foreground mt-0.5">
+                          {grandTotalFiltered > 0
+                            ? Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)
+                            : 0}% of total
+                        </p>
+                      ) : hasMixedExpenseCurrency ? (
+                        <p className="text-[9px] text-muted-foreground mt-0.5">Blended</p>
+                      ) : null}
+                    </div>
                   </div>
+                </div>
+
+                {/* Breakdown list */}
+                <div className="flex-1 w-full space-y-1.5 min-w-0">
+                  {expenseByCategory.map((cat, i) => {
+                    const pct     = grandTotalFiltered > 0 ? Math.round((cat.value / grandTotalFiltered) * 100) : 0
+                    const color   = chartColors[i % chartColors.length]
+                    const isActive = activeCategoryIndex === i
+                    return (
+                      <button
+                        key={cat.name}
+                        onClick={() => setActiveCategoryIndex(p => p === i ? null : i)}
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all text-left ${
+                          isActive ? 'bg-muted/60 ring-1 ring-border' : 'hover:bg-muted/40'
+                        } ${
+                          activeCategoryIndex !== null && !isActive ? 'opacity-40' : 'opacity-100'
+                        }`}
+                      >
+                        {/* Colour dot */}
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+
+                        {/* Category name */}
+                        <span className="text-xs font-medium flex-1 truncate">{cat.name}</span>
+
+                        {/* Percent */}
+                        <span className="text-[10px] font-semibold text-muted-foreground w-8 text-right flex-shrink-0">
+                          {pct}%
+                        </span>
+
+                        {/* Amount */}
+                        <span className="text-xs font-bold tabular-nums flex-shrink-0" style={{ color }}>
+                          {formatCurrency(cat.value)}
+                        </span>
+                      </button>
+                    )
+                  })}
+
+                  {/* Total row */}
+                  {expenseByCategory.length > 0 && (
+                    <div className="flex items-center gap-2.5 px-2.5 py-1.5 border-t border-border mt-1 pt-2">
+                      <span className="w-2.5 h-2.5 flex-shrink-0" />
+                      <span className="text-xs font-semibold flex-1">Total</span>
+                      <span className="text-[10px] font-semibold text-muted-foreground w-8 text-right flex-shrink-0">100%</span>
+                      <span className="text-xs font-bold tabular-nums text-destructive flex-shrink-0">
+                        {formatCurrency(grandTotalFiltered)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
