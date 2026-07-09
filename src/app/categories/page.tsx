@@ -11,6 +11,7 @@ import { Plus, Trash2, Tag, TrendingUp, TrendingDown, RotateCcw, Pencil, Check, 
 import { toast } from '@/components/ui/toaster'
 import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
+import { createClient } from '@/lib/supabase/client'
 
 export const DEFAULT_INCOME_CATEGORIES = [
   'Salary', 'Freelance', 'Business', 'Investment',
@@ -107,15 +108,12 @@ export default function CategoriesPage() {
   }
 
   // ── Confirm the rename ───────────────────────────────────────────────
-  const confirmEdit = () => {
+  const confirmEdit = async () => {
     if (!editing) return
     const draft = editing.draft.trim()
-
     if (!draft) {
       toast({ title: 'Category name cannot be empty', variant: 'destructive' }); return
     }
-
-    // Same name — nothing to do
     if (draft === editing.original) { setEditing(null); return }
 
     if (editing.type === 'income') {
@@ -130,10 +128,40 @@ export default function CategoriesPage() {
       saveExpense(expenseCategories.map(c => c === editing.original ? draft : c))
     }
 
-    toast({ title: `Renamed to "${draft}"`, variant: 'success' })
+    // ── Propagate rename to all existing database rows ────────────
+    try {
+      const supabase = createClient()
+      const table = editing.type === 'income' ? 'incomes' : 'expenses'
+
+      // Update existing transactions
+      await supabase
+        .from(table)
+        .update({ category: draft })
+        .eq('category', editing.original)
+
+      // Update budgets (expense categories only)
+      if (editing.type === 'expense') {
+        await supabase
+          .from('budgets')
+          .update({ category: draft })
+          .eq('category', editing.original)
+      }
+
+      // Update recurring transactions
+      await supabase
+        .from('recurring_transactions')
+        .update({ category: draft })
+        .eq('category', editing.original)
+        .eq('type', editing.type)
+
+      toast({ title: `Renamed to "${draft}" — all existing records updated`, variant: 'success' })
+    } catch (err) {
+      // Category list is already updated locally; DB update failed silently
+      toast({ title: `Renamed to "${draft}"`, description: 'Some existing records may still show the old name.', variant: 'success' })
+    }
+
     setEditing(null)
   }
-
   const cancelEdit = () => setEditing(null)
 
   // ── Shared category row renderer ─────────────────────────────────────
