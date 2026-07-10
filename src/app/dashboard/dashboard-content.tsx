@@ -1411,8 +1411,11 @@ function ZoomCategoryDonut({
   tint: string
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  const total = useMemo(() => data.reduce((s, d) => s + d.value, 0), [data])
-  const active = activeIndex !== null ? data[activeIndex] : null
+  const [showAll,     setShowAll]     = useState(false)
+  const total       = useMemo(() => data.reduce((s, d) => s + d.value, 0), [data])
+  const active      = activeIndex !== null ? data[activeIndex] : null
+  const sortedData  = useMemo(() => [...data].sort((a, b) => b.value - a.value), [data])
+  const displayData = showAll ? sortedData : sortedData.slice(0, 5)
 
   if (data.length === 0) {
     return (
@@ -1428,67 +1431,109 @@ function ZoomCategoryDonut({
 
   return (
     <div>
-      <p className="text-sm font-semibold flex items-center gap-1.5 mb-3">{title} <Info className="w-3.5 h-3.5 text-muted-foreground" /></p>
+      {/* Title + Top5/All toggle */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          {title} <Info className="w-3.5 h-3.5 text-muted-foreground" />
+        </p>
+        {data.length > 5 && (
+          <button
+            onClick={() => { setShowAll(v => !v); setActiveIndex(null) }}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors hover:bg-muted/60"
+            style={{ borderColor: tint + '60', color: tint }}
+          >
+            {showAll ? 'Top 5 Category' : `View All (${data.length})`}
+          </button>
+        )}
+      </div>
+
       <div className="flex items-center gap-4">
+        {/* Donut */}
         <div className="relative flex-shrink-0" style={{ width: 170, height: 170 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <Pie
-                data={data}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius="62%"
-                outerRadius="100%"
-                paddingAngle={2}
-                stroke="none"
-                isAnimationActive
-                animationDuration={700}
+                data={sortedData}
+                dataKey="value" nameKey="name"
+                cx="50%" cy="50%"
+                innerRadius="62%" outerRadius="100%"
+                paddingAngle={2} stroke="none"
+                isAnimationActive animationDuration={700}
                 onClick={(_, i) => setActiveIndex(p => p === i ? null : i)}
               >
-                {data.map((_, i) => (
+                {sortedData.map((_, i) => (
                   <Cell
                     key={i}
-                    fill={activeIndex !== null && activeIndex !== i ? DONUT_COLORS[i % DONUT_COLORS.length] + '40' : DONUT_COLORS[i % DONUT_COLORS.length]}
+                    fill={
+                      activeIndex !== null && activeIndex !== i
+                        ? DONUT_COLORS[i % DONUT_COLORS.length] + '40'
+                        : DONUT_COLORS[i % DONUT_COLORS.length]
+                    }
                     style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
                   />
                 ))}
               </Pie>
             </PieChart>
           </ResponsiveContainer>
+
+          {/* Center label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2 text-center">
-            <p className="text-[15px] font-bold tabular-nums leading-tight">
+            <p className="text-[13px] font-bold tabular-nums leading-tight">
               {active ? fmt(active.value) : fmt(total)}
             </p>
-            <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
               {active ? active.name : totalLabel}
             </p>
           </div>
         </div>
 
-        <div className="flex-1 min-w-0 space-y-1.5">
-          {data.map((c, i) => {
-            const pct = total > 0 ? (c.value / total) * 100 : 0
-            const isActive = activeIndex === i
+        {/* Breakdown list */}
+        <div className="flex-1 min-w-0 space-y-1">
+          {displayData.map((c, i) => {
+            const origIdx = sortedData.findIndex(d => d.name === c.name)
+            const pct     = total > 0 ? (c.value / total) * 100 : 0
+            const isActive = activeIndex === origIdx
+            const color   = DONUT_COLORS[origIdx % DONUT_COLORS.length]
             return (
               <button
                 key={c.name}
-                onClick={() => setActiveIndex(p => p === i ? null : i)}
-                className={`flex items-center gap-2 text-xs rounded-md px-1 py-0.5 transition-colors ${isActive ? 'bg-muted/60' : 'hover:bg-muted/40'}`}
+                onClick={() => setActiveIndex(p => p === origIdx ? null : origIdx)}
+                className={`w-full flex items-center gap-2 text-xs rounded-lg px-1.5 py-1 transition-colors ${
+                  isActive ? 'bg-muted/60' : 'hover:bg-muted/40'
+                } ${
+                  activeIndex !== null && !isActive ? 'opacity-40' : 'opacity-100'
+                }`}
               >
-                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                <span className="truncate max-w-[110px] font-medium">{c.name}</span>
-                <span className="font-semibold tabular-nums flex-shrink-0">{fmt(c.value)}</span>
-                <span className="text-muted-foreground tabular-nums flex-shrink-0">{pct.toFixed(1)}%</span>
+                {/* Dot */}
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                {/* Name — pushed right, with gap before value */}
+                <span className="flex-1 text-left font-medium truncate">{c.name}</span>
+                {/* Gap then value + pct right-aligned */}
+                <span className="font-bold tabular-nums flex-shrink-0 ml-2" style={{ color }}>
+                  {fmt(c.value)}
+                </span>
+                <span className="text-muted-foreground tabular-nums flex-shrink-0 w-10 text-right">
+                  {pct.toFixed(1)}%
+                </span>
               </button>
             )
           })}
+
+          {/* Show more hint when capped at 5 */}
+          {!showAll && data.length > 5 && (
+            <button
+              onClick={() => setShowAll(true)}
+              className="w-full text-[10px] text-muted-foreground hover:text-foreground text-center py-0.5 transition-colors"
+            >
+              +{data.length - 5} more categories
+            </button>
+          )}
         </div>
       </div>
     </div>
   )
 }
+
 
 function FinancialHealthScore({
   incomeByCategory, expenseByCategory, currency, theme,
