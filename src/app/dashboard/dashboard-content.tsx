@@ -1430,7 +1430,7 @@ function ZoomCategoryDonut({
     <div>
       <p className="text-sm font-semibold flex items-center gap-1.5 mb-3">{title} <Info className="w-3.5 h-3.5 text-muted-foreground" /></p>
       <div className="flex items-center gap-4">
-        <div className="relative flex-shrink-0" style={{ width: 140, height: 140 }}>
+        <div className="relative flex-shrink-0" style={{ width: 170, height: 170 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <Pie
@@ -1458,10 +1458,10 @@ function ZoomCategoryDonut({
             </PieChart>
           </ResponsiveContainer>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2 text-center">
-            <p className="text-[13px] font-bold tabular-nums leading-tight">
+            <p className="text-[15px] font-bold tabular-nums leading-tight">
               {active ? fmt(active.value) : fmt(total)}
             </p>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+            <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
               {active ? active.name : totalLabel}
             </p>
           </div>
@@ -1475,12 +1475,12 @@ function ZoomCategoryDonut({
               <button
                 key={c.name}
                 onClick={() => setActiveIndex(p => p === i ? null : i)}
-                className={`w-full flex items-center gap-2 text-xs rounded-md px-1 py-0.5 transition-colors ${isActive ? 'bg-muted/60' : 'hover:bg-muted/40'}`}
+                className={`flex items-center gap-2 text-xs rounded-md px-1 py-0.5 transition-colors ${isActive ? 'bg-muted/60' : 'hover:bg-muted/40'}`}
               >
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
-                <span className="truncate flex-1 text-left font-medium">{c.name}</span>
+                <span className="truncate max-w-[110px] font-medium">{c.name}</span>
                 <span className="font-semibold tabular-nums flex-shrink-0">{fmt(c.value)}</span>
-                <span className="text-muted-foreground tabular-nums flex-shrink-0 w-10 text-right">{pct.toFixed(1)}%</span>
+                <span className="text-muted-foreground tabular-nums flex-shrink-0">{pct.toFixed(1)}%</span>
               </button>
             )
           })}
@@ -1505,9 +1505,9 @@ function FinancialHealthScore({
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <HeartPulse className="w-4 h-4" style={{ color: theme.colors.primary }} />
-          <CardTitle className="text-sm font-semibold tracking-tight">Financial Health Score</CardTitle>
+          <CardTitle className="text-sm font-semibold tracking-tight">Cash Flow Breakdown</CardTitle>
         </div>
-        <p className="text-xs text-muted-foreground">Updates automatically from your income, expenses, budgets, and balances</p>
+        <p className="text-xs text-muted-foreground">Financial Overview - Your Income & Expenses Breakdown</p>
       </CardHeader>
       <CardContent className="space-y-5">
         <ZoomCategoryDonut
@@ -1535,7 +1535,7 @@ function FinancialHealthScore({
           className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors hover:bg-muted/50"
           style={{ borderColor: theme.colors.primary, color: theme.colors.primary }}
         >
-          View Detailed Analysis <ArrowRight className="w-3.5 h-3.5" />
+          Explore Insight <ArrowRight className="w-3.5 h-3.5" />
         </a>
       </CardContent>
     </Card>
