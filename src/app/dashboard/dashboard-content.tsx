@@ -7,7 +7,7 @@ import {
   RefreshCw, SlidersHorizontal, X,
   Eye, EyeOff, Bookmark, ChevronRight, ChevronDown, RotateCcw,
   Maximize2, ZoomIn, Tag, Percent, Receipt, Coins, Globe, AlertTriangle,
-  HeartPulse, CreditCard, ShieldCheck, ArrowRight, Info, ArrowUp, ArrowDown, BarChart3,
+  HeartPulse, ArrowRight, Info, ArrowUp, ArrowDown, BarChart3,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -57,7 +57,7 @@ const CURRENCY_COLORS: Record<string, string> = {
   EUR: '#86efac',
   GBP: '#93c5fd',
   USD: '#fdba74',
-  GHC: '#fca5a5',
+  GHS: '#fca5a5',
   NGN: '#c4b5fd',
   KES: '#fde68a',
   ZAR: '#a5f3fc',
@@ -67,7 +67,7 @@ const getCurrencyColor  = (name: string, i: number) =>
   CURRENCY_COLORS[name] ?? CURRENCY_FALLBACK[i % CURRENCY_FALLBACK.length]
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
-  GHC: '₵', USD: '$', EUR: '€', GBP: '£', NGN: '₦', KES: 'KSh', ZAR: 'R',
+  GHS: '₵', USD: '$', EUR: '€', GBP: '£', NGN: '₦', KES: 'KSh', ZAR: 'R',
 }
 const getCurrencySymbol = (c: string) => CURRENCY_SYMBOLS[c] ?? c
 
@@ -130,7 +130,7 @@ function IncomeDecompositionTree({
 
   // Converted grand total — each income record multiplied by its currency's
   // exchange rate (set on Net Worth page) before summing, so the root node and
-  // percentages reflect real GHC-equivalent value, not a meaningless currency mix.
+  // percentages reflect real GHS-equivalent value, not a meaningless currency mix.
   const grandTotal = useMemo(() =>
     filteredIncomes.reduce((s, r) => {
       const cur  = getTransactionCurrency(r)
@@ -288,7 +288,7 @@ function IncomeDecompositionTree({
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5" style={{ color: themePrimary }}>
             {Math.round(grandTotal).toLocaleString()}
           </p>
-          <p className="text-[9px] sm:text-[10px] text-muted-foreground">Converted (GHC)</p>
+          <p className="text-[9px] sm:text-[10px] text-muted-foreground">Converted (GHS)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <div className="flex items-center gap-1.5">
@@ -389,7 +389,7 @@ function IncomeDecompositionTree({
                 <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
-                <p className="text-[9px] text-muted-foreground">100% (GHC)</p>
+                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
               </button>
             </div>
 
@@ -720,7 +720,7 @@ function IncomeDecompositionTreeExpand({
           <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
-                <p className="text-[9px] text-muted-foreground">100% (GHC)</p>
+                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Currencies</p>
@@ -1393,149 +1393,146 @@ function CashFlowDiverging({
   )
 }
 
-// ── Financial Health Score ────────────────────────────────────────────────
-// Blends five signals into one 0-100 score with a semi-circular gauge:
-// Savings Rate, Budget Adherence, Debt Ratio, Emergency Fund, and Net Worth
-// Growth. Each metric is a best-effort approximation from data this app
-// actually has (there's no separate "loans" or "debt" table, so Debt Ratio
-// reads from overdrawn/negative account balances; there's no stored net
-// worth history, so Net Worth Growth compares this month's net cash flow
-// to last month's as a proxy) — the tooltip on each metric explains exactly
-// what's being measured so the approximation is never a mystery.
-const HEALTH_METRIC_META = {
-  savings:  { label: 'Savings Rate',      icon: PiggyBank,   description: 'Share of your income you keep rather than spend. 30%+ is considered excellent.' },
-  budget:   { label: 'Budget Adherence',  icon: Receipt,     description: 'How well your spending stays within the budgets you\'ve set for each category.' },
-  debt:     { label: 'Debt Ratio',        icon: CreditCard,  description: 'Share of your total balances coming from overdrawn or negative accounts. Lower is better.' },
-  emergency:{ label: 'Emergency Fund',    icon: ShieldCheck, description: 'How many months your current balance could cover at your average monthly spending. 6 months is the usual target.' },
-  growth:   { label: 'Net Worth Growth',  icon: TrendingUp,  description: 'Whether your net cash flow (income minus expenses) is improving compared to last month.' },
-}
+// ── Income / Expense Category Donuts ──────────────────────────────────────
+// Replaces the semi-circular health-score gauge with two "zoom" donuts —
+// click a slice to zoom into it (center label swaps to that category's
+// name/value/share; other slices dim), click again to reset to the total.
+// Same interaction already established by the Multi-Currency Income
+// Breakdown donut further down this page, just packaged as its own small,
+// reusable piece so it can run twice (Income, Expenses) independently.
+function ZoomCategoryDonut({
+  title, data, totalLabel, fmt, emptyMessage, tint,
+}: {
+  title: string
+  data: { name: string; value: number }[]
+  totalLabel: string
+  fmt: (n: number) => string
+  emptyMessage: string
+  tint: string
+}) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const total = useMemo(() => data.reduce((s, d) => s + d.value, 0), [data])
+  const active = activeIndex !== null ? data[activeIndex] : null
 
-function healthStatus(score: number) {
-  if (score >= 85) return { label: 'Excellent',       color: '#22c55e' }
-  if (score >= 70) return { label: 'Good',             color: '#3b82f6' }
-  if (score >= 50) return { label: 'Fair',             color: '#f59e0b' }
-  return               { label: 'Needs Attention', color: '#ef4444' }
+  if (data.length === 0) {
+    return (
+      <div>
+        <p className="text-sm font-semibold flex items-center gap-1.5">{title} <Info className="w-3.5 h-3.5 text-muted-foreground" /></p>
+        <div className="h-32 flex flex-col items-center justify-center gap-1.5 text-muted-foreground">
+          <PiggyBank className="w-6 h-6 opacity-20" />
+          <p className="text-xs">{emptyMessage}</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <p className="text-sm font-semibold flex items-center gap-1.5 mb-3">{title} <Info className="w-3.5 h-3.5 text-muted-foreground" /></p>
+      <div className="flex items-center gap-4">
+        <div className="relative flex-shrink-0" style={{ width: 140, height: 140 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                innerRadius="62%"
+                outerRadius="100%"
+                paddingAngle={2}
+                stroke="none"
+                isAnimationActive
+                animationDuration={700}
+                onClick={(_, i) => setActiveIndex(p => p === i ? null : i)}
+              >
+                {data.map((_, i) => (
+                  <Cell
+                    key={i}
+                    fill={activeIndex !== null && activeIndex !== i ? DONUT_COLORS[i % DONUT_COLORS.length] + '40' : DONUT_COLORS[i % DONUT_COLORS.length]}
+                    style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
+                  />
+                ))}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2 text-center">
+            <p className="text-[13px] font-bold tabular-nums leading-tight">
+              {active ? fmt(active.value) : fmt(total)}
+            </p>
+            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+              {active ? active.name : totalLabel}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-0 space-y-1.5">
+          {data.map((c, i) => {
+            const pct = total > 0 ? (c.value / total) * 100 : 0
+            const isActive = activeIndex === i
+            return (
+              <button
+                key={c.name}
+                onClick={() => setActiveIndex(p => p === i ? null : i)}
+                className={`w-full flex items-center gap-2 text-xs rounded-md px-1 py-0.5 transition-colors ${isActive ? 'bg-muted/60' : 'hover:bg-muted/40'}`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+                <span className="truncate flex-1 text-left font-medium">{c.name}</span>
+                <span className="font-semibold tabular-nums flex-shrink-0">{fmt(c.value)}</span>
+                <span className="text-muted-foreground tabular-nums flex-shrink-0 w-10 text-right">{pct.toFixed(1)}%</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function FinancialHealthScore({
-  accountsWithBalance, budgetData, savingsRate, monthlySeries, currency, theme,
+  incomeByCategory, expenseByCategory, currency, theme,
 }: {
-  accountsWithBalance: any[]
-  budgetData: { name: string; budget: number; spent: number }[]
-  savingsRate: number
-  monthlySeries: { date: string; income: number; expense: number }[]
+  incomeByCategory: { name: string; value: number }[]
+  expenseByCategory: { name: string; value: number }[]
   currency: string
   theme: any
 }) {
-  const { overallScore } = useMemo(() => {
-    // 1. Savings Rate — 30%+ saved maps to a full score
-    const savingsScore = Math.max(0, Math.min(100, Math.round((savingsRate / 30) * 100)))
-
-    // 2. Budget Adherence — average of (how far under/over each budget the
-    // person is), null when no budgets exist yet so it doesn't drag the
-    // overall score down just for not having set one up.
-    const activeBudgets = budgetData.filter(b => b.budget > 0)
-    const budgetScore = activeBudgets.length === 0 ? null : Math.round(
-      activeBudgets.reduce((sum, b) => {
-        const used = b.spent / b.budget
-        const s = used <= 1 ? 100 : Math.max(0, 100 - (used - 1) * 100)
-        return sum + s
-      }, 0) / activeBudgets.length
-    )
-
-    // 3. Debt Ratio — negative account balances treated as debt
-    const totalAssets = accountsWithBalance.reduce((s, a) => s + Math.max(0, a.balance ?? 0), 0)
-    const totalDebt   = accountsWithBalance.reduce((s, a) => s + Math.max(0, -(a.balance ?? 0)), 0)
-    const debtRatio   = (totalAssets + totalDebt) > 0 ? totalDebt / (totalAssets + totalDebt) : 0
-    const debtScore   = Math.max(0, Math.min(100, Math.round(100 - debtRatio * 200)))
-
-    // 4. Emergency Fund — liquid balance ÷ average monthly expense, vs a
-    // 6-month target
-    const avgMonthlyExpense = monthlySeries.length > 0
-      ? monthlySeries.reduce((s, m) => s + m.expense, 0) / monthlySeries.length
-      : 0
-    const emergencyMonths = avgMonthlyExpense > 0
-      ? totalAssets / avgMonthlyExpense
-      : (totalAssets > 0 ? 6 : 0)
-    const emergencyScore = Math.max(0, Math.min(100, Math.round((emergencyMonths / 6) * 100)))
-
-    // 5. Net Worth Growth — this month's net cash flow vs last month's, as
-    // a proxy for whether net worth is trending up or down
-    const curMonth  = monthlySeries.length > 0 ? monthlySeries[monthlySeries.length - 1] : null
-    const prevMonth = monthlySeries.length > 1 ? monthlySeries[monthlySeries.length - 2] : null
-    const curNet  = curMonth ? curMonth.income - curMonth.expense : 0
-    const prevNet = prevMonth ? prevMonth.income - prevMonth.expense : null
-    let growthScore: number
-    if (prevNet === null) growthScore = curNet > 0 ? 70 : curNet < 0 ? 30 : 50
-    else if (prevNet === 0) growthScore = curNet > 0 ? 100 : curNet < 0 ? 0 : 50
-    else growthScore = Math.max(0, Math.min(100, Math.round(50 + ((curNet - prevNet) / Math.abs(prevNet)) * 50)))
-
-    const metrics = [
-      { key: 'savings',   score: savingsScore },
-      { key: 'budget',    score: budgetScore },
-      { key: 'debt',      score: debtScore },
-      { key: 'emergency', score: emergencyScore },
-      { key: 'growth',    score: growthScore },
-    ] as { key: keyof typeof HEALTH_METRIC_META; score: number | null }[]
-
-    const scored = metrics.map(m => m.score).filter((s): s is number => s !== null)
-    const overallScore = scored.length > 0 ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : 0
-
-    return { overallScore, metrics }
-  }, [accountsWithBalance, budgetData, savingsRate, monthlySeries])
-
-  const status = healthStatus(overallScore)
-  const gaugeData = [
-    { value: overallScore },
-    { value: 100 - overallScore },
-  ]
+  const fmt = (n: number) => formatCurrency(n, currency)
 
   return (
     <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <HeartPulse className="w-4 h-4" style={{ color: status.color }} />
+          <HeartPulse className="w-4 h-4" style={{ color: theme.colors.primary }} />
           <CardTitle className="text-sm font-semibold tracking-tight">Financial Health Score</CardTitle>
         </div>
         <p className="text-xs text-muted-foreground">Updates automatically from your income, expenses, budgets, and balances</p>
       </CardHeader>
-      <CardContent>
-        {/* Semi-circular gauge — compact dashboard version shows only the
-            score itself. Full metric-by-metric breakdown lives on the
-            Analytics page, reached via the button below. */}
-        <div className="relative w-full mx-auto" style={{ maxWidth: 260, height: 150 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-              <Pie
-                data={gaugeData}
-                dataKey="value"
-                cx="50%"
-                cy="100%"
-                startAngle={180}
-                endAngle={0}
-                innerRadius="70%"
-                outerRadius="100%"
-                stroke="none"
-                isAnimationActive
-                animationDuration={1000}
-                animationEasing="ease-out"
-              >
-                <Cell fill={status.color} />
-                <Cell fill="#e5e7eb" />
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center pointer-events-none">
-            <p className="text-4xl font-bold tabular-nums leading-none" style={{ color: status.color }}>
-              {overallScore}<span className="text-base text-muted-foreground font-semibold">/100</span>
-            </p>
-            <p className="text-sm font-semibold mt-1" style={{ color: status.color }}>{status.label}</p>
-          </div>
-        </div>
+      <CardContent className="space-y-5">
+        <ZoomCategoryDonut
+          title="Income by Category"
+          data={incomeByCategory}
+          totalLabel="Total Income"
+          fmt={fmt}
+          emptyMessage="Add income to see the breakdown"
+          tint="#16a34a"
+        />
+
+        <div className="border-t border-border" />
+
+        <ZoomCategoryDonut
+          title="Expenses by Category"
+          data={expenseByCategory}
+          totalLabel="Total Expenses"
+          fmt={fmt}
+          emptyMessage="Add expenses to see the breakdown"
+          tint="#dc2626"
+        />
 
         <a
           href="/analytics"
-          className="mt-4 w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors hover:bg-muted/50"
+          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors hover:bg-muted/50"
           style={{ borderColor: theme.colors.primary, color: theme.colors.primary }}
         >
           View Detailed Analysis <ArrowRight className="w-3.5 h-3.5" />
@@ -1544,6 +1541,7 @@ function FinancialHealthScore({
     </Card>
   )
 }
+
 
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
@@ -1697,6 +1695,15 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
   }, [filteredIncomes])
 
+  const expenseByCategory = useMemo(() => {
+    const map: Record<string, number> = {}
+    filteredExpenses.forEach(r => {
+      const cat = r.category || 'Other'
+      map[cat] = (map[cat] || 0) + Number(r.amount)
+    })
+    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+  }, [filteredExpenses])
+
   // ── Real (not fabricated) per-currency monthly series — powers the KPI
   // cards' previous-month comparison and sparklines. Unlike `chartData`
   // below (primary currency only, for the big area chart), this covers
@@ -1780,13 +1787,13 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     incomeByCategory.reduce((s, c) => s + c.value, 0), [incomeByCategory])
 
   // Exchange rates from user_accounts.exchange_rate — set on the Net Worth page.
-  // GHC is always 1. Any currency without a matching account defaults to 1 (no conversion).
+  // GHS is always 1. Any currency without a matching account defaults to 1 (no conversion).
   const exchangeRateMap = useMemo(() => {
-    const map: Record<string, number> = { GHC: 1 }
+    const map: Record<string, number> = { GHS: 1 }
     accounts.forEach(a => {
-      const cur  = a.currency || 'GHC'
+      const cur  = a.currency || 'GHS'
       const rate = Number(a.exchange_rate ?? 1)
-      if (cur !== 'GHC' && rate > 0 && !map[cur]) map[cur] = rate
+      if (cur !== 'GHS' && rate > 0 && !map[cur]) map[cur] = rate
     })
     return map
   }, [accounts])
@@ -1799,7 +1806,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     [accountsWithBalance, exchangeRateMap]
   )
 
-  // True total: every currency's income converted to GHC using Net Worth rates.
+  // True total: every currency's income converted to GHS using Net Worth rates.
   const grandTotalIncomeConverted = useMemo(() =>
     Object.entries(incomeByCurrency).reduce((sum, [cur, amt]) => {
       const rate = exchangeRateMap[cur] ?? 1
@@ -1894,7 +1901,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
   const balanceByCurrency: Record<string, number> = {}
   visibleAccounts.forEach(a => {
-    const cur = a.currency || 'GHC'
+    const cur = a.currency || 'GHS'
     balanceByCurrency[cur] = (balanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
   const balanceCurrencies = Object.keys(balanceByCurrency)
@@ -1938,7 +1945,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-800">
-                    {acc.name} is overdrawn by {formatCurrency(Math.abs(acc.balance), acc.currency || 'GHC')}
+                    {acc.name} is overdrawn by {formatCurrency(Math.abs(acc.balance), acc.currency || 'GHS')}
                   </p>
                   <p className="text-xs text-amber-600 mt-0.5">
                     This bank account has a negative balance. Add income or a deposit to clear the overdraft.
@@ -1954,7 +1961,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-red-800">
-                    {acc.name} shows a negative balance ({formatCurrency(acc.balance, acc.currency || 'GHC')})
+                    {acc.name} shows a negative balance ({formatCurrency(acc.balance, acc.currency || 'GHS')})
                   </p>
                   <p className="text-xs text-red-600 mt-0.5">
                     {acc.type === 'mobile_money' ? 'Mobile Money' : acc.type === 'cash' ? 'Cash' : 'Investment'} accounts should not go negative. Check for incorrect transactions.
@@ -2178,7 +2185,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               value={formatCurrency(bal, cur)}
               sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
-              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
+              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
           ))}
         </div>
@@ -2489,15 +2496,13 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </CardContent>
       </Card>
 
-      {/* Financial Health gauge + Cash Flow diverging chart — side by side
-          on larger screens so these two sit together as a row instead of
-          each claiming the dashboard's full width. ───────────────────── */}
+      {/* Income/Expense category donuts + Cash Flow diverging chart — side
+          by side on larger screens so these two sit together as a row
+          instead of each claiming the dashboard's full width. ─────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         <FinancialHealthScore
-          accountsWithBalance={accountsWithBalance}
-          budgetData={budgetData}
-          savingsRate={savingsRate}
-          monthlySeries={monthlyByCurrency[currency] || []}
+          incomeByCategory={incomeByCategory}
+          expenseByCategory={expenseByCategory}
           currency={currency}
           theme={theme}
         />
@@ -2698,7 +2703,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       </Pie>
 
                       {/* Inner ring — currencies. No on-slice label here anymore (it was
-                          the "₵ GHC / 13,000" text crowding small slices) — the legend
+                          the "₵ GHS / 13,000" text crowding small slices) — the legend
                           below and the matrix table to the right already carry that
                           same information without cluttering the ring itself. */}
                       <Pie
@@ -2814,7 +2819,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                           })}
                           <td className="text-center py-2 px-2 font-semibold tabular-nums bg-muted/30 whitespace-nowrap">
                             {(() => {
-                              // Sum each currency's contribution for this category, converted to GHC
+                              // Sum each currency's contribution for this category, converted to GHS
                               const convertedRowTotal = currencyBreakdown.reduce((sum, c) => {
                                 const raw  = incomeMatrix[cat.name]?.[c.name] ?? 0
                                 const rate = exchangeRateMap[c.name] ?? 1
