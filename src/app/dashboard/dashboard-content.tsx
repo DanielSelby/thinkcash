@@ -57,7 +57,7 @@ const CURRENCY_COLORS: Record<string, string> = {
   EUR: '#86efac',
   GBP: '#93c5fd',
   USD: '#fdba74',
-  GHS: '#fca5a5',
+  GHC: '#fca5a5',
   NGN: '#c4b5fd',
   KES: '#fde68a',
   ZAR: '#a5f3fc',
@@ -67,7 +67,7 @@ const getCurrencyColor  = (name: string, i: number) =>
   CURRENCY_COLORS[name] ?? CURRENCY_FALLBACK[i % CURRENCY_FALLBACK.length]
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
-  GHS: '₵', USD: '$', EUR: '€', GBP: '£', NGN: '₦', KES: 'KSh', ZAR: 'R',
+  GHC: '₵', USD: '$', EUR: '€', GBP: '£', NGN: '₦', KES: 'KSh', ZAR: 'R',
 }
 const getCurrencySymbol = (c: string) => CURRENCY_SYMBOLS[c] ?? c
 
@@ -130,7 +130,7 @@ function IncomeDecompositionTree({
 
   // Converted grand total — each income record multiplied by its currency's
   // exchange rate (set on Net Worth page) before summing, so the root node and
-  // percentages reflect real GHS-equivalent value, not a meaningless currency mix.
+  // percentages reflect real GHC-equivalent value, not a meaningless currency mix.
   const grandTotal = useMemo(() =>
     filteredIncomes.reduce((s, r) => {
       const cur  = getTransactionCurrency(r)
@@ -288,7 +288,7 @@ function IncomeDecompositionTree({
           <p className="text-sm sm:text-lg font-bold tabular-nums mt-0.5" style={{ color: themePrimary }}>
             {Math.round(grandTotal).toLocaleString()}
           </p>
-          <p className="text-[9px] sm:text-[10px] text-muted-foreground">Converted (GHS)</p>
+          <p className="text-[9px] sm:text-[10px] text-muted-foreground">Converted (GHC)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <div className="flex items-center gap-1.5">
@@ -389,7 +389,7 @@ function IncomeDecompositionTree({
                 <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
-                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
+                <p className="text-[9px] text-muted-foreground">100% (GHC)</p>
               </button>
             </div>
 
@@ -720,7 +720,7 @@ function IncomeDecompositionTreeExpand({
           <p className="text-sm font-bold tabular-nums" style={{ color: themePrimary }}>
                   {Math.round(grandTotal).toLocaleString()}
                 </p>
-                <p className="text-[9px] text-muted-foreground">100% (GHS)</p>
+                <p className="text-[9px] text-muted-foreground">100% (GHC)</p>
         </div>
         <div className="rounded-lg border border-border p-2.5">
           <p className="text-[9px] sm:text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Currencies</p>
@@ -1780,13 +1780,13 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     incomeByCategory.reduce((s, c) => s + c.value, 0), [incomeByCategory])
 
   // Exchange rates from user_accounts.exchange_rate — set on the Net Worth page.
-  // GHS is always 1. Any currency without a matching account defaults to 1 (no conversion).
+  // GHC is always 1. Any currency without a matching account defaults to 1 (no conversion).
   const exchangeRateMap = useMemo(() => {
-    const map: Record<string, number> = { GHS: 1 }
+    const map: Record<string, number> = { GHC: 1 }
     accounts.forEach(a => {
-      const cur  = a.currency || 'GHS'
+      const cur  = a.currency || 'GHC'
       const rate = Number(a.exchange_rate ?? 1)
-      if (cur !== 'GHS' && rate > 0 && !map[cur]) map[cur] = rate
+      if (cur !== 'GHC' && rate > 0 && !map[cur]) map[cur] = rate
     })
     return map
   }, [accounts])
@@ -1799,7 +1799,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
     [accountsWithBalance, exchangeRateMap]
   )
 
-  // True total: every currency's income converted to GHS using Net Worth rates.
+  // True total: every currency's income converted to GHC using Net Worth rates.
   const grandTotalIncomeConverted = useMemo(() =>
     Object.entries(incomeByCurrency).reduce((sum, [cur, amt]) => {
       const rate = exchangeRateMap[cur] ?? 1
@@ -1894,7 +1894,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const visibleAccounts = accountsWithBalance.filter(a => accountTypeFilter === 'all' || a.type === accountTypeFilter)
   const balanceByCurrency: Record<string, number> = {}
   visibleAccounts.forEach(a => {
-    const cur = a.currency || 'GHS'
+    const cur = a.currency || 'GHC'
     balanceByCurrency[cur] = (balanceByCurrency[cur] || 0) + Number(a.balance ?? 0)
   })
   const balanceCurrencies = Object.keys(balanceByCurrency)
@@ -1938,7 +1938,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-amber-800">
-                    {acc.name} is overdrawn by {formatCurrency(Math.abs(acc.balance), acc.currency || 'GHS')}
+                    {acc.name} is overdrawn by {formatCurrency(Math.abs(acc.balance), acc.currency || 'GHC')}
                   </p>
                   <p className="text-xs text-amber-600 mt-0.5">
                     This bank account has a negative balance. Add income or a deposit to clear the overdraft.
@@ -1954,7 +1954,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-red-800">
-                    {acc.name} shows a negative balance ({formatCurrency(acc.balance, acc.currency || 'GHS')})
+                    {acc.name} shows a negative balance ({formatCurrency(acc.balance, acc.currency || 'GHC')})
                   </p>
                   <p className="text-xs text-red-600 mt-0.5">
                     {acc.type === 'mobile_money' ? 'Mobile Money' : acc.type === 'cash' ? 'Cash' : 'Investment'} accounts should not go negative. Check for incorrect transactions.
@@ -2178,7 +2178,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               value={formatCurrency(bal, cur)}
               sub={`Across ${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).length} account(s)`}
               variant={cur === currency ? 'solid' : 'default'}
-              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHS') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
+              tooltip={`Sum of every ${cur} account's current balance, including opening balances\n${accountsWithBalance.filter(a => (a.currency || 'GHC') === cur).map(a => `${a.name}: ${formatCurrency(a.balance ?? 0, cur)}`).join('\n')}`}
             />
           ))}
         </div>
@@ -2698,7 +2698,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                       </Pie>
 
                       {/* Inner ring — currencies. No on-slice label here anymore (it was
-                          the "₵ GHS / 13,000" text crowding small slices) — the legend
+                          the "₵ GHC / 13,000" text crowding small slices) — the legend
                           below and the matrix table to the right already carry that
                           same information without cluttering the ring itself. */}
                       <Pie
@@ -2814,7 +2814,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                           })}
                           <td className="text-center py-2 px-2 font-semibold tabular-nums bg-muted/30 whitespace-nowrap">
                             {(() => {
-                              // Sum each currency's contribution for this category, converted to GHS
+                              // Sum each currency's contribution for this category, converted to GHC
                               const convertedRowTotal = currencyBreakdown.reduce((sum, c) => {
                                 const raw  = incomeMatrix[cat.name]?.[c.name] ?? 0
                                 const rate = exchangeRateMap[c.name] ?? 1
