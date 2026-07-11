@@ -1455,7 +1455,7 @@ function ZoomCategoryDonut({
 
       <div className="flex items-center gap-4">
         {/* Donut */}
-        <div className="relative flex-shrink-0" style={{ width: 170, height: 170 }}>
+        <div className="relative flex-shrink-0" style={{ width: 200, height: 200 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
               <Pie
@@ -1466,8 +1466,7 @@ function ZoomCategoryDonut({
                 paddingAngle={2} stroke="none"
                 isAnimationActive animationDuration={600}
                 onClick={(_, i) => setActiveIndex(p => p === i ? null : i)}
-                onMouseEnter={(_, i) => setHoveredIndex(i)}
-                onMouseLeave={() => setHoveredIndex(null)}
+                
               >
                 {sortedData.map((_, i) => {
                   const isFocused  = focusIdx === i
@@ -1491,45 +1490,7 @@ function ZoomCategoryDonut({
                 })}
               </Pie>
 
-              {/* Rich custom tooltip */}
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const item  = payload[0].payload as { name: string; value: number; count?: number }
-                  const pct   = total > 0 ? (item.value / total) * 100 : 0
-                  const color = DONUT_COLORS[sortedData.findIndex(d => d.name === item.name) % DONUT_COLORS.length]
-                  return (
-                    <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[160px] space-y-2">
-                      <div className="flex items-center gap-2 border-b border-border pb-2">
-                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-                        <span className="font-semibold text-sm">{item.name}</span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex justify-between gap-4">
-                          <span className="text-muted-foreground">Amount</span>
-                          <span className="font-bold tabular-nums" style={{ color }}>{fmt(item.value)}</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span className="text-muted-foreground">Share</span>
-                          <span className="font-semibold tabular-nums">{pct.toFixed(1)}%</span>
-                        </div>
-                        {item.count !== undefined && (
-                          <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">Transactions</span>
-                            <span className="font-semibold tabular-nums">{item.count}</span>
-                          </div>
-                        )}
-                        {item.count !== undefined && item.count > 0 && (
-                          <div className="flex justify-between gap-4 border-t border-border pt-1 mt-1">
-                            <span className="text-muted-foreground">Avg per txn</span>
-                            <span className="font-semibold tabular-nums">{fmt(item.value / item.count)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                }}
-              />
+              
             </PieChart>
           </ResponsiveContainer>
 
@@ -1576,9 +1537,40 @@ function ZoomCategoryDonut({
                     {c.count}×
                   </span>
                 )}
-                <span className="font-bold tabular-nums flex-shrink-0 ml-1" style={{ color }}>
-                  {fmt(c.value)}
-                </span>
+                <div className="relative group flex-shrink-0 ml-1">
+                  <span className="font-bold tabular-nums" style={{ color }}>
+                    {fmt(c.value)}
+                  </span>
+                  {/* Tooltip on value hover */}
+                  <div className="absolute bottom-full right-0 mb-1.5 z-50 hidden group-hover:block pointer-events-none">
+                    <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[160px] space-y-1.5 whitespace-nowrap">
+                      <div className="flex items-center gap-2 border-b border-border pb-1.5">
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                        <span className="font-semibold">{c.name}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Amount</span>
+                        <span className="font-bold tabular-nums" style={{ color }}>{fmt(c.value)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Share</span>
+                        <span className="font-semibold">{pct.toFixed(1)}%</span>
+                      </div>
+                      {c.count !== undefined && (
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Transactions</span>
+                          <span className="font-semibold">{c.count}</span>
+                        </div>
+                      )}
+                      {c.count !== undefined && c.count > 0 && (
+                        <div className="flex justify-between gap-4 border-t border-border pt-1.5">
+                          <span className="text-muted-foreground">Avg per txn</span>
+                          <span className="font-semibold">{fmt(c.value / c.count)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <span className="text-muted-foreground tabular-nums flex-shrink-0 w-10 text-right">
                   {pct.toFixed(1)}%
                 </span>
