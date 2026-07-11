@@ -16,7 +16,7 @@ export default async function ExpensesPage() {
     .from('profiles').select('role, allowed_pages').eq('id', user.id).single()
   requirePageAccess(profile, 'expenses')
 
-  const [{ data: expenses }, { data: accounts }, { data: budgets }] = await Promise.all([
+  const [{ data: expenses }, { data: accounts }, { data: budgets }, { data: incomes }, { data: transfers }] = await Promise.all([
     supabase.from('expenses').select('*')
       .eq('user_id', user.id)
       .order('date', { ascending: false }),
@@ -25,6 +25,9 @@ export default async function ExpensesPage() {
       .eq('is_active', true),
     supabase.from('budgets').select('*')
       .eq('user_id', user.id),
+    supabase.from('incomes').select('amount, account_id').eq('user_id', user.id),
+    supabase.from('transfers').select('from_account_id, to_account_id, amount, to_amount').eq('user_id', user.id),
+    supabase.from('transfers').select('from_account_id, to_account_id, amount, to_amount').eq('user_id', user.id),
   ])
 
   return (
@@ -34,6 +37,8 @@ export default async function ExpensesPage() {
         accounts={accounts ?? []}
         userId={user.id}
         budgets={budgets ?? []}
+        incomes={incomes ?? []}
+        transfers={transfers ?? []}
       />
     </AppShell>
   )

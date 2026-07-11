@@ -43,6 +43,8 @@ interface Props {
   accounts:        UserAccount[]
   userId:          string
   budgets?:        any[]
+  incomes?:        { amount: number; account_id: string | null }[]
+  transfers?:      { from_account_id: string; to_account_id: string; amount: number; to_amount?: number | null }[]
 }
 
 const shortFmt = (v: number) => {
@@ -140,7 +142,7 @@ function CurrencyTotal({ byCurrency, colorClass }: {
 }
 
 // ── Main component ─────────────────────────────────────────────────────
-export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [] }: Props) {
+export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [], incomes = [], transfers = [] }: Props) {
   const { expenseCategories } = useCategories()
   const { activeTheme } = useAppStore()
   const theme = THEMES[activeTheme] ?? THEMES['green']
@@ -185,13 +187,14 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
   // happens; it just isn't the authoritative number. ─────────────────────
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
-      const spent = expenses
-        .filter(e => e.account_id === acc.id)
-        .reduce((s, e) => s + Number(e.amount), 0)
-      const balance = Number(acc.opening_balance ?? 0) - spent
+      const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
+      const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.to_amount ?? t.amount), 0)
+      const balance       = Number(acc.opening_balance ?? 0) + totalIncome - totalExpense - transfersOut + transfersIn
       const overdraftAllowed = (acc as any).allow_negative === true || acc.type === 'bank'
       return { ...acc, balance, overdraftAllowed }
-    }), [accounts, expenses])
+    }), [accounts, expenses, incomes, transfers])
 
   const openCreate = () => {
     setEditing(null)
