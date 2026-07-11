@@ -1404,23 +1404,29 @@ function ZoomCategoryDonut({
   title, data, totalLabel, fmt, emptyMessage, tint,
 }: {
   title: string
-  data: { name: string; value: number }[]
+  data: { name: string; value: number; count?: number }[]
   totalLabel: string
   fmt: (n: number) => string
   emptyMessage: string
   tint: string
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
-  const [showAll,     setShowAll]     = useState(false)
-  const total       = useMemo(() => data.reduce((s, d) => s + d.value, 0), [data])
-  const active      = activeIndex !== null ? data[activeIndex] : null
-  const sortedData  = useMemo(() => [...data].sort((a, b) => b.value - a.value), [data])
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const [showAll,      setShowAll]      = useState(false)
+
+  const total      = useMemo(() => data.reduce((s, d) => s + d.value, 0), [data])
+  const sortedData = useMemo(() => [...data].sort((a, b) => b.value - a.value), [data])
   const displayData = showAll ? sortedData : sortedData.slice(0, 5)
+
+  const focusIdx   = hoveredIndex ?? activeIndex
+  const focusItem  = focusIdx !== null ? sortedData[focusIdx] : null
 
   if (data.length === 0) {
     return (
       <div>
-        <p className="text-sm font-semibold flex items-center gap-1.5">{title} <Info className="w-3.5 h-3.5 text-muted-foreground" /></p>
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          {title} <Info className="w-3.5 h-3.5 text-muted-foreground" />
+        </p>
         <div className="h-32 flex flex-col items-center justify-center gap-1.5 text-muted-foreground">
           <PiggyBank className="w-6 h-6 opacity-20" />
           <p className="text-xs">{emptyMessage}</p>
@@ -1431,7 +1437,7 @@ function ZoomCategoryDonut({
 
   return (
     <div>
-      {/* Title + Top5/All toggle */}
+      {/* Title + toggle */}
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold flex items-center gap-1.5">
           {title} <Info className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1456,60 +1462,121 @@ function ZoomCategoryDonut({
                 data={sortedData}
                 dataKey="value" nameKey="name"
                 cx="50%" cy="50%"
-                innerRadius="62%" outerRadius="100%"
+                innerRadius="55%" outerRadius="85%"
                 paddingAngle={2} stroke="none"
-                isAnimationActive animationDuration={700}
+                isAnimationActive animationDuration={600}
                 onClick={(_, i) => setActiveIndex(p => p === i ? null : i)}
+                onMouseEnter={(_, i) => setHoveredIndex(i)}
+                onMouseLeave={() => setHoveredIndex(null)}
               >
-                {sortedData.map((_, i) => (
-                  <Cell
-                    key={i}
-                    fill={
-                      activeIndex !== null && activeIndex !== i
-                        ? DONUT_COLORS[i % DONUT_COLORS.length] + '40'
+                {sortedData.map((_, i) => {
+                  const isFocused  = focusIdx === i
+                  const isDimmed   = focusIdx !== null && focusIdx !== i
+                  return (
+                    <Cell
+                      key={i}
+                      fill={isDimmed
+                        ? DONUT_COLORS[i % DONUT_COLORS.length] + '35'
                         : DONUT_COLORS[i % DONUT_COLORS.length]
-                    }
-                    style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
-                  />
-                ))}
+                      }
+                      style={{
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        filter: isFocused ? 'brightness(1.15) drop-shadow(0 2px 6px rgba(0,0,0,0.18))' : 'none',
+                        transform: isFocused ? 'scale(1.04)' : 'scale(1)',
+                        transformOrigin: 'center',
+                      }}
+                    />
+                  )
+                })}
               </Pie>
+
+              {/* Rich custom tooltip */}
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const item  = payload[0].payload as { name: string; value: number; count?: number }
+                  const pct   = total > 0 ? (item.value / total) * 100 : 0
+                  const color = DONUT_COLORS[sortedData.findIndex(d => d.name === item.name) % DONUT_COLORS.length]
+                  return (
+                    <div className="bg-white border border-border rounded-xl shadow-lg p-3 text-xs min-w-[160px] space-y-2">
+                      <div className="flex items-center gap-2 border-b border-border pb-2">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+                        <span className="font-semibold text-sm">{item.name}</span>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Amount</span>
+                          <span className="font-bold tabular-nums" style={{ color }}>{fmt(item.value)}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-muted-foreground">Share</span>
+                          <span className="font-semibold tabular-nums">{pct.toFixed(1)}%</span>
+                        </div>
+                        {item.count !== undefined && (
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">Transactions</span>
+                            <span className="font-semibold tabular-nums">{item.count}</span>
+                          </div>
+                        )}
+                        {item.count !== undefined && item.count > 0 && (
+                          <div className="flex justify-between gap-4 border-t border-border pt-1 mt-1">
+                            <span className="text-muted-foreground">Avg per txn</span>
+                            <span className="font-semibold tabular-nums">{fmt(item.value / item.count)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
 
-          {/* Center label */}
+          {/* Center label — updates on hover OR click */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2 text-center">
-            <p className="text-[13px] font-bold tabular-nums leading-tight">
-              {active ? fmt(active.value) : fmt(total)}
+            <p className="text-[13px] font-bold tabular-nums leading-tight transition-all duration-200">
+              {focusItem ? fmt(focusItem.value) : fmt(total)}
             </p>
-            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-              {active ? active.name : totalLabel}
+            <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 transition-all duration-200 truncate max-w-[100px]">
+              {focusItem ? focusItem.name : totalLabel}
             </p>
+            {focusItem && (
+              <p className="text-[9px] font-semibold mt-0.5 transition-all duration-200" style={{ color: tint }}>
+                {total > 0 ? ((focusItem.value / total) * 100).toFixed(1) : 0}%
+                {focusItem.count ? ` · ${focusItem.count} txn${focusItem.count !== 1 ? 's' : ''}` : ''}
+              </p>
+            )}
           </div>
         </div>
 
         {/* Breakdown list */}
         <div className="flex-1 min-w-0 space-y-1">
-          {displayData.map((c, i) => {
-            const origIdx = sortedData.findIndex(d => d.name === c.name)
-            const pct     = total > 0 ? (c.value / total) * 100 : 0
+          {displayData.map((c) => {
+            const origIdx  = sortedData.findIndex(d => d.name === c.name)
+            const pct      = total > 0 ? (c.value / total) * 100 : 0
             const isActive = activeIndex === origIdx
-            const color   = DONUT_COLORS[origIdx % DONUT_COLORS.length]
+            const isHover  = hoveredIndex === origIdx
+            const color    = DONUT_COLORS[origIdx % DONUT_COLORS.length]
             return (
               <button
                 key={c.name}
                 onClick={() => setActiveIndex(p => p === origIdx ? null : origIdx)}
-                className={`w-full flex items-center gap-2 text-xs rounded-lg px-1.5 py-1 transition-colors ${
-                  isActive ? 'bg-muted/60' : 'hover:bg-muted/40'
-                } ${
-                  activeIndex !== null && !isActive ? 'opacity-40' : 'opacity-100'
-                }`}
+                onMouseEnter={() => setHoveredIndex(origIdx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                className={`w-full flex items-center gap-2 text-xs rounded-lg px-1.5 py-1 transition-all ${
+                  isActive || isHover ? 'bg-muted/70 scale-[1.01]' : 'hover:bg-muted/40'
+                } ${focusIdx !== null && focusIdx !== origIdx ? 'opacity-40' : 'opacity-100'}`}
               >
-                {/* Dot */}
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-                {/* Name — pushed right, with gap before value */}
+                <span className="w-2 h-2 rounded-full flex-shrink-0 transition-transform"
+                  style={{ background: color, transform: isActive || isHover ? 'scale(1.4)' : 'scale(1)' }} />
                 <span className="flex-1 text-left font-medium truncate">{c.name}</span>
-                {/* Gap then value + pct right-aligned */}
-                <span className="font-bold tabular-nums flex-shrink-0 ml-2" style={{ color }}>
+                {c.count !== undefined && (
+                  <span className="text-muted-foreground text-[10px] flex-shrink-0">
+                    {c.count}×
+                  </span>
+                )}
+                <span className="font-bold tabular-nums flex-shrink-0 ml-1" style={{ color }}>
                   {fmt(c.value)}
                 </span>
                 <span className="text-muted-foreground tabular-nums flex-shrink-0 w-10 text-right">
@@ -1519,7 +1586,6 @@ function ZoomCategoryDonut({
             )
           })}
 
-          {/* Show more hint when capped at 5 */}
           {!showAll && data.length > 5 && (
             <button
               onClick={() => setShowAll(true)}
@@ -1534,12 +1600,11 @@ function ZoomCategoryDonut({
   )
 }
 
-
 function FinancialHealthScore({
   incomeByCategory, expenseByCategory, currency, theme,
 }: {
-  incomeByCategory: { name: string; value: number }[]
-  expenseByCategory: { name: string; value: number }[]
+  incomeByCategory: { name: string; value: number; count?: number }[]
+  expenseByCategory: { name: string; value: number; count?: number }[]
   currency: string
   theme: any
 }) {
@@ -1732,22 +1797,26 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const savingsRate  = totalIncome > 0 ? Math.round((net / totalIncome) * 100) : 0
 
   const incomeByCategory = useMemo(() => {
-    const map: Record<string, number> = {}
-    filteredIncomes.forEach(r => {
-      const cat = r.category || 'Other'
-      map[cat] = (map[cat] || 0) + Number(r.amount)
-    })
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [filteredIncomes])
+  const map: Record<string, { value: number; count: number }> = {}
+  filteredIncomes.forEach(r => {
+    const cat = r.category || 'Other'
+    if (!map[cat]) map[cat] = { value: 0, count: 0 }
+    map[cat].value += Number(r.amount)
+    map[cat].count += 1
+  })
+  return Object.entries(map).map(([name, { value, count }]) => ({ name, value, count })).sort((a, b) => b.value - a.value)
+}, [filteredIncomes])
 
   const expenseByCategory = useMemo(() => {
-    const map: Record<string, number> = {}
-    filteredExpenses.forEach(r => {
-      const cat = r.category || 'Other'
-      map[cat] = (map[cat] || 0) + Number(r.amount)
-    })
-    return Object.entries(map).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
-  }, [filteredExpenses])
+  const map: Record<string, { value: number; count: number }> = {}
+  filteredExpenses.forEach(r => {
+    const cat = r.category || 'Other'
+    if (!map[cat]) map[cat] = { value: 0, count: 0 }
+    map[cat].value += Number(r.amount)
+    map[cat].count += 1
+  })
+  return Object.entries(map).map(([name, { value, count }]) => ({ name, value, count })).sort((a, b) => b.value - a.value)
+}, [filteredExpenses])
 
   // ── Real (not fabricated) per-currency monthly series — powers the KPI
   // cards' previous-month comparison and sparklines. Unlike `chartData`
