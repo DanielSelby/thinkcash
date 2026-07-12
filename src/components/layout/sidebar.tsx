@@ -215,7 +215,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
               style={{ color: sidebar.textMuted }}
               className="text-xs leading-tight truncate"
             >
-              Personal Finance & Budget Tracker
+              Finance & Budget Manager
             </p>
           </div>
         )}
