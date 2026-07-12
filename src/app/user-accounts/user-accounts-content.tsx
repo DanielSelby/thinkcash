@@ -615,7 +615,16 @@ export function UserAccountsContent({
               </Button>
             </>
           )}
-          <Button onClick={() => {}} variant="outline" className="gap-2 h-9 text-sm">
+          <Button
+            onClick={() => {
+              if (!selectedAccount) {
+                toast({ title: 'Select a wallet first', description: 'Click any wallet card to select it, then export its statement.', variant: 'destructive' })
+                return
+              }
+              openStatement(selectedAccount)
+            }}
+            variant="outline" className="gap-2 h-9 text-sm"
+          >
             <Download className="w-4 h-4" /> Export Statement
           </Button>
           <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }} className="gap-2 h-9 text-sm">
