@@ -15,24 +15,26 @@ import { Button } from '@/components/ui/button'
 import { APP_CONFIG } from '@/lib/config'
 import { canAccessPage } from '@/lib/page-access'
 
+// ── Nav item definitions ───────────────────────────────────────────────
+
 const navItems = [
-  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'         },
-  { href: '/transactions', icon: ArrowUpDown,     label: 'Transactions'      },
-  { href: '/income',       icon: TrendingUp,      label: 'Income'            },
-  { href: '/expenses',     icon: TrendingDown,    label: 'Expenses'          },
-  { href: '/budgets',      icon: Wallet,          label: 'Budgets'           },
-  { href: '/user-accounts',icon: CreditCard,      label: 'My Wallets'        },
-  { href: '/savings',      icon: PiggyBank,       label: 'Savings Goals'     },
-  { href: '/wealth',       icon: Landmark,        label: 'My Wealth'         },
-  { href: '/custody',      icon: Users,           label: 'Custody Account'   },
-  { href: '/recurring',    icon: RefreshCcw,      label: 'Recurring'         },
-  { href: '/reports',      icon: BarChart3,       label: 'Reports'           },
-  { href: '/analytics',    icon: BrainCircuit,    label: 'Analytics'         },
-  { href: '/forecast',     icon: CalendarClock,   label: 'Cash Flow Forecast'},
-  { href: '/accounts',     icon: BookMarked,      label: 'Chart of Accounts' },
-  { href: '/categories',   icon: Tag,             label: 'Set Categories'    },
-  { href: '/health-score', icon: HeartPulse,      label: 'Health Score'      },
-  { href: '/ai-advisor',   icon: Sparkles,        label: 'AI Advisor'        },
+  { href: '/dashboard',     icon: LayoutDashboard, label: 'Dashboard'          },
+  { href: '/transactions',  icon: ArrowUpDown,     label: 'Transactions'       },
+  { href: '/income',        icon: TrendingUp,      label: 'Income'             },
+  { href: '/expenses',      icon: TrendingDown,    label: 'Expenses'           },
+  { href: '/budgets',       icon: Wallet,          label: 'Budgets'            },
+  { href: '/user-accounts', icon: CreditCard,      label: 'My Wallets'         },
+  { href: '/savings',       icon: PiggyBank,       label: 'Savings Goals'      },
+  { href: '/wealth',        icon: Landmark,        label: 'My Wealth'          },
+  { href: '/custody',       icon: Users,           label: 'Custody Account'    },
+  { href: '/recurring',     icon: RefreshCcw,      label: 'Recurring'          },
+  { href: '/reports',       icon: BarChart3,       label: 'Reports'            },
+  { href: '/analytics',     icon: BrainCircuit,    label: 'Analytics'          },
+  { href: '/forecast',      icon: CalendarClock,   label: 'Cash Flow Forecast' },
+  { href: '/accounts',      icon: BookMarked,      label: 'Chart of Accounts'  },
+  { href: '/categories',    icon: Tag,             label: 'Set Categories'     },
+  { href: '/health-score',  icon: HeartPulse,      label: 'Health Score'       },
+  { href: '/ai-advisor',    icon: Sparkles,        label: 'AI Advisor'         },
 ]
 
 const bottomItems = [
@@ -41,23 +43,25 @@ const bottomItems = [
 ]
 
 const adminItems = [
-  { href: '/admin/dashboard',     icon: LayoutDashboard, label: 'Overview'            },
-  { href: '/admin/users',         icon: Users,           label: 'Users'               },
-  { href: '/admin/subscriptions', icon: BadgeCheck,      label: 'Subscription Plans'  },
-  { href: '/admin/analytics',     icon: BarChart3,       label: 'Analytics'           },
-  { href: '/admin/monitoring',    icon: Shield,          label: 'Monitoring'          },
+  { href: '/admin/dashboard',     icon: LayoutDashboard, label: 'Overview'           },
+  { href: '/admin/users',         icon: Users,           label: 'Users'              },
+  { href: '/admin/subscriptions', icon: BadgeCheck,      label: 'Subscription Plans' },
+  { href: '/admin/analytics',     icon: BarChart3,       label: 'Analytics'          },
+  { href: '/admin/monitoring',    icon: Shield,          label: 'Monitoring'         },
 ]
+
+// ── NavLink ────────────────────────────────────────────────────────────
 
 function NavLink({
   href, icon: Icon, label, active, sidebar, sidebarOpen, highlight,
 }: {
-  href: string
-  icon: any
-  label: string
-  active: boolean
-  sidebar: any
+  href:        string
+  icon:        any
+  label:       string
+  active:      boolean
+  sidebar:     any
   sidebarOpen: boolean
-  highlight?: boolean
+  highlight?:  boolean
 }) {
   return (
     <Link
@@ -94,18 +98,20 @@ function NavLink({
       }}
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
-      {sidebarOpen && (
-        <span className="flex-1">{label}</span>
-      )}
+      {sidebarOpen && <span className="flex-1">{label}</span>}
       {sidebarOpen && highlight && !active && (
-        <span className="text-xs px-1.5 py-0.5 rounded font-semibold"
-          style={{ background: sidebar.activeText + '25', color: sidebar.activeText }}>
+        <span
+          className="text-xs px-1.5 py-0.5 rounded font-semibold"
+          style={{ background: sidebar.activeText + '25', color: sidebar.activeText }}
+        >
           AI
         </span>
       )}
     </Link>
   )
 }
+
+// ── Logo size maps ─────────────────────────────────────────────────────
 
 const LOGO_IMG_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   sm: 'h-8',
@@ -125,54 +131,62 @@ const LOGO_AREA_HEIGHT: Record<'sm' | 'md' | 'lg', string> = {
   lg: 'h-24',
 }
 
+// ── Sidebar ────────────────────────────────────────────────────────────
+
 export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname()
-  const { sidebarOpen, setSidebarOpen, getTheme, appLogo, logoSize, viewMode, profile } = useAppStore()
-  const theme       = getTheme()
-  const { sidebar } = theme
-  const isAdminUser = profile?.role === 'admin'
+  const {
+    sidebarOpen, setSidebarOpen, getTheme,
+    appLogo, logoSize, viewMode, profile,
+  } = useAppStore()
+
+  const theme        = getTheme()
+  const { sidebar }  = theme
+  const isAdminUser  = profile?.role === 'admin'
   const allowedPages = profile?.allowed_pages ?? null
-  const items       = (isAdmin ? adminItems : navItems).filter(item => {
-    if (isAdmin) return true // admin panel nav is never restricted
+
+  const items = (isAdmin ? adminItems : navItems).filter(item => {
+    if (isAdmin) return true
     const key = item.href.replace(/^\//, '')
-    if (key === 'dashboard') return true // dashboard is always accessible
+    if (key === 'dashboard') return true
     return isAdminUser || canAccessPage(allowedPages, key)
   })
 
   const size           = logoSize ?? 'md'
-  const logoAreaHeight = appLogo && sidebarOpen
-    ? LOGO_AREA_HEIGHT[size]
-    : 'h-16'
+  const logoAreaHeight = appLogo && sidebarOpen ? LOGO_AREA_HEIGHT[size] : 'h-16'
 
   return (
     <aside
       style={{ background: sidebar.background, borderColor: sidebar.borderColor }}
       className={cn(
         'relative flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0',
-        sidebarOpen ? 'w-64' : 'w-16'
+        sidebarOpen ? 'w-64' : 'w-16',
       )}
     >
-      {/* ── Logo area ── */}
+      {/* ── Logo area ─────────────────────────────────────────────── */}
       <div
         style={{ borderColor: sidebar.borderColor }}
         className={cn(
           'flex items-center border-b gap-3 px-4 transition-all duration-300',
           logoAreaHeight,
-          !sidebarOpen && 'justify-center px-0'
+          !sidebarOpen && 'justify-center px-0',
         )}
       >
+        {/* Logo image or placeholder */}
         {appLogo ? (
-          <div className={cn(
-            'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300',
-            size === 'lg' && sidebarOpen ? 'p-0.5' : 'p-1.5',
-            !sidebarOpen ? 'w-10 h-10' : LOGO_CIRCLE[size]
-          )}>
+          <div
+            className={cn(
+              'flex-shrink-0 rounded-full bg-white flex items-center justify-center shadow-sm transition-all duration-300',
+              size === 'lg' && sidebarOpen ? 'p-0.5' : 'p-1.5',
+              !sidebarOpen ? 'w-10 h-10' : LOGO_CIRCLE[size],
+            )}
+          >
             <img
               src={appLogo}
               alt="Logo"
               className={cn(
                 'object-contain transition-all duration-300 w-auto',
-                !sidebarOpen ? 'h-6' : LOGO_IMG_HEIGHT[size]
+                !sidebarOpen ? 'h-6' : LOGO_IMG_HEIGHT[size],
               )}
             />
           </div>
@@ -188,6 +202,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
           </div>
         )}
 
+        {/* App name + tagline — only when sidebar is expanded */}
         {sidebarOpen && (
           <div className="min-w-0">
             <span
@@ -196,20 +211,20 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             >
               {APP_CONFIG.name}
             </span>
-            {!appLogo && (
-              <p
-                style={{ color: sidebar.textMuted }}
-                className="text-xs leading-tight truncate"
-              >
-                {APP_CONFIG.tagline}
-              </p>
-            )}
+            <p
+              style={{ color: sidebar.textMuted }}
+              className="text-xs leading-tight truncate"
+            >
+              Personal Finance & Budget Tracker
+            </p>
           </div>
         )}
       </div>
 
-      {/* ── Main nav ── */}
+      {/* ── Main nav ──────────────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+
+        {/* Admin label */}
         {isAdmin && sidebarOpen && (
           <p
             style={{ color: sidebar.textMuted }}
@@ -219,7 +234,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
           </p>
         )}
 
-        {/* Regular nav items */}
+        {/* Regular nav items (excludes AI-specific routes handled below) */}
         {items
           .filter(i => i.href !== '/health-score' && i.href !== '/ai-advisor')
           .map(({ href, icon, label }) => (
@@ -234,20 +249,23 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             />
           ))}
 
-        {/* AI section divider */}
+        {/* ── AI section divider ── */}
         {!isAdmin && sidebarOpen && (
           <div className="pt-2 pb-1 px-3">
-            <div className="border-t"
-              style={{ borderColor: sidebar.borderColor }} />
-            <p className="text-xs font-semibold uppercase tracking-wider mt-2"
-              style={{ color: sidebar.activeText }}>
+            <div className="border-t" style={{ borderColor: sidebar.borderColor }} />
+            <p
+              className="text-xs font-semibold uppercase tracking-wider mt-2"
+              style={{ color: sidebar.activeText }}
+            >
               ✦ AI Features
             </p>
           </div>
         )}
         {!isAdmin && !sidebarOpen && (
-          <div className="my-1 mx-auto w-6 border-t"
-            style={{ borderColor: sidebar.borderColor }} />
+          <div
+            className="my-1 mx-auto w-6 border-t"
+            style={{ borderColor: sidebar.borderColor }}
+          />
         )}
 
         {/* AI nav items */}
@@ -255,22 +273,24 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
           { href: '/health-score', icon: HeartPulse, label: 'Health Score' },
           { href: '/ai-advisor',   icon: Sparkles,   label: 'AI Advisor'   },
         ]
-          .filter(({ href }) => isAdminUser || canAccessPage(allowedPages, href.replace(/^\//, '')))
+          .filter(({ href }) =>
+            isAdminUser || canAccessPage(allowedPages, href.replace(/^\//, '')),
+          )
           .map(({ href, icon, label }) => (
-          <NavLink
-            key={href}
-            href={href}
-            icon={icon}
-            label={label}
-            active={pathname === href || pathname.startsWith(href + '/')}
-            sidebar={sidebar}
-            sidebarOpen={sidebarOpen}
-            highlight
-          />
-        ))}
+            <NavLink
+              key={href}
+              href={href}
+              icon={icon}
+              label={label}
+              active={pathname === href || pathname.startsWith(href + '/')}
+              sidebar={sidebar}
+              sidebarOpen={sidebarOpen}
+              highlight
+            />
+          ))}
       </nav>
 
-      {/* ── Bottom nav ── */}
+      {/* ── Bottom nav (Notifications + Settings) ─────────────────── */}
       <div
         style={{ borderColor: sidebar.borderColor }}
         className="py-3 px-2 space-y-0.5 border-t"
@@ -288,7 +308,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
         ))}
       </div>
 
-      {/* ── Collapse toggle — hidden in mobile view since sidebar auto-collapses there ── */}
+      {/* ── Collapse toggle (hidden on mobile — sidebar auto-collapses) ── */}
       {viewMode !== 'mobile' && (
         <Button
           variant="ghost"
