@@ -549,22 +549,53 @@ export function UserAccountsContent({
 
   const exportStatementPDF = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
     const doc = new jsPDF()
-    doc.setFontSize(16); doc.text(`Account Statement — ${acc.name}`, 14, 20)
-    doc.setFontSize(10); doc.text(`Currency: ${acc.currency}  |  Opening Balance: ${formatCurrency(acc.opening_balance, acc.currency)}`, 14, 30)
+
+    // jsPDF's default font lacks ₵ and other non-Latin symbols — strip them
+    // to their ISO fallback so nothing renders as a replacement glyph (µ, ?, □).
+    const CURRENCY_TEXT: Record<string, string> = {
+      GHS: 'GHS', USD: 'USD', EUR: 'EUR', GBP: 'GBP',
+      NGN: 'NGN', KES: 'KES', ZAR: 'ZAR',
+    }
+    const currLabel = CURRENCY_TEXT[acc.currency] ?? acc.currency
+
+    // Replace any unicode currency symbols in a formatted amount string with
+    // the plain ISO code so the PDF font can render it correctly.
+    const safeFmt = (n: number) =>
+      formatCurrency(n, acc.currency)
+        .replace(/₵/g, 'GHS ')
+        .replace(/\$/g, 'USD ')
+        .replace(/€/g, 'EUR ')
+        .replace(/£/g, 'GBP ')
+        .replace(/₦/g, 'NGN ')
+        .replace(/KSh/g, 'KES ')
+        .replace(/R\s/g, 'ZAR ')
+
+    doc.setFontSize(16)
+    doc.text(`Account Statement - ${acc.name}`, 14, 20)
+    doc.setFontSize(10)
+    doc.text(`Currency: ${currLabel}  |  Opening Balance: ${safeFmt(acc.opening_balance)}`, 14, 30)
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 36)
+
     let y = 48
     doc.setFontSize(9)
-    doc.text('Date', 14, y); doc.text('Description', 45, y); doc.text('Amount', 130, y); doc.text('Balance', 165, y)
-    y += 4; doc.line(14, y, 196, y); y += 5
+    doc.text('Date', 14, y)
+    doc.text('Description', 45, y)
+    doc.text('Amount', 130, y)
+    doc.text('Balance', 165, y)
+    y += 4
+    doc.line(14, y, 196, y)
+    y += 5
+
     rows.forEach(r => {
       if (y > 275) { doc.addPage(); y = 20 }
       doc.text(r.date, 14, y)
       doc.text(r.title.slice(0, 40), 45, y)
-      const amtStr = (r.amount >= 0 ? '+' : '') + formatCurrency(Math.abs(r.amount), acc.currency)
+      const amtStr = (r.amount >= 0 ? '+' : '') + safeFmt(Math.abs(r.amount))
       doc.text(amtStr, 130, y)
-      doc.text(formatCurrency(r.balance ?? 0, acc.currency), 165, y)
+      doc.text(safeFmt(r.balance ?? 0), 165, y)
       y += 7
     })
+
     doc.save(`statement-${acc.name.replace(/\s+/g, '-')}.pdf`)
   }
 

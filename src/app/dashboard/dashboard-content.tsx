@@ -1015,7 +1015,7 @@ const CF_ACCOUNT_FILTERS: { value: CfAccountFilter; label: string }[] = [
   { value: 'credit_card',  label: 'Credit Card'   },
 ]
 
-type BdFilter = 'all' | 'month' | 'lastMonth' | 'year'
+type BdFilter = 'all' | 'today' | 'week' | 'month' | 'lastMonth' | 'year' | 'custom'
 
 const toISODate = (d: Date) => d.toISOString().split('T')[0]
 
@@ -1608,8 +1608,19 @@ function FinancialHealthScore({
   const [bdFilter, setBdFilter] = useState<BdFilter>('all')
 
   // Compute the date range for the selected period
+  const [bdCustomFrom, setBdCustomFrom] = useState('')
+  const [bdCustomTo,   setBdCustomTo]   = useState('')
+
   const { rangeStart, rangeEnd } = useMemo(() => {
     const now = new Date()
+    if (bdFilter === 'today') {
+      const d = toISODate(now)
+      return { rangeStart: d, rangeEnd: d }
+    }
+    if (bdFilter === 'week') {
+      const [mon, sun] = weekRange(now)
+      return { rangeStart: toISODate(mon), rangeEnd: toISODate(sun) }
+    }
     if (bdFilter === 'month') {
       const first = new Date(now.getFullYear(), now.getMonth(), 1)
       const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -1621,13 +1632,13 @@ function FinancialHealthScore({
       return { rangeStart: toISODate(first), rangeEnd: toISODate(last) }
     }
     if (bdFilter === 'year') {
-      return {
-        rangeStart: `${now.getFullYear()}-01-01`,
-        rangeEnd:   `${now.getFullYear()}-12-31`,
-      }
+      return { rangeStart: `${now.getFullYear()}-01-01`, rangeEnd: `${now.getFullYear()}-12-31` }
+    }
+    if (bdFilter === 'custom' && bdCustomFrom && bdCustomTo) {
+      return { rangeStart: bdCustomFrom, rangeEnd: bdCustomTo }
     }
     return { rangeStart: '', rangeEnd: '' }
-  }, [bdFilter])
+  }, [bdFilter, bdCustomFrom, bdCustomTo])
 
   // Re-bucket income by category for the selected period
   const bdIncomeByCategory = useMemo(() => {
@@ -1661,11 +1672,14 @@ function FinancialHealthScore({
 
   const bdFilterLabel: Record<BdFilter, string> = {
     all:       'All Time',
+    today:     'Today',
+    week:      'This Week',
     month:     'This Month',
     lastMonth: 'Last Month',
     year:      'This Year',
+    custom:    'Custom Range',
   }
-
+  
   return (
     <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
       <CardHeader className="pb-2">
