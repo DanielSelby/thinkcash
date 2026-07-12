@@ -1015,6 +1015,8 @@ const CF_ACCOUNT_FILTERS: { value: CfAccountFilter; label: string }[] = [
   { value: 'credit_card',  label: 'Credit Card'   },
 ]
 
+type BdFilter = 'all' | 'month' | 'lastMonth' | 'year'
+
 const toISODate = (d: Date) => d.toISOString().split('T')[0]
 
 // Monday–Sunday of the week containing `d`
@@ -1593,28 +1595,104 @@ function ZoomCategoryDonut({
 }
 
 function FinancialHealthScore({
-  incomeByCategory, expenseByCategory, currency, theme,
+  incomeByCategory, expenseByCategory, currency, theme, filteredIncomes, filteredExpenses,
 }: {
   incomeByCategory: { name: string; value: number; count?: number }[]
   expenseByCategory: { name: string; value: number; count?: number }[]
   currency: string
   theme: any
+  filteredIncomes: any[]
+  filteredExpenses: any[]
 }) {
   const fmt = (n: number) => formatCurrency(n, currency)
+  const [bdFilter, setBdFilter] = useState<BdFilter>('all')
+
+  // Compute the date range for the selected period
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    const now = new Date()
+    if (bdFilter === 'month') {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1)
+      const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      return { rangeStart: toISODate(first), rangeEnd: toISODate(last) }
+    }
+    if (bdFilter === 'lastMonth') {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0)
+      return { rangeStart: toISODate(first), rangeEnd: toISODate(last) }
+    }
+    if (bdFilter === 'year') {
+      return {
+        rangeStart: `${now.getFullYear()}-01-01`,
+        rangeEnd:   `${now.getFullYear()}-12-31`,
+      }
+    }
+    return { rangeStart: '', rangeEnd: '' }
+  }, [bdFilter])
+
+  // Re-bucket income by category for the selected period
+  const bdIncomeByCategory = useMemo(() => {
+    const src = bdFilter === 'all'
+      ? filteredIncomes
+      : filteredIncomes.filter(r => r.date >= rangeStart && r.date <= rangeEnd)
+    const map: Record<string, { value: number; count: number }> = {}
+    src.forEach(r => {
+      const cat = r.category || 'Other'
+      if (!map[cat]) map[cat] = { value: 0, count: 0 }
+      map[cat].value += Number(r.amount)
+      map[cat].count += 1
+    })
+    return Object.entries(map).map(([name, { value, count }]) => ({ name, value, count })).sort((a, b) => b.value - a.value)
+  }, [filteredIncomes, bdFilter, rangeStart, rangeEnd])
+
+  // Re-bucket expenses by category for the selected period
+  const bdExpenseByCategory = useMemo(() => {
+    const src = bdFilter === 'all'
+      ? filteredExpenses
+      : filteredExpenses.filter(r => r.date >= rangeStart && r.date <= rangeEnd)
+    const map: Record<string, { value: number; count: number }> = {}
+    src.forEach(r => {
+      const cat = r.category || 'Other'
+      if (!map[cat]) map[cat] = { value: 0, count: 0 }
+      map[cat].value += Number(r.amount)
+      map[cat].count += 1
+    })
+    return Object.entries(map).map(([name, { value, count }]) => ({ name, value, count })).sort((a, b) => b.value - a.value)
+  }, [filteredExpenses, bdFilter, rangeStart, rangeEnd])
+
+  const bdFilterLabel: Record<BdFilter, string> = {
+    all:       'All Time',
+    month:     'This Month',
+    lastMonth: 'Last Month',
+    year:      'This Year',
+  }
 
   return (
     <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
       <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <HeartPulse className="w-4 h-4" style={{ color: theme.colors.primary }} />
-          <CardTitle className="text-sm font-semibold tracking-tight">Cash Flow Breakdown</CardTitle>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="w-4 h-4" style={{ color: theme.colors.primary }} />
+            <CardTitle className="text-sm font-semibold tracking-tight">Cash Flow Breakdown</CardTitle>
+          </div>
+          <select
+            value={bdFilter}
+            onChange={e => setBdFilter(e.target.value as BdFilter)}
+            className="h-8 pl-3 pr-7 rounded-lg border border-border text-xs font-semibold bg-white focus:outline-none focus:ring-1 cursor-pointer appearance-none"
+          >
+            <option value="all">All Time</option>
+            <option value="month">This Month</option>
+            <option value="lastMonth">Last Month</option>
+            <option value="year">This Year</option>
+          </select>
         </div>
-        <p className="text-xs text-muted-foreground">Financial Overview - Your Income & Expenses Breakdown</p>
+        <p className="text-xs text-muted-foreground">
+          {bdFilterLabel[bdFilter]} · Income &amp; Expenses Breakdown
+        </p>
       </CardHeader>
       <CardContent className="space-y-5">
         <ZoomCategoryDonut
           title="Income by Category"
-          data={incomeByCategory}
+          data={bdIncomeByCategory}
           totalLabel="Total Income"
           fmt={fmt}
           emptyMessage="Add income to see the breakdown"
@@ -1625,7 +1703,7 @@ function FinancialHealthScore({
 
         <ZoomCategoryDonut
           title="Expenses by Category"
-          data={expenseByCategory}
+          data={bdExpenseByCategory}
           totalLabel="Total Expenses"
           fmt={fmt}
           emptyMessage="Add expenses to see the breakdown"
@@ -1633,7 +1711,7 @@ function FinancialHealthScore({
         />
 
         <a
-          href="/analytics"
+         href="/analytics"
           className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border transition-colors hover:bg-muted/50"
           style={{ borderColor: theme.colors.primary, color: theme.colors.primary }}
         >
@@ -1643,7 +1721,6 @@ function FinancialHealthScore({
     </Card>
   )
 }
-
 
 export function DashboardContent({ accounts, transfers, incomes, expenses, budgets, goals, profile, custodyTransactions = [] }: Props) {
   const { setProfile, activeTheme, currency } = useAppStore()
@@ -2611,6 +2688,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           expenseByCategory={expenseByCategory}
           currency={currency}
           theme={theme}
+          filteredIncomes={filteredIncomes}
+          filteredExpenses={filteredExpenses}
         />
 
         <CashFlowDiverging
