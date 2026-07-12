@@ -30,7 +30,9 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import { KPICard } from '@/components/ui/kpi-card'
 import type { UserAccount } from '@/types'
-import { Users, ShieldOff } from 'lucide-react'
+import { Users, ShieldOff, CalendarDays } from 'lucide-react'
+import jsPDF from 'jspdf'
+import * as XLSX from 'xlsx'
 
 const ACCOUNT_TYPES = [
   { value: 'bank',         label: 'Bank Account', icon: Building2  },
@@ -130,6 +132,22 @@ const transferSchema = z.object({
 })
 type TransferFormData = z.infer<typeof transferSchema>
 
+const depositSchema = z.object({
+  amount:     z.coerce.number().positive('Amount must be positive'),
+  date:       z.string().min(1, 'Date required'),
+  category:   z.string().default('other'),
+  note:       z.string().optional(),
+})
+type DepositFormData = z.infer<typeof depositSchema>
+
+const withdrawSchema = z.object({
+  amount:     z.coerce.number().positive('Amount must be positive'),
+  date:       z.string().min(1, 'Date required'),
+  category:   z.string().default('other'),
+  note:       z.string().optional(),
+})
+type WithdrawFormData = z.infer<typeof withdrawSchema>
+
 interface Transfer {
   id: string
   from_account_id: string
@@ -183,6 +201,17 @@ export function UserAccountsContent({
   const [showBalances,    setShowBalances]    = useState(true)
   const [starredAccs,     setStarredAccs]     = useState<Set<string>>(new Set())
   const [quickAction,     setQuickAction]     = useState<{ type: 'deposit' | 'withdraw' | 'transfer' | 'statement'; accId: string } | null>(null)
+  const [depositOpen,    setDepositOpen]    = useState(false)
+  const [withdrawOpen,   setWithdrawOpen]   = useState(false)
+  const [statementOpen,  setStatementOpen]  = useState(false)
+  const [actionAccount,  setActionAccount]  = useState<typeof accountsWithBalance[0] | null>(null)
+  const [depositLoading, setDepositLoading] = useState(false)
+  const [withdrawLoading,setWithdrawLoading]= useState(false)
+  const [stmtDateFrom,   setStmtDateFrom]   = useState('')
+  const [stmtDateTo,     setStmtDateTo]     = useState('')
+  const [stmtTypeFilter, setStmtTypeFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all')
+  const [localIncomes,   setLocalIncomes]   = useState(incomes)
+  const [localExpenses,  setLocalExpenses]  = useState(expenses)
 
   // ── Forms ─────────────────────────────────────────────────────────
   const accountForm = useForm<AccountFormData>({
@@ -192,6 +221,15 @@ export function UserAccountsContent({
   const transferForm = useForm<TransferFormData>({
     resolver: zodResolver(transferSchema),
     defaultValues: { date: new Date().toISOString().split('T')[0] },
+  })
+
+  const depositForm  = useForm<DepositFormData>({
+    resolver: zodResolver(depositSchema),
+    defaultValues: { date: new Date().toISOString().split('T')[0], category: 'other' },
+  })
+  const withdrawForm = useForm<WithdrawFormData>({
+    resolver: zodResolver(withdrawSchema),
+    defaultValues: { date: new Date().toISOString().split('T')[0], category: 'other' },
   })
 
   const watchedFromId = transferForm.watch('from_account_id')
@@ -206,8 +244,8 @@ export function UserAccountsContent({
   // ── Balance Computation ───────────────────────────────────────────
   const accountsWithBalance = useMemo(() =>
     accounts.map(acc => {
-      const totalIncome   = incomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
-      const totalExpense  = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
+      const totalIncome   = localIncomes.filter(i  => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
+      const totalExpense  = localExpenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
       const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
       const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.to_amount ?? t.amount), 0)
       const custodyIn     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
@@ -247,7 +285,7 @@ export function UserAccountsContent({
         isCustody:         (acc as any).is_custody        ?? false,
         isExcludedFromNet: (acc as any).exclude_from_net  ?? (acc as any).is_custody ?? false,
       }
-    }), [accounts, incomes, expenses, transfers, custodyTransactions])
+    }), [accounts, localIncomes, localExpenses, transfers, custodyTransactions])
 
   // ── Totals ────────────────────────────────────────────────────────
   const totalBalance  = accountsWithBalance.reduce((s, a) => s + (a.balance ?? 0), 0)
@@ -398,6 +436,155 @@ export function UserAccountsContent({
     const { error } = await supabase.from('transfers').delete().eq('id', id)
     if (error) toast({ title: 'Delete failed', description: error.message, variant: 'destructive' })
     else { setTransfers(prev => prev.filter(t => t.id !== id)); toast({ title: 'Transfer deleted' }) }
+  }
+
+  const openDeposit = (acc: typeof accountsWithBalance[0]) => {
+    setActionAccount(acc)
+    depositForm.reset({ date: new Date().toISOString().split('T')[0], category: 'other', note: '' })
+    setDepositOpen(true)
+  }
+
+  const openWithdraw = (acc: typeof accountsWithBalance[0]) => {
+    setActionAccount(acc)
+    withdrawForm.reset({ date: new Date().toISOString().split('T')[0], category: 'other', note: '' })
+    setWithdrawOpen(true)
+  }
+
+  const openStatement = (acc: typeof accountsWithBalance[0]) => {
+    setActionAccount(acc)
+    setStmtDateFrom('')
+    setStmtDateTo('')
+    setStmtTypeFilter('all')
+    setStatementOpen(true)
+  }
+
+  const onDepositSubmit = async (data: DepositFormData) => {
+    if (!actionAccount) return
+    setDepositLoading(true)
+    const supabase = createClient()
+    const { data: created, error } = await supabase.from('incomes').insert({
+      user_id:    userId,
+      title:      data.note || `Deposit to ${actionAccount.name}`,
+      amount:     data.amount,
+      category:   data.category,
+      date:       data.date,
+      account_id: actionAccount.id,
+      notes:      data.note || null,
+    }).select().single()
+    if (error) {
+      toast({ title: 'Deposit failed', description: error.message, variant: 'destructive' })
+    } else {
+      setLocalIncomes(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
+      toast({ title: `+${formatCurrency(data.amount, actionAccount.currency)} deposited to ${actionAccount.name}`, variant: 'success' })
+      setDepositOpen(false)
+    }
+    setDepositLoading(false)
+  }
+
+  const onWithdrawSubmit = async (data: WithdrawFormData) => {
+    if (!actionAccount) return
+    // Balance guard
+    const currentBal = actionAccount.balance ?? 0
+    if (data.amount > currentBal && !actionAccount.overdraftAllowed) {
+      const confirmed = confirm(
+        `⚠ This will put ${actionAccount.name} into a negative balance of ${formatCurrency(currentBal - data.amount, actionAccount.currency)}.\n\n${ACCOUNT_TYPES.find(t => t.value === actionAccount.type)?.label} accounts normally cannot go negative.\n\nProceed anyway?`
+      )
+      if (!confirmed) return
+    }
+    setWithdrawLoading(true)
+    const supabase = createClient()
+    const { error } = await supabase.from('expenses').insert({
+      user_id:        userId,
+      title:          data.note || `Withdrawal from ${actionAccount.name}`,
+      amount:         data.amount,
+      category:       data.category,
+      date:           data.date,
+      account_id:     actionAccount.id,
+      payment_method: 'bank_transfer',
+      notes:          data.note || null,
+    }).select().single()
+    if (error) {
+      toast({ title: 'Withdrawal failed', description: error.message, variant: 'destructive' })
+    } else {
+      setLocalExpenses(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
+      toast({ title: `-${formatCurrency(data.amount, actionAccount.currency)} withdrawn from ${actionAccount.name}`, variant: 'success' })
+      setWithdrawOpen(false)
+    }
+    setWithdrawLoading(false)
+  }
+
+  // Statement helpers
+  const getStatementRows = (acc: typeof accountsWithBalance[0]) => {
+    const rows: { id: string; date: string; title: string; type: 'income' | 'expense' | 'transfer'; amount: number; balance?: number }[] = []
+
+    localIncomes.filter(i => i.account_id === acc.id).forEach((i: any) => {
+      rows.push({ id: i.id ?? Math.random().toString(), date: i.date ?? '', title: i.title || 'Income', type: 'income', amount: Number(i.amount) })
+    })
+    localExpenses.filter(e => e.account_id === acc.id).forEach((e: any) => {
+      rows.push({ id: e.id ?? Math.random().toString(), date: e.date ?? '', title: e.title || 'Expense', type: 'expense', amount: -Number(e.amount) })
+    })
+    transfers.filter(t => t.from_account_id === acc.id || t.to_account_id === acc.id).forEach(t => {
+      const isOut = t.from_account_id === acc.id
+      rows.push({
+        id: t.id, date: t.date,
+        title: isOut ? `Transfer to ${getAccountName(t.to_account_id)}` : `Transfer from ${getAccountName(t.from_account_id)}`,
+        type: 'transfer',
+        amount: isOut ? -Number(t.amount) : Number(t.to_amount ?? t.amount),
+      })
+    })
+
+    return rows
+      .filter(r => {
+        if (stmtTypeFilter !== 'all' && r.type !== stmtTypeFilter) return false
+        if (stmtDateFrom && r.date < stmtDateFrom) return false
+        if (stmtDateTo   && r.date > stmtDateTo)   return false
+        return true
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((r, i, arr) => {
+        const runningBal = acc.opening_balance + arr.slice(0, i + 1).reduce((s, x) => s + x.amount, 0)
+        return { ...r, balance: runningBal }
+      })
+  }
+
+  const exportStatementPDF = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
+    const doc = new jsPDF()
+    doc.setFontSize(16); doc.text(`Account Statement — ${acc.name}`, 14, 20)
+    doc.setFontSize(10); doc.text(`Currency: ${acc.currency}  |  Opening Balance: ${formatCurrency(acc.opening_balance, acc.currency)}`, 14, 30)
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 36)
+    let y = 48
+    doc.setFontSize(9)
+    doc.text('Date', 14, y); doc.text('Description', 45, y); doc.text('Amount', 130, y); doc.text('Balance', 165, y)
+    y += 4; doc.line(14, y, 196, y); y += 5
+    rows.forEach(r => {
+      if (y > 275) { doc.addPage(); y = 20 }
+      doc.text(r.date, 14, y)
+      doc.text(r.title.slice(0, 40), 45, y)
+      const amtStr = (r.amount >= 0 ? '+' : '') + formatCurrency(Math.abs(r.amount), acc.currency)
+      doc.text(amtStr, 130, y)
+      doc.text(formatCurrency(r.balance ?? 0, acc.currency), 165, y)
+      y += 7
+    })
+    doc.save(`statement-${acc.name.replace(/\s+/g, '-')}.pdf`)
+  }
+
+  const exportStatementExcel = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
+    const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
+      Date: r.date, Description: r.title, Type: r.type,
+      Amount: r.amount, Balance: r.balance ?? 0, Currency: acc.currency,
+    })))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Statement')
+    XLSX.writeFile(wb, `statement-${acc.name.replace(/\s+/g, '-')}.xlsx`)
+  }
+
+  const exportStatementCSV = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
+    const header = 'Date,Description,Type,Amount,Balance,Currency\n'
+    const body   = rows.map(r => `${r.date},"${r.title}",${r.type},${r.amount},${r.balance ?? 0},${acc.currency}`).join('\n')
+    const blob   = new Blob([header + body], { type: 'text/csv' })
+    const url    = URL.createObjectURL(blob)
+    const a      = document.createElement('a'); a.href = url; a.download = `statement-${acc.name.replace(/\s+/g, '-')}.csv`; a.click()
+    URL.revokeObjectURL(url)
   }
 
   // ── Render ────────────────────────────────────────────────────────
@@ -652,12 +839,16 @@ export function UserAccountsContent({
                           <button
                             key={action}
                             onClick={() => {
-                              if (action === 'transfer') {
-                                transferForm.reset({ from_account_id: acc.id, date: new Date().toISOString().split('T')[0] })
-                                setTransferOpen(true)
-                              } else {
-                                toast({ title: `${label} coming soon`, variant: 'success' })
-                              }
+                              if (action === 'transfer' || label === 'Transfer') {
+                            transferForm.reset({ from_account_id: acc.id, date: new Date().toISOString().split('T')[0] })
+                            setTransferOpen(true)
+                          } else if (action === 'deposit' || label === 'Deposit') {
+                            openDeposit(acc)
+                          } else if (action === 'withdraw' || label === 'Withdraw') {
+                            openWithdraw(acc)
+                          } else if (action === 'statement' || label === 'Statement') {
+                            openStatement(acc)
+                          }
                             }}
                             className="flex flex-col items-center gap-1 py-2 rounded-lg hover:bg-muted/60 transition-colors group"
                           >
@@ -747,13 +938,20 @@ export function UserAccountsContent({
                     ].map(({ icon: BtnIcon, label, color: btnColor }) => (
                       <button key={label}
                         onClick={() => {
-                          if (label === 'Transfer') {
-                            transferForm.reset({ from_account_id: acc.id, date: new Date().toISOString().split('T')[0] })
-                            setTransferOpen(true)
-                          } else {
-                            toast({ title: `${label} coming soon`, variant: 'success' })
-                          }
-                        }}
+                       if (label === 'Transfer') {
+                         transferForm.reset({
+                           from_account_id: acc.id,
+                          date: new Date().toISOString().split('T')[0]
+                         })
+                        setTransferOpen(true)
+                       } else if (label === 'Deposit') {
+                        openDeposit(acc)
+                       } else if (label === 'Withdraw') {
+                       openWithdraw(acc)
+                      } else if (label === 'Statement') {
+                       openStatement(acc)
+                       }
+                     }}
                         className="flex flex-col items-center gap-1.5 py-2.5 rounded-xl hover:bg-muted/60 transition-colors"
                       >
                         <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: btnColor + '15' }}>
@@ -1144,6 +1342,269 @@ export function UserAccountsContent({
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ Deposit Dialog ════════════════════════════════════════ */}
+      <Dialog open={depositOpen} onOpenChange={setDepositOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowUpRight className="w-5 h-5 text-green-600" /> Deposit Funds
+            </DialogTitle>
+          </DialogHeader>
+          {actionAccount && (
+            <form onSubmit={depositForm.handleSubmit(onDepositSubmit)} className="space-y-4">
+              <div className="bg-green-50 rounded-xl p-3 text-sm">
+                <p className="font-semibold">{actionAccount.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Current balance: <span className="font-semibold text-green-700">{formatCurrency(actionAccount.balance ?? 0, actionAccount.currency)}</span>
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Amount ({actionAccount.currency})</Label>
+                <Input type="number" step="0.01" placeholder="0.00" {...depositForm.register('amount')} autoFocus />
+                {depositForm.formState.errors.amount && <p className="text-xs text-destructive">{depositForm.formState.errors.amount.message}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input type="date" {...depositForm.register('date')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Select value={depositForm.watch('category')} onValueChange={v => depositForm.setValue('category', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['salary','freelance','business','investment','rental','gift','bonus','other'].map(c => (
+                      <SelectItem key={c} value={c} className="capitalize">{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Input placeholder="e.g. Salary payment, Cash deposit..." {...depositForm.register('note')} />
+              </div>
+              {Number(depositForm.watch('amount')) > 0 && (
+                <div className="bg-green-50 rounded-xl p-3 text-sm flex justify-between">
+                  <span className="text-muted-foreground">New balance</span>
+                  <span className="font-bold text-green-700 tabular-nums">
+                    {formatCurrency((actionAccount.balance ?? 0) + Number(depositForm.watch('amount')), actionAccount.currency)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setDepositOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={depositLoading} className="bg-green-600 text-white hover:bg-green-700">
+                  {depositLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Deposit'}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ Withdraw Dialog ═══════════════════════════════════════ */}
+      <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownRight className="w-5 h-5 text-red-500" /> Withdraw Funds
+            </DialogTitle>
+          </DialogHeader>
+          {actionAccount && (
+            <form onSubmit={withdrawForm.handleSubmit(onWithdrawSubmit)} className="space-y-4">
+              <div className="bg-red-50 rounded-xl p-3 text-sm">
+                <p className="font-semibold">{actionAccount.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Available: <span className="font-semibold text-red-600">{formatCurrency(actionAccount.balance ?? 0, actionAccount.currency)}</span>
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Amount ({actionAccount.currency})</Label>
+                <Input type="number" step="0.01" placeholder="0.00" {...withdrawForm.register('amount')} autoFocus />
+                {withdrawForm.formState.errors.amount && <p className="text-xs text-destructive">{withdrawForm.formState.errors.amount.message}</p>}
+                {Number(withdrawForm.watch('amount')) > (actionAccount.balance ?? 0) && !actionAccount.overdraftAllowed && (
+                  <p className="text-xs text-orange-500 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Exceeds available balance — you'll be prompted to confirm
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input type="date" {...withdrawForm.register('date')} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Select value={withdrawForm.watch('category')} onValueChange={v => withdrawForm.setValue('category', v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['food & dining','transport','utilities','healthcare','education','entertainment','shopping','savings','debt payment','other'].map(c => (
+                      <SelectItem key={c} value={c} className="capitalize">{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Note <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                <Input placeholder="e.g. ATM withdrawal, Bill payment..." {...withdrawForm.register('note')} />
+              </div>
+              {Number(withdrawForm.watch('amount')) > 0 && (
+                <div className={`rounded-xl p-3 text-sm flex justify-between ${(actionAccount.balance ?? 0) - Number(withdrawForm.watch('amount')) < 0 ? 'bg-red-50' : 'bg-muted/50'}`}>
+                  <span className="text-muted-foreground">New balance</span>
+                  <span className={`font-bold tabular-nums ${(actionAccount.balance ?? 0) - Number(withdrawForm.watch('amount')) < 0 ? 'text-red-600' : ''}`}>
+                    {formatCurrency((actionAccount.balance ?? 0) - Number(withdrawForm.watch('amount')), actionAccount.currency)}
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setWithdrawOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={withdrawLoading} className="bg-red-600 text-white hover:bg-red-700">
+                  {withdrawLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Withdraw'}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ Statement Dialog ══════════════════════════════════════ */}
+      <Dialog open={statementOpen} onOpenChange={setStatementOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-violet-600" />
+              Account Statement — {actionAccount?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {actionAccount && (() => {
+            const rows = getStatementRows(actionAccount)
+            const totalIn  = rows.filter(r => r.amount > 0).reduce((s, r) => s + r.amount, 0)
+            const totalOut = rows.filter(r => r.amount < 0).reduce((s, r) => s + Math.abs(r.amount), 0)
+            const netFlow  = totalIn - totalOut
+            return (
+              <div className="space-y-4">
+                {/* Account info */}
+                <div className="bg-muted/30 rounded-xl p-3 grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Currency</p>
+                    <p className="font-semibold">{actionAccount.currency}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Opening Balance</p>
+                    <p className="font-semibold">{formatCurrency(actionAccount.opening_balance, actionAccount.currency)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Current Balance</p>
+                    <p className="font-semibold" style={{ color: ACCOUNT_TYPE_COLORS[actionAccount.type] }}>{formatCurrency(actionAccount.balance ?? 0, actionAccount.currency)}</p>
+                  </div>
+                </div>
+
+                {/* Filters */}
+                <div className="flex gap-3 flex-wrap items-end">
+                  <div className="space-y-1 flex-1 min-w-[120px]">
+                    <Label className="text-xs">From</Label>
+                    <Input type="date" value={stmtDateFrom} onChange={e => setStmtDateFrom(e.target.value)} className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1 flex-1 min-w-[120px]">
+                    <Label className="text-xs">To</Label>
+                    <Input type="date" value={stmtDateTo} onChange={e => setStmtDateTo(e.target.value)} className="h-8 text-xs" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Type</Label>
+                    <Select value={stmtTypeFilter} onValueChange={(v: any) => setStmtTypeFilter(v)}>
+                      <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="income">Income</SelectItem>
+                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="transfer">Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => exportStatementPDF(actionAccount, rows)}>
+                      <Download className="w-3 h-3" /> PDF
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => exportStatementExcel(actionAccount, rows)}>
+                      <Download className="w-3 h-3" /> Excel
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => exportStatementCSV(actionAccount, rows)}>
+                      <Download className="w-3 h-3" /> CSV
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Summary totals */}
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-green-50 rounded-xl p-3">
+                    <p className="text-xs text-green-600 font-semibold">Total In</p>
+                    <p className="font-bold text-green-700 tabular-nums">{formatCurrency(totalIn, actionAccount.currency)}</p>
+                  </div>
+                  <div className="bg-red-50 rounded-xl p-3">
+                    <p className="text-xs text-red-600 font-semibold">Total Out</p>
+                    <p className="font-bold text-red-600 tabular-nums">{formatCurrency(totalOut, actionAccount.currency)}</p>
+                  </div>
+                  <div className={`rounded-xl p-3 ${netFlow >= 0 ? 'bg-blue-50' : 'bg-orange-50'}`}>
+                    <p className={`text-xs font-semibold ${netFlow >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>Net Flow</p>
+                    <p className={`font-bold tabular-nums ${netFlow >= 0 ? 'text-blue-700' : 'text-orange-700'}`}>
+                      {netFlow >= 0 ? '+' : ''}{formatCurrency(netFlow, actionAccount.currency)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Transaction table */}
+                {rows.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">No transactions match the selected filters</p>
+                  </div>
+                ) : (
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      <span className="col-span-2">Date</span>
+                      <span className="col-span-4">Description</span>
+                      <span className="col-span-2">Type</span>
+                      <span className="col-span-2 text-right">Amount</span>
+                      <span className="col-span-2 text-right">Balance</span>
+                    </div>
+                    <div className="divide-y divide-border max-h-72 overflow-y-auto">
+                      {rows.map(r => (
+                        <div key={r.id} className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs hover:bg-muted/20 transition-colors">
+                          <span className="col-span-2 text-muted-foreground tabular-nums">{r.date}</span>
+                          <span className="col-span-4 truncate font-medium">{r.title}</span>
+                          <span className="col-span-2">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize ${
+                              r.type === 'income'   ? 'bg-green-100 text-green-700' :
+                              r.type === 'expense'  ? 'bg-red-100 text-red-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>{r.type}</span>
+                          </span>
+                          <span className={`col-span-2 text-right font-semibold tabular-nums ${r.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            {r.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(r.amount), actionAccount.currency)}
+                          </span>
+                          <span className="col-span-2 text-right tabular-nums text-muted-foreground">
+                            {formatCurrency(r.balance ?? 0, actionAccount.currency)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/30 text-xs font-semibold border-t border-border">
+                      <span className="col-span-8">{rows.length} transaction{rows.length !== 1 ? 's' : ''}</span>
+                      <span className={`col-span-2 text-right ${netFlow >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {netFlow >= 0 ? '+' : ''}{formatCurrency(netFlow, actionAccount.currency)}
+                      </span>
+                      <span className="col-span-2 text-right">{formatCurrency(actionAccount.balance ?? 0, actionAccount.currency)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-2">
+                  <Button variant="outline" onClick={() => setStatementOpen(false)}>Close</Button>
+                </div>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
 
