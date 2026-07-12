@@ -604,10 +604,36 @@ export function UserAccountsContent({
         <div className="flex gap-2 flex-wrap items-center">
           {accounts.length >= 2 && (
             <>
-              <Button variant="outline" onClick={() => setShowHistory(h => !h)} className="gap-2 h-9 text-sm">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowHistory(h => !h)
+                  if (!showHistory) {
+                    toast({
+                      title: 'Transfer History',
+                      description: 'Scroll down to see your transfer history below the accounts.',
+                      variant: 'success',
+                    })
+                  }
+                }}
+                className="gap-2 h-9 text-sm transition-colors"
+                style={showHistory ? {
+                  background: theme.colors.primary,
+                  color: '#fff',
+                  borderColor: theme.colors.primary,
+                } : {}}
+              >
                 <History className="w-4 h-4" /> Transfer History
                 {transfers.length > 0 && (
-                  <span className="bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded-full font-semibold">{transfers.length}</span>
+                  <span
+                    className="text-xs px-1.5 py-0.5 rounded-full font-semibold"
+                    style={showHistory
+                      ? { background: 'rgba(255,255,255,0.25)', color: '#fff' }
+                      : { background: theme.colors.primary + '20', color: theme.colors.primary }
+                    }
+                  >
+                    {transfers.length}
+                  </span>
                 )}
               </Button>
               <Button variant="outline" onClick={() => { transferForm.reset({ date: new Date().toISOString().split('T')[0] }); setTransferOpen(true) }} className="gap-2 h-9 text-sm">
