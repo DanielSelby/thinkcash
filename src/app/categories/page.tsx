@@ -55,20 +55,74 @@ export default function CategoriesPage() {
   const [editing, setEditing] = useState<EditState | null>(null)
 
   useEffect(() => {
-    const inc = localStorage.getItem(STORAGE_KEY_INCOME)
-    const exp = localStorage.getItem(STORAGE_KEY_EXPENSE)
-    setIncomeCategories(inc  ? JSON.parse(inc)  : DEFAULT_INCOME_CATEGORIES)
-    setExpenseCategories(exp ? JSON.parse(exp)  : DEFAULT_EXPENSE_CATEGORIES)
-    setLoaded(true)
+    const load = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('income_categories, expense_categories')
+            .eq('id', user.id)
+            .single()
+
+          if (prof?.income_categories?.length) {
+            setIncomeCategories(prof.income_categories)
+            localStorage.setItem(STORAGE_KEY_INCOME, JSON.stringify(prof.income_categories))
+          } else {
+            const inc = localStorage.getItem(STORAGE_KEY_INCOME)
+            setIncomeCategories(inc ? JSON.parse(inc) : DEFAULT_INCOME_CATEGORIES)
+          }
+
+          if (prof?.expense_categories?.length) {
+            setExpenseCategories(prof.expense_categories)
+            localStorage.setItem(STORAGE_KEY_EXPENSE, JSON.stringify(prof.expense_categories))
+          } else {
+            const exp = localStorage.getItem(STORAGE_KEY_EXPENSE)
+            setExpenseCategories(exp ? JSON.parse(exp) : DEFAULT_EXPENSE_CATEGORIES)
+          }
+        } else {
+          const inc = localStorage.getItem(STORAGE_KEY_INCOME)
+          const exp = localStorage.getItem(STORAGE_KEY_EXPENSE)
+          setIncomeCategories(inc ? JSON.parse(inc) : DEFAULT_INCOME_CATEGORIES)
+          setExpenseCategories(exp ? JSON.parse(exp) : DEFAULT_EXPENSE_CATEGORIES)
+        }
+      } catch {
+        const inc = localStorage.getItem(STORAGE_KEY_INCOME)
+        const exp = localStorage.getItem(STORAGE_KEY_EXPENSE)
+        setIncomeCategories(inc ? JSON.parse(inc) : DEFAULT_INCOME_CATEGORIES)
+        setExpenseCategories(exp ? JSON.parse(exp) : DEFAULT_EXPENSE_CATEGORIES)
+      }
+      setLoaded(true)
+    }
+    load()
   }, [])
 
-  const saveIncome  = (cats: string[]) => {
+  const saveIncome  = async (cats: string[]) => {
     setIncomeCategories(cats)
     localStorage.setItem(STORAGE_KEY_INCOME, JSON.stringify(cats))
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('profiles')
+          .update({ income_categories: cats })
+          .eq('id', user.id)
+      }
+    } catch { /* silent — localStorage is the fallback */ }
   }
-  const saveExpense = (cats: string[]) => {
+  const saveExpense = async (cats: string[]) => {
     setExpenseCategories(cats)
     localStorage.setItem(STORAGE_KEY_EXPENSE, JSON.stringify(cats))
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('profiles')
+          .update({ expense_categories: cats })
+          .eq('id', user.id)
+      }
+    } catch { /* silent */ }
   }
 
   const addIncome = () => {
