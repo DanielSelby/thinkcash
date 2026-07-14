@@ -164,7 +164,7 @@ export type ThemeKey = keyof typeof THEMES
 
 export const APP_CONFIG = {
   // ── App Identity ──────────────────────────────────────────
-  name: 'Think-Shika PA',
+  name: 'Think-Shika P.F',
   shortName: 'TS',
   tagline: 'Think Wise. Plan Smart. Build Wealth.',
   description: 'Track income, expenses, budgets, and savings goals — built for Ghana and beyond.',

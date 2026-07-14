@@ -213,9 +213,9 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             </span>
             <p
               style={{ color: sidebar.textMuted }}
-              className="text-xs leading-tight truncate mt-1.5"
+              className="text-xs leading-tight truncate mt-2.5"
             >
-              Your Finance Manager
+              Your Personal Finance Manager
             </p>
           </div>
         )}
