@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, Sparkles, Activity, Info,
-  Landmark, Banknote, CreditCard, Building2, CheckCircle2,
+  Landmark, Banknote, CreditCard, Building2, 
   AlertCircle, ChevronRight, Zap, ShieldCheck, PiggyBank,
   ArrowUpRight, ArrowDownRight, Laptop, DollarSign,
 } from 'lucide-react'
@@ -21,36 +21,12 @@ const fmt = (n: number) => formatCurrency(n, 'GHS')
 
 // ── Color palette ─────────────────────────────────────────────────────
 const ALLOC_COLORS = ['#16a34a', '#2563eb', '#7c3aed', '#dc2626', '#f59e0b']
-const SCORE_COLORS = { excellent: '#16a34a', good: '#3b82f6', fair: '#f59e0b', poor: '#ef4444' }
+
 
 // ── Wealth Score helpers ──────────────────────────────────────────────
-function scoreLabel(s: number): { label: string; color: string } {
-  if (s >= 80) return { label: 'Excellent', color: SCORE_COLORS.excellent }
-  if (s >= 60) return { label: 'Very Good', color: SCORE_COLORS.good }
-  if (s >= 40) return { label: 'Good',      color: SCORE_COLORS.good }
-  if (s >= 20) return { label: 'Fair',      color: SCORE_COLORS.fair }
-  return              { label: 'Poor',      color: SCORE_COLORS.poor }
-}
 
-// Semi-circular gauge
-function GaugeArc({ score, color }: { score: number; color: string }) {
-  const R = 70
-  const cx = 90, cy = 90
-  const startAngle = Math.PI        // left (180°)
-  const endAngle   = 0              // right (0°)
-  const filled     = startAngle - (startAngle - endAngle) * (score / 100)
-  const trackD = `M ${cx - R} ${cy} A ${R} ${R} 0 0 1 ${cx + R} ${cy}`
-  const x = cx + R * Math.cos(filled)
-  const y = cy - R * Math.sin(filled)
-  const large = filled < Math.PI / 2 ? 1 : 0
-  const fillD = `M ${cx - R} ${cy} A ${R} ${R} 0 ${large} 1 ${x} ${y}`
-  return (
-    <svg width="180" height="100" viewBox="0 0 180 100">
-      <path d={trackD} stroke="#e5e7eb" strokeWidth="14" fill="none" strokeLinecap="round" />
-      <path d={fillD}  stroke={color}   strokeWidth="14" fill="none" strokeLinecap="round" />
-    </svg>
-  )
-}
+
+
 
 // ── Types ─────────────────────────────────────────────────────────────
 interface PremiumProps {
@@ -188,6 +164,7 @@ export function WealthPremiumSections({
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [trendFilter, setTrendFilter] = useState<'30D' | '3M' | '6M' | '1Y' | 'All'>('3M')
+  const [showAllActivities, setShowAllActivities] = useState(false)
 
   // ── Net Worth Trend ───────────────────────────────────────────────
   const trendData = useMemo(() => {
@@ -273,46 +250,7 @@ export function WealthPremiumSections({
   const [allocHovered, setAllocHovered] = useState<number | null>(null)
 
   // ── Wealth Score ──────────────────────────────────────────────────
-  const { score, factors } = useMemo(() => {
-    const totalAssets = totalPhysical + totalLiquid + totalInvested
-    const netCashFlow = incomes.reduce((s, r) => s + Number(r.amount), 0) -
-                        expenses.reduce((s, r) => s + Number(r.amount), 0)
-    const totalIncome = incomes.reduce((s, r) => s + Number(r.amount), 0)
-    const savingsRate = totalIncome > 0 ? (netCashFlow / totalIncome) * 100 : 0
-
-    // Net Worth Growth: positive netWorth = good
-    const growthScore = netWorth > 0 ? Math.min(100, Math.round((netWorth / Math.max(1, totalAssets)) * 100)) : 0
-
-    // Debt Management: lower debt ratio = better
-    const debtRatio   = totalAssets > 0 ? ((totalDebts + totalLoans) / totalAssets) * 100 : 0
-    const debtScore   = Math.max(0, Math.min(100, Math.round(100 - debtRatio * 2)))
-
-    // Savings Rate: 20%+ is good
-    const savScore    = Math.min(100, Math.max(0, Math.round(savingsRate * 3.5)))
-
-    // Investment Diversity: % of assets in investments
-    const invPct     = totalAssets > 0 ? (totalInvested / totalAssets) * 100 : 0
-    const invScore   = Math.min(100, Math.round(invPct * 2.5))
-
-    // Liquidity: liquid assets as % of total
-    const liqPct     = totalAssets > 0 ? (totalLiquid / totalAssets) * 100 : 0
-    const liqScore   = Math.min(100, Math.round(liqPct * 1.5))
-
-    const overall = Math.round((growthScore * 0.25 + debtScore * 0.25 + savScore * 0.2 + invScore * 0.15 + liqScore * 0.15))
-
-    return {
-      score: overall,
-      factors: [
-        { label: 'Net Worth Growth',    score: growthScore, ...scoreLabel(growthScore) },
-        { label: 'Debt Management',     score: debtScore,   ...scoreLabel(debtScore)  },
-        { label: 'Savings Rate',        score: savScore,    ...scoreLabel(savScore)   },
-        { label: 'Investment Diversity',score: invScore,    ...scoreLabel(invScore)   },
-        { label: 'Liquidity',           score: liqScore,    ...scoreLabel(liqScore)   },
-      ],
-    }
-  }, [netWorth, totalPhysical, totalLiquid, totalInvested, totalDebts, totalLoans, incomes, expenses])
-
-  const scoreInfo = scoreLabel(score)
+  
 
   // ── Recent Wealth Activities ──────────────────────────────────────
   const recentActivities = useMemo(() => {
@@ -366,7 +304,7 @@ export function WealthPremiumSections({
     return events
       .filter(e => e.date)
       .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 6)
+      .slice(0, 20)
   }, [assets, investments, incomes])
 
   const savingsRate = useMemo(() => {
@@ -384,8 +322,8 @@ export function WealthPremiumSections({
   return (
     <div className="space-y-4">
 
-      {/* ── Row 1: Net Worth Trend + Asset Allocation + Wealth Score ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ── Row 1: Net Worth Trend + Asset Allocation ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* Net Worth Trend */}
         <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden lg:col-span-1">
@@ -410,7 +348,7 @@ export function WealthPremiumSections({
               ))}
             </div>
 
-            <ResponsiveContainer width="100%" height={140}>
+            <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={trendData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
@@ -506,39 +444,6 @@ export function WealthPremiumSections({
             )}
           </CardContent>
         </Card>
-
-        {/* Wealth Score */}
-        <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-1.5 mb-1">
-              <p className="text-sm font-semibold tracking-tight">Wealth Score</p>
-              <Info className="w-3.5 h-3.5 text-muted-foreground" />
-            </div>
-
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <GaugeArc score={score} color={scoreInfo.color} />
-                <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
-                  <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: scoreInfo.color }}>{score}</p>
-                  <p className="text-xs text-muted-foreground">/100</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: scoreInfo.color }}>{scoreInfo.label}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 mt-3">
-              {factors.map(f => (
-                <div key={f.label} className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" style={{ color: f.color }} />
-                    {f.label}
-                  </span>
-                  <span className="font-semibold" style={{ color: f.color }}>{f.label}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* ── Row 2: Recent Activities + AI Insights ── */}
@@ -561,7 +466,7 @@ export function WealthPremiumSections({
               </div>
             ) : (
               <div className="space-y-3">
-                {recentActivities.map(ev => {
+                {(showAllActivities ? recentActivities : recentActivities.slice(0, 4)).map(ev => {
                   const Icon = ev.icon
                   const d = ev.date ? new Date(ev.date) : null
                   const timeStr = d ? d.toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
@@ -581,9 +486,11 @@ export function WealthPremiumSections({
                 })}
               </div>
             )}
-            <button className="w-full flex items-center justify-center gap-1 text-xs font-semibold mt-3 pt-3 border-t border-border hover:underline"
+            <button
+              onClick={() => setShowAllActivities(v => !v)}
+              className="w-full flex items-center justify-center gap-1 text-xs font-semibold mt-3 pt-3 border-t border-border hover:underline"
               style={{ color: theme.colors.primary }}>
-              View all activities <ChevronRight className="w-3.5 h-3.5" />
+              {showAllActivities ? 'Show less' : 'View all activities'} <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </CardContent>
         </Card>
