@@ -399,7 +399,7 @@ export function WealthPremiumSections({
               </div>
             ) : (
               <div className="flex items-center gap-4">
-                <div className="relative flex-shrink-0" style={{ width: 110, height: 110 }}>
+                <div className="relative flex-shrink-0" style={{ width: 190, height: 190 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={allocData} dataKey="value" cx="50%" cy="50%"
