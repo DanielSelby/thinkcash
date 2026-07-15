@@ -1,19 +1,56 @@
 export default function Loading() {
   return (
-    <div className="space-y-5 animate-pulse p-4 sm:p-6 max-w-7xl">
-      <div className="h-7 bg-muted rounded-lg w-40" />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
-        <div className="h-20 sm:h-24 bg-muted rounded-xl" />
-        <div className="h-20 sm:h-24 bg-muted rounded-xl" />
-        <div className="h-20 sm:h-24 bg-muted rounded-xl" />
-        <div className="h-20 sm:h-24 bg-muted rounded-xl" />
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+      {/* Spinning ring */}
+      <div className="relative w-16 h-16">
+        <div
+          className="absolute inset-0 rounded-full border-4 border-transparent animate-spin"
+          style={{
+            borderTopColor: '#004d2e',
+            borderRightColor: '#004d2e33',
+            animationDuration: '0.8s',
+          }}
+        />
+        <div
+          className="absolute inset-2 rounded-full border-4 border-transparent animate-spin"
+          style={{
+            borderTopColor: '#16a34a',
+            borderRightColor: '#16a34a33',
+            animationDuration: '1.2s',
+            animationDirection: 'reverse',
+          }}
+        />
       </div>
-      <div className="h-52 bg-muted rounded-xl" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        <div className="h-52 bg-muted rounded-xl" />
-        <div className="h-52 bg-muted rounded-xl" />
+
+      {/* Pulsing logo text */}
+      <div className="flex flex-col items-center gap-1 animate-pulse">
+        <p className="font-bold text-base tracking-wide" style={{ color: '#004d2e' }}>
+          Think-Shika PA
+        </p>
+        <p className="text-xs text-muted-foreground">Loading your finances…</p>
       </div>
-      <div className="h-48 bg-muted rounded-xl" />
+
+      {/* Animated dots */}
+      <div className="flex items-center gap-1.5">
+        {[0, 1, 2].map(i => (
+          <span
+            key={i}
+            className="w-2 h-2 rounded-full"
+            style={{
+              background: '#16a34a',
+              animation: 'bounce 1.2s infinite',
+              animationDelay: `${i * 0.2}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+          40%            { transform: scale(1);   opacity: 1;   }
+        }
+      `}</style>
     </div>
   )
 }
