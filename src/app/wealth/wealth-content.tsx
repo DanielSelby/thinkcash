@@ -27,6 +27,7 @@ import { THEMES } from '@/lib/config'
 import type { Asset, Investment, Debt, Loan } from '@/types'
 import { AssetDetailPanel } from './wealth-asset-detail'
 import { KPICard } from '@/components/ui/kpi-card'
+import { WealthPremiumSections } from './wealth-premium-sections'
 
 const fmt = (n: number) => formatCurrency(n, 'GHS')
 
@@ -956,6 +957,26 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Premium Analytics Sections ── */}
+      <WealthPremiumSections
+        assets={assets}
+        investments={investments}
+        debts={debts}
+        loans={loans}
+        accountsWithBalance={accountsWithBalance}
+        incomes={incomes}
+        expenses={expenses}
+        totalPhysical={totalPhysical}
+        totalLiquid={totalLiquid}
+        totalInvested={totalInvested}
+        totalDebts={totalDebts}
+        totalLoans={totalLoans}
+        netWorth={netWorth}
+      />
+
+      {/* KPI row — all flip cards (hover on desktop, tap on mobile) */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3"></div>
 
       {/* KPI row — all flip cards (hover on desktop, tap on mobile) */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
