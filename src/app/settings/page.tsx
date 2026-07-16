@@ -10,7 +10,9 @@ import { useTheme } from 'next-themes'
 import {
   Sun, Moon, Monitor, DollarSign, Bell, Shield,
   Palette, Image, Upload, Trash2, Maximize2, Plus, LogIn,
+  Tag, X, Edit2, Check, RotateCcw,
 } from 'lucide-react'
+import { createClient as createClientBrowser } from '@/lib/supabase/client'
 import { toast } from '@/components/ui/toaster'
 import { THEMES, type ThemeKey } from '@/lib/config'
 import { createClient } from '@/lib/supabase/client'
@@ -99,6 +101,70 @@ export default function SettingsPage() {
 
   const isAdmin = profile?.role === 'admin'
   const allCurrencies = [...CURRENCIES, ...customCurrencies]
+
+  // ── Categories ────────────────────────────────────────────────────
+  const STORAGE_KEY_INCOME  = 'ts_income_categories'
+  const STORAGE_KEY_EXPENSE = 'ts_expense_categories'
+
+  const DEFAULT_INCOME_CATS  = ['Salary','Freelance','Business','Investment','Rental','Gift','Bonus','Other']
+  const DEFAULT_EXPENSE_CATS = ['Food & Dining','Transport','Housing','Utilities','Healthcare','Education','Entertainment','Shopping','Clothing','Personal Care','Savings','Debt Payment','Insurance','Travel','Other']
+
+  const [incomeCategories,  setIncomeCategories]  = useState<string[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_INCOME_CATS
+    try { const s = localStorage.getItem(STORAGE_KEY_INCOME);  return s ? JSON.parse(s) : DEFAULT_INCOME_CATS } catch { return DEFAULT_INCOME_CATS }
+  })
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return DEFAULT_EXPENSE_CATS
+    try { const s = localStorage.getItem(STORAGE_KEY_EXPENSE); return s ? JSON.parse(s) : DEFAULT_EXPENSE_CATS } catch { return DEFAULT_EXPENSE_CATS }
+  })
+  const [newIncomeCat,  setNewIncomeCat]  = useState('')
+  const [newExpenseCat, setNewExpenseCat] = useState('')
+  const [editingCat,    setEditingCat]    = useState<{ type: 'income' | 'expense'; original: string; draft: string } | null>(null)
+  const [showCategories, setShowCategories] = useState(false)
+
+  const saveIncomeCats  = (cats: string[]) => { setIncomeCategories(cats);  localStorage.setItem(STORAGE_KEY_INCOME, JSON.stringify(cats)) }
+  const saveExpenseCats = (cats: string[]) => { setExpenseCategories(cats); localStorage.setItem(STORAGE_KEY_EXPENSE, JSON.stringify(cats)) }
+
+  const addIncomeCategory = () => {
+    const v = newIncomeCat.trim()
+    if (!v) return
+    if (incomeCategories.map(c => c.toLowerCase()).includes(v.toLowerCase())) { toast({ title: 'Category already exists', variant: 'destructive' }); return }
+    saveIncomeCats([...incomeCategories, v]); setNewIncomeCat('')
+    toast({ title: `"${v}" added to income categories`, variant: 'success' })
+  }
+  const addExpenseCategory = () => {
+    const v = newExpenseCat.trim()
+    if (!v) return
+    if (expenseCategories.map(c => c.toLowerCase()).includes(v.toLowerCase())) { toast({ title: 'Category already exists', variant: 'destructive' }); return }
+    saveExpenseCats([...expenseCategories, v]); setNewExpenseCat('')
+    toast({ title: `"${v}" added to expense categories`, variant: 'success' })
+  }
+  const deleteIncomeCategory  = (cat: string) => { saveIncomeCats(incomeCategories.filter(c => c !== cat));   toast({ title: `"${cat}" removed` }) }
+  const deleteExpenseCategory = (cat: string) => { saveExpenseCats(expenseCategories.filter(c => c !== cat)); toast({ title: `"${cat}" removed` }) }
+
+  const confirmEditCategory = async () => {
+    if (!editingCat) return
+    const draft = editingCat.draft.trim()
+    if (!draft) { toast({ title: 'Name cannot be empty', variant: 'destructive' }); return }
+    if (draft === editingCat.original) { setEditingCat(null); return }
+    if (editingCat.type === 'income') {
+      if (incomeCategories.map(c => c.toLowerCase()).includes(draft.toLowerCase())) { toast({ title: 'Already exists', variant: 'destructive' }); return }
+      saveIncomeCats(incomeCategories.map(c => c === editingCat.original ? draft : c))
+    } else {
+      if (expenseCategories.map(c => c.toLowerCase()).includes(draft.toLowerCase())) { toast({ title: 'Already exists', variant: 'destructive' }); return }
+      saveExpenseCats(expenseCategories.map(c => c === editingCat.original ? draft : c))
+    }
+    // Propagate rename to DB
+    try {
+      const supabase = createClientBrowser()
+      const table = editingCat.type === 'income' ? 'incomes' : 'expenses'
+      await supabase.from(table).update({ category: draft }).eq('category', editingCat.original)
+      if (editingCat.type === 'expense') await supabase.from('budgets').update({ category: draft }).eq('category', editingCat.original)
+      await supabase.from('recurring_transactions').update({ category: draft }).eq('category', editingCat.original).eq('type', editingCat.type)
+    } catch {}
+    toast({ title: `Renamed to "${draft}" — all records updated`, variant: 'success' })
+    setEditingCat(null)
+  }
 
   // Load login logo from DB on mount
   useEffect(() => {
@@ -539,6 +605,138 @@ export default function SettingsPage() {
               </button>
             )}
           </CardContent>
+        </Card>
+
+
+        {/* ── Set Categories ── */}
+        <Card className="bg-white">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Tag className="w-4 h-4" /> Set Categories
+              </CardTitle>
+              <button
+                onClick={() => setShowCategories(v => !v)}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors"
+              >
+                {showCategories ? 'Hide' : 'Manage Categories'}
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Customise the categories used for income, expenses, budgets, and recurring transactions.
+            </p>
+          </CardHeader>
+          {showCategories && (
+            <CardContent className="space-y-6">
+              {/* Income Categories */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500" /> Income Categories
+                    <span className="text-xs font-normal text-muted-foreground">({incomeCategories.length})</span>
+                  </p>
+                  <button
+                    onClick={() => { if (confirm('Reset income categories to defaults?')) saveIncomeCats(DEFAULT_INCOME_CATS) }}
+                    className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {incomeCategories.map(cat => (
+                    <div key={cat} className="flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full border border-green-200 bg-green-50 text-xs font-medium text-green-800 group">
+                      {editingCat?.type === 'income' && editingCat.original === cat ? (
+                        <>
+                          <input
+                            className="bg-transparent border-none outline-none text-xs w-24"
+                            value={editingCat.draft}
+                            onChange={e => setEditingCat(prev => prev ? { ...prev, draft: e.target.value } : null)}
+                            onKeyDown={e => { if (e.key === 'Enter') confirmEditCategory(); if (e.key === 'Escape') setEditingCat(null) }}
+                            autoFocus
+                          />
+                          <button onClick={confirmEditCategory} className="text-green-600 hover:text-green-800"><Check className="w-3 h-3" /></button>
+                          <button onClick={() => setEditingCat(null)} className="text-muted-foreground"><X className="w-3 h-3" /></button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{cat}</span>
+                          <button onClick={() => setEditingCat({ type: 'income', original: cat, draft: cat })} className="opacity-0 group-hover:opacity-100 text-green-600 ml-1 transition-opacity"><Edit2 className="w-2.5 h-2.5" /></button>
+                          <button onClick={() => deleteIncomeCategory(cat)} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"><X className="w-3 h-3" /></button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 h-8 text-sm px-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Add income category..."
+                    value={newIncomeCat}
+                    onChange={e => setNewIncomeCat(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addIncomeCategory()}
+                  />
+                  <button onClick={addIncomeCategory} className="h-8 px-3 rounded-lg text-white text-sm font-semibold transition-colors" style={{ background: 'var(--color-primary, #16a34a)' }}>
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-border" />
+
+              {/* Expense Categories */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Expense Categories
+                    <span className="text-xs font-normal text-muted-foreground">({expenseCategories.length})</span>
+                  </p>
+                  <button
+                    onClick={() => { if (confirm('Reset expense categories to defaults?')) saveExpenseCats(DEFAULT_EXPENSE_CATS) }}
+                    className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {expenseCategories.map(cat => (
+                    <div key={cat} className="flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full border border-red-200 bg-red-50 text-xs font-medium text-red-800 group">
+                      {editingCat?.type === 'expense' && editingCat.original === cat ? (
+                        <>
+                          <input
+                            className="bg-transparent border-none outline-none text-xs w-24"
+                            value={editingCat.draft}
+                            onChange={e => setEditingCat(prev => prev ? { ...prev, draft: e.target.value } : null)}
+                            onKeyDown={e => { if (e.key === 'Enter') confirmEditCategory(); if (e.key === 'Escape') setEditingCat(null) }}
+                            autoFocus
+                          />
+                          <button onClick={confirmEditCategory} className="text-red-600 hover:text-red-800"><Check className="w-3 h-3" /></button>
+                          <button onClick={() => setEditingCat(null)} className="text-muted-foreground"><X className="w-3 h-3" /></button>
+                        </>
+                      ) : (
+                        <>
+                          <span>{cat}</span>
+                          <button onClick={() => setEditingCat({ type: 'expense', original: cat, draft: cat })} className="opacity-0 group-hover:opacity-100 text-red-600 ml-1 transition-opacity"><Edit2 className="w-2.5 h-2.5" /></button>
+                          <button onClick={() => deleteExpenseCategory(cat)} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"><X className="w-3 h-3" /></button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 h-8 text-sm px-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    placeholder="Add expense category..."
+                    value={newExpenseCat}
+                    onChange={e => setNewExpenseCat(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addExpenseCategory()}
+                  />
+                  <button onClick={addExpenseCategory} className="h-8 px-3 rounded-lg text-white text-sm font-semibold transition-colors" style={{ background: '#ef4444' }}>
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* ── Notifications ── */}
