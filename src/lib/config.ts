@@ -207,5 +207,5 @@ export const APP_CONFIG = {
   currencyLocale: 'en-GH',
 
   // ── Default theme ─────────────────────────────────────────
-  defaultTheme: 'Fintech Blue' as ThemeKey,
+  defaultTheme: 'Fintech ' as ThemeKey,
 }
