@@ -290,6 +290,7 @@ function SimpleMenu({ items }: { items: { label: string; fn: () => void; cls?: s
 const assetSchema = z.object({
   name:                     z.string().min(1, 'Name required'),
   asset_type:               z.string().min(1, 'Type required'),
+  asset_category:           z.string().optional(),
   description:              z.string().optional(),
   asset_tag:                z.string().optional(),
   current_value:            z.coerce.number().min(0),
@@ -443,6 +444,12 @@ export function WealthContent({
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
+  const [customAssetCategories, setCustomAssetCategories] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    try { return JSON.parse(localStorage.getItem('ts_asset_categories') || '[]') } catch { return [] }
+  })
+  const [newAssetCat, setNewAssetCat] = useState('')
+
   // exchange rate editing (per currency, applied to all accounts of that currency)
   const [editingRateCurrency, setEditingRateCurrency] = useState<string | null>(null)
   const [rateInputValue,      setRateInputValue]      = useState('')
@@ -538,7 +545,7 @@ export function WealthContent({
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
     setEditingId(null); setDialogType(type); setActiveTab('basic')
-    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
+    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', asset_category: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
     if (type === 'investment') investmentForm.reset({ name: '', investment_type: '', invested_amount: 0, current_value: 0, institution: '', notes: '' })
     if (type === 'debt')  debtForm.reset({ name: '', debt_type: '', total_amount: 0, remaining: 0, interest_rate: 0, due_date: '', notes: '' })
     if (type === 'loan')  loanForm.reset({ name: '', loan_type: '', principal: 0, remaining: 0, interest_rate: 0, monthly_payment: 0, start_date: '', end_date: '', institution: '', notes: '' })
@@ -1137,6 +1144,11 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                   <div className="flex gap-1.5 flex-wrap">
                     <StatusBadge status={a.status ?? 'active'} />
                     {a.condition && <ConditionBadge condition={a.condition} />}
+                    {a.asset_category && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-violet-100 text-violet-700">
+                        {a.asset_category}
+                      </span>
+                    )}
                     {a.currency && a.currency !== 'GHS' && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-100 text-blue-700">{a.currency}</span>
                     )}
@@ -1400,6 +1412,77 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                   </Select>
                   {assetForm.formState.errors.asset_type && <p className="text-xs text-destructive">{assetForm.formState.errors.asset_type.message}</p>}
                 </div>
+
+                {/* Asset Category */}
+                <div className="space-y-1.5">
+                  <Label>Asset Category <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <div className="flex gap-2">
+                    <Select
+                      onValueChange={v => assetForm.setValue('asset_category' as any, v)}
+                      defaultValue={assetForm.getValues('asset_category' as any) || ''}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select or add category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {/* Built-in groups */}
+                        <SelectItem value="">No category</SelectItem>
+                        <SelectItem value="personal">Personal</SelectItem>
+                        <SelectItem value="business">Business</SelectItem>
+                        <SelectItem value="family">Family</SelectItem>
+                        <SelectItem value="investment">Investment</SelectItem>
+                        <SelectItem value="rental">Rental Property</SelectItem>
+                        {/* Custom categories */}
+                        {customAssetCategories.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Add custom category inline */}
+                  <div className="flex gap-2 mt-1.5">
+                    <input
+                      className="flex-1 h-8 text-xs px-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Add custom category..."
+                      value={newAssetCat}
+                      onChange={e => setNewAssetCat(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const v = newAssetCat.trim()
+                          if (!v || customAssetCategories.map(c => c.toLowerCase()).includes(v.toLowerCase())) return
+                          const updated = [...customAssetCategories, v]
+                          setCustomAssetCategories(updated)
+                          localStorage.setItem('ts_asset_categories', JSON.stringify(updated))
+                          assetForm.setValue('asset_category' as any, v)
+                          setNewAssetCat('')
+                          toast({ title: `"${v}" added as asset category`, variant: 'success' })
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = newAssetCat.trim()
+                        if (!v || customAssetCategories.map(c => c.toLowerCase()).includes(v.toLowerCase())) return
+                        const updated = [...customAssetCategories, v]
+                        setCustomAssetCategories(updated)
+                        localStorage.setItem('ts_asset_categories', JSON.stringify(updated))
+                        assetForm.setValue('asset_category' as any, v)
+                        setNewAssetCat('')
+                        toast({ title: `"${v}" added`, variant: 'success' })
+                      }}
+                      className="h-8 px-3 rounded-lg text-xs font-semibold border border-border hover:bg-muted transition-colors"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Categories help you group assets (e.g. Business assets, Rental properties).
+                  </p>
+                </div>
+
+
                 <div className="space-y-1.5">
                   <Label>Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input placeholder="Brief description…" {...assetForm.register('description')} />
