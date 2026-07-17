@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { Sidebar } from './sidebar'
 import { TopNav } from './top-nav'
+import { CommandBar } from './command-bar'
 import { useAppStore } from '@/store'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -17,9 +18,22 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
     profile, setProfile, setAppLogo, setLogoSize,
     viewMode, sidebarOpen, setSidebarOpen,
     setUnreadCount, incrementUnread,
+    commandBarOpen, setCommandBarOpen,
   } = useAppStore()
   const adminMode = isAdmin || profile?.role === 'admin'
   const pathname  = usePathname()
+
+  // Global Ctrl+K / ⌘K shortcut
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault()
+        setCommandBarOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setCommandBarOpen])
 
   // Track whether we've subscribed to avoid duplicate channels
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null)
@@ -174,6 +188,8 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
   const isMobile = viewMode === 'mobile'
 
   return (
+    <>
+    <CommandBar open={commandBarOpen} onClose={() => setCommandBarOpen(false)} />
     <div className="flex h-screen overflow-hidden bg-background justify-center">
       <div className={cn(
         'flex',
@@ -190,5 +206,6 @@ export function AppShell({ children, isAdmin }: { children: React.ReactNode; isA
         </div>
       </div>
     </div>
+    </>
   )
 }

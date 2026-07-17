@@ -103,7 +103,7 @@ const clearSearch = () => setSearchValue('')
         <Search className="w-4 h-4 flex-shrink-0" />
         <span className="flex-1 text-left text-sm">Search transactions…</span>
         <kbd className="hidden sm:flex items-center gap-0.5 text-[10px] font-medium border border-white/20 rounded px-1.5 py-0.5 bg-white/10 flex-shrink-0">
-          {typeof navigator !== 'undefined' && /mac/i.test(navigator.platform) ? '⌘' : 'Ctrl'} K
+          {typeof navigator !== 'undefined' && /mac/i.test(navigator.platform) ? '⌘' : 'Ctrl'} /
         </kbd>
       </button>
           
