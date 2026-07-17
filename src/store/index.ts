@@ -56,7 +56,11 @@ export const useAppStore = create<AppState>()(
       setUnreadCount:  (count)       => set({ unreadCount: count }),
       incrementUnread: ()            => set(s => ({ unreadCount: s.unreadCount + 1 })),
       clearUnread:     ()            => set({ unreadCount: 0 }),
-      getTheme: () => THEMES[get().activeTheme],
+      getTheme: () => {
+  const key = get().activeTheme
+
+  return THEMES[key] ?? THEMES.fintech
+},
     }),
     {
       name: 'Think-Shika-PA-app',

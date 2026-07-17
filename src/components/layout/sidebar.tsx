@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store'
 import { Button } from '@/components/ui/button'
-import { APP_CONFIG } from '@/lib/config'
+import { APP_CONFIG, THEMES } from '@/lib/config'
 import { canAccessPage } from '@/lib/page-access'
 
 // ── Nav item definitions ───────────────────────────────────────────────
@@ -140,8 +140,8 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
     appLogo, logoSize, viewMode, profile,
   } = useAppStore()
 
-  const theme        = getTheme()
-  const { sidebar }  = theme
+  const theme = getTheme() ?? THEMES.fintech
+  const { sidebar } = theme
   const isAdminUser  = profile?.role === 'admin'
   const allowedPages = profile?.allowed_pages ?? null
 
