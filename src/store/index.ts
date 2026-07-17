@@ -12,8 +12,11 @@ interface AppState {
   appLogo:      string | null
   logoSize:     'sm' | 'md' | 'lg'
   viewMode:     'desktop' | 'mobile'
-  unreadCount:  number
+  unreadCount:     number
+  commandBarOpen:  boolean
+
   setProfile:     (profile: Profile | null) => void
+  setCommandBarOpen: (open: boolean) => void
   setStats:       (stats: DashboardStats) => void
   setSidebarOpen: (open: boolean) => void
   setCurrency:    (currency: string) => void
@@ -38,8 +41,11 @@ export const useAppStore = create<AppState>()(
       appLogo:      null,
       logoSize:     'md',
       viewMode:     'desktop',
-      unreadCount:  0,
-      setProfile:      (profile)     => set({ profile }),
+      unreadCount:     0,
+      commandBarOpen:  false,
+
+      setProfile:        (profile)  => set({ profile }),
+      setCommandBarOpen: (open)     => set({ commandBarOpen: open }),
       setStats:        (stats)       => set({ stats }),
       setSidebarOpen:  (open)        => set({ sidebarOpen: open }),
       setCurrency:     (currency)    => set({ currency }),

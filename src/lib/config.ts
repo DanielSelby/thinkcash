@@ -128,6 +128,37 @@ export const THEMES = {
     topbar: { background: '#412234', text: '#FFFFFF' },
   },
 
+  // Theme 6 — Fintech Blue (Think-Shika PA Premium)
+  fintech: {
+    name: 'Fintech Blue',
+    colors: {
+      primary:        '#153361',
+      primaryMid:     '#102B54',
+      primaryLight:   '#1E4A8A',
+      primaryPale:    '#EEF2FA',
+      accent:         '#C99A32',
+      accentLight:    'rgba(201,154,50,0.15)',
+      background:     '#F8F9FC',
+      surface:        '#FFFFFF',
+      text:           '#153361',
+      textMuted:      '#6B7280',
+      success:        '#22C55E',
+      danger:         '#EF4444',
+      warning:        '#F59E0B',
+      info:           '#3B82F6',
+    },
+    sidebar: {
+      background:       '#153361',
+      text:             '#FFFFFF',
+      textMuted:        'rgba(255,255,255,0.6)',
+      activeBackground: 'rgba(201,154,50,0.20)',
+      activeText:       '#C99A32',
+      borderColor:      'rgba(255,255,255,0.10)',
+      hoverBackground:  'rgba(255,255,255,0.08)',
+    },
+    topbar: { background: '#153361', text: '#FFFFFF' },
+  },
+
   // Theme 5 — Eclipse (Sage & Forest Green)
   eclipse: {
     name: 'Eclipse',
@@ -176,5 +207,5 @@ export const APP_CONFIG = {
   currencyLocale: 'en-GH',
 
   // ── Default theme ─────────────────────────────────────────
-  defaultTheme: 'eclipse' as ThemeKey,
+  defaultTheme: 'Fintech Blue' as ThemeKey,
 }
