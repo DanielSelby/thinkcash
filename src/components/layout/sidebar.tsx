@@ -92,7 +92,7 @@ function NavLink({
         }}
       >
         <Icon className="w-5 h-5 flex-shrink-0" />
-        <span className="text-[10px] font-semibold leading-tight text-center truncate w-full text-center">
+        <span className="text-[10px] font-semibold leading-tight text-center truncate w-full">
           {label.length > 10 ? label.slice(0, 9) + '…' : label}
         </span>
       </Link>
