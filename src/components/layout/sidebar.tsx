@@ -53,7 +53,7 @@ const adminItems = [
 // ── NavLink ────────────────────────────────────────────────────────────
 
 function NavLink({
-  href, icon: Icon, label, active, sidebar, sidebarOpen, highlight,
+  href, icon: Icon, label, active, sidebar, sidebarOpen, highlight, isMobile,
 }: {
   href:        string
   icon:        any
@@ -62,7 +62,43 @@ function NavLink({
   sidebar:     any
   sidebarOpen: boolean
   highlight?:  boolean
+  isMobile?:   boolean
 }) {
+  // On mobile: always show icon + label stacked vertically
+  if (isMobile) {
+    return (
+      <Link
+        href={href}
+        className={cn(
+          'flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl transition-all duration-150 w-full',
+        )}
+        style={{
+          background: active ? sidebar.activeBackground : 'transparent',
+          color:      active ? sidebar.activeText : sidebar.textMuted,
+        }}
+        onMouseEnter={e => {
+          if (!active) {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = sidebar.hoverBackground
+            el.style.color      = sidebar.text
+          }
+        }}
+        onMouseLeave={e => {
+          if (!active) {
+            const el = e.currentTarget as HTMLElement
+            el.style.background = 'transparent'
+            el.style.color      = sidebar.textMuted
+          }
+        }}
+      >
+        <Icon className="w-5 h-5 flex-shrink-0" />
+        <span className="text-[10px] font-semibold leading-tight text-center truncate w-full text-center">
+          {label.length > 10 ? label.slice(0, 9) + '…' : label}
+        </span>
+      </Link>
+    )
+  }
+
   return (
     <Link
       href={href}
@@ -160,7 +196,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
       style={{ background: sidebar.background, borderColor: sidebar.borderColor }}
       className={cn(
         'relative flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0',
-        sidebarOpen ? 'w-64' : 'w-16',
+        viewMode === 'mobile' ? 'w-20' : sidebarOpen ? 'w-64' : 'w-16',
       )}
     >
       {/* ── Logo area ─────────────────────────────────────────────── */}
@@ -246,6 +282,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
               active={pathname === href || pathname.startsWith(href + '/')}
               sidebar={sidebar}
               sidebarOpen={sidebarOpen}
+              isMobile={viewMode === 'mobile'}
             />
           ))}
 
@@ -286,6 +323,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
               sidebar={sidebar}
               sidebarOpen={sidebarOpen}
               highlight
+              isMobile={viewMode === 'mobile'}
             />
           ))}
       </nav>
@@ -304,6 +342,7 @@ export function Sidebar({ isAdmin }: { isAdmin?: boolean }) {
             active={pathname === href}
             sidebar={sidebar}
             sidebarOpen={sidebarOpen}
+            isMobile={viewMode === 'mobile'}
           />
         ))}
       </div>
