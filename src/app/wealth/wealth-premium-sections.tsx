@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -110,7 +110,7 @@ Return ONLY a JSON array of 4 strings, no markdown, no explanation. Example form
   }
 
   // Auto-fetch on mount
-  useMemo(() => { if (!fetched && !loading) fetchInsights() }, [])
+  useEffect(() => { if (!fetched && !loading) fetchInsights() }, [])
 
   return (
     <Card className="bg-white rounded-xl shadow-sm border border-border overflow-hidden h-full">
