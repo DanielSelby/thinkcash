@@ -389,6 +389,10 @@ export function WealthContent({
   const theme = THEMES[activeTheme] ?? THEMES['green']
 
   const [assets,      setAssets]      = useState<any[]>(initialAssets)
+  const [customAssetCategories, setCustomAssetCategories] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('ts_asset_categories') || '[]') } catch { return [] }
+  })
+  const [newAssetCat, setNewAssetCat] = useState('')
   const [accounts, setAccountsState]  = useState<any[]>(initialAccounts ?? [])
   const [investments, setInvestments] = useState<any[]>(initialInvestments)
   const [debts,       setDebts]       = useState<any[]>(initialDebts)
@@ -443,7 +447,7 @@ export function WealthContent({
   // search / filter
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-const [customAssetCategories, setCustomAssetCategories] = useState<string[]>([])
+
 
   useEffect(() => {
     try {
@@ -452,7 +456,7 @@ const [customAssetCategories, setCustomAssetCategories] = useState<string[]>([])
     } catch {}
   }, [])
 
-  const [newAssetCat, setNewAssetCat] = useState('')
+  
 
   // exchange rate editing (per currency, applied to all accounts of that currency)
   const [editingRateCurrency, setEditingRateCurrency] = useState<string | null>(null)
