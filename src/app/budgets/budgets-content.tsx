@@ -1,5 +1,4 @@
 'use client'
-
 import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -7,6 +6,7 @@ import { z } from 'zod'
 import {
   Plus, Edit2, Trash2, Wallet, AlertTriangle,
   CheckCircle, XCircle, Loader2, ChevronLeft, ChevronRight, Copy,
+  Calendar, LayoutGrid, RefreshCw, ArrowLeft, Info,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -24,13 +24,11 @@ import { KPICard } from '@/components/ui/kpi-card'
 import { BarChart3, TrendingDown } from 'lucide-react'
 import { THEMES } from '@/lib/config'
 import type { Budget } from '@/types'
-
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ]
 const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i + 1)
-
 const schema = z.object({
   budget_name:   z.string().min(1, 'Budget name is required'),
   category:      z.string().min(1, 'Category is required'),
@@ -39,25 +37,21 @@ const schema = z.object({
   budget_year:   z.coerce.number().min(2020).max(2100),
 })
 type FormData = z.infer<typeof schema>
-
 interface Props {
   initialBudgets: Budget[]
   expenses: { amount: number; category: string; date: string }[]
   userId: string
 }
-
 // Given a month/year, returns the next calendar month — used to default the
 // Rollover dialog's target to "next month" rather than making the person
 // pick it from scratch every time.
 const nextMonthOf = (month: number, year: number) =>
   month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year }
-
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme, currency } = useAppStore()
   const { expenseCategories } = useCategories()
   const theme = THEMES[activeTheme] ?? THEMES['green']
   const fmt = (n: number) => formatCurrency(n, currency)
-
   const now = new Date()
   const [budgets,   setBudgets]   = useState(initialBudgets)
   const [open,      setOpen]      = useState(false)
@@ -65,12 +59,10 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [loading,   setLoading]   = useState(false)
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
   const [viewYear,  setViewYear]  = useState(now.getFullYear())
-
   // Controlled form values for Selects
   const [selCategory, setSelCategory] = useState('')
   const [selMonth,    setSelMonth]    = useState(String(now.getMonth() + 1))
   const [selYear,     setSelYear]     = useState(String(now.getFullYear()))
-
   // ── Budget Rollover ────────────────────────────────────────────────
   // Copies selected budgets from the month currently being viewed into
   // another month. Only budget_name/category/monthly_limit are copied —
@@ -82,7 +74,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [rolloverSelected, setRolloverSelected] = useState<Set<string>>(new Set())
   const [rolloverMonth,    setRolloverMonth]    = useState(String(now.getMonth() + 1))
   const [rolloverYear,     setRolloverYear]     = useState(String(now.getFullYear()))
-
+  const [view, setView] = useState<'overview' | 'breakdown'>('overview')
+  const [showGuidanceDetails, setShowGuidanceDetails] = useState(true)
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -90,33 +83,28 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       budget_year:  now.getFullYear(),
     },
   })
-
   const monthBudgets = useMemo(() =>
     budgets.filter(b =>
       (b.budget_month ?? now.getMonth() + 1) === viewMonth &&
       (b.budget_year  ?? now.getFullYear())  === viewYear
     ), [budgets, viewMonth, viewYear])
-
   const monthExpenses = useMemo(() => {
     const pad = (n: number) => String(n).padStart(2, '0')
     const prefix = `${viewYear}-${pad(viewMonth)}`
     return expenses.filter(e => e.date?.startsWith(prefix))
   }, [expenses, viewMonth, viewYear])
-
   const budgetsWithSpent = useMemo(() =>
     monthBudgets.map(b => {
       const spent      = monthExpenses.filter(e => e.category === b.category).reduce((s, e) => s + e.amount, 0)
       const percentage = b.monthly_limit > 0 ? (spent / b.monthly_limit) * 100 : 0
       return { ...b, spent, remaining: b.monthly_limit - spent, percentage }
     }), [monthBudgets, monthExpenses])
-
   const summary = useMemo(() => ({
     totalBudgeted: monthBudgets.reduce((s, b) => s + b.monthly_limit, 0),
     totalSpent:    budgetsWithSpent.reduce((s, b) => s + (b.spent || 0), 0),
     exceeded:      budgetsWithSpent.filter(b => (b.percentage || 0) >= 100).length,
     safe:          budgetsWithSpent.filter(b => (b.percentage || 0) < 80).length,
   }), [monthBudgets, budgetsWithSpent])
-
   const prevMonth = () => {
     if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1) }
     else setViewMonth(m => m - 1)
@@ -125,7 +113,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1) }
     else setViewMonth(m => m + 1)
   }
-
   const openCreate = () => {
     setEditing(null)
     const mo = String(viewMonth)
@@ -136,7 +123,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     reset({ budget_month: viewMonth, budget_year: viewYear, budget_name: '', monthly_limit: 0 as any, category: '' })
     setOpen(true)
   }
-
   const openEdit = (b: Budget) => {
     setEditing(b)
     const mo = String(b.budget_month ?? viewMonth)
@@ -153,7 +139,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     })
     setOpen(true)
   }
-
   const onSubmit = async (data: FormData) => {
     setLoading(true)
     const supabase = createClient()
@@ -182,7 +167,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     }
     setLoading(false)
   }
-
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this budget?')) return
     const supabase = createClient()
@@ -193,7 +177,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       toast({ title: 'Budget deleted' })
     }
   }
-
   // ── Rollover helpers ─────────────────────────────────────────────────
   const openRollover = () => {
     setRolloverSelected(new Set(monthBudgets.map(b => b.id)))
@@ -202,7 +185,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     setRolloverYear(String(next.year))
     setRolloverOpen(true)
   }
-
   const toggleRolloverBudget = (id: string) => {
     setRolloverSelected(prev => {
       const next = new Set(prev)
@@ -211,21 +193,16 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       return next
     })
   }
-
   const selectAllRollover = () => setRolloverSelected(new Set(monthBudgets.map(b => b.id)))
   const clearAllRollover  = () => setRolloverSelected(new Set())
-
   const rolloverIsSameMonth = Number(rolloverMonth) === viewMonth && Number(rolloverYear) === viewYear
-
   const handleRollover = async () => {
     if (rolloverSelected.size === 0 || rolloverIsSameMonth) return
     setRolloverLoading(true)
     const supabase = createClient()
     const targetMonth = Number(rolloverMonth)
     const targetYear  = Number(rolloverYear)
-
     const sourceBudgets = monthBudgets.filter(b => rolloverSelected.has(b.id))
-
     // Never create a duplicate budget for a category that's already
     // budgeted in the target month — skip those instead of overwriting
     // or duplicating whatever spending/limit already exists there.
@@ -237,10 +214,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         )
         .map(b => b.category)
     )
-
     const toCreate = sourceBudgets.filter(b => !existingCategoriesInTarget.has(b.category))
     const skipped  = sourceBudgets.length - toCreate.length
-
     if (toCreate.length === 0) {
       toast({
         title: 'Nothing to roll over',
@@ -250,7 +225,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       setRolloverLoading(false)
       return
     }
-
     // Only the definition carries over — no spent/remaining/percentage
     // fields exist on the row at all, so there is nothing "completed"
     // from the source month for the new budget to inherit.
@@ -262,12 +236,10 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       budget_year:   targetYear,
       user_id:       userId,
     }))
-
     const { data: created, error } = await supabase
       .from('budgets')
       .insert(payload)
       .select()
-
     if (error) {
       toast({ title: 'Rollover failed', description: error.message, variant: 'destructive' })
     } else {
@@ -284,27 +256,80 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     }
     setRolloverLoading(false)
   }
-
   const statusIcon = (pct: number) => {
     const s = getBudgetStatus(pct)
     if (s === 'exceeded') return <XCircle       className="w-4 h-4 text-destructive" />
     if (s === 'warning')  return <AlertTriangle  className="w-4 h-4 text-warning"    />
     return                       <CheckCircle    className="w-4 h-4 text-success"     />
   }
-
   const progressClass = (pct: number) => {
     const s = getBudgetStatus(pct)
     if (s === 'exceeded') return '[&>div]:bg-destructive'
     if (s === 'warning')  return '[&>div]:bg-warning'
     return ''
   }
-
   const isCurrentMonth = viewMonth === now.getMonth() + 1 && viewYear === now.getFullYear()
   const dialogKey = editing ? `edit-${editing.id}` : 'create'
 
+  // ── Spending Guidance (aggregate) ─────────────────────────────────────
+  const daysInPeriod = new Date(viewYear, viewMonth, 0).getDate()
+  const periodStart  = new Date(viewYear, viewMonth - 1, 1)
+  const periodEnd    = new Date(viewYear, viewMonth - 1, daysInPeriod)
+  const daysElapsed = (() => {
+    const beforePeriod = viewYear < now.getFullYear() || (viewYear === now.getFullYear() && viewMonth < now.getMonth() + 1)
+    const afterPeriod  = viewYear > now.getFullYear() || (viewYear === now.getFullYear() && viewMonth > now.getMonth() + 1)
+    if (beforePeriod) return daysInPeriod
+    if (afterPeriod)  return 0
+    return now.getDate()
+  })()
+  const daysLeftInPeriod = daysInPeriod - daysElapsed
+
+  const pad2 = (n: number) => String(n).padStart(2, '0')
+  const toISO = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+
+  const weekDay       = now.getDay()
+  const diffToMonday  = (weekDay === 0 ? -6 : 1) - weekDay
+  const weekMonday    = new Date(now); weekMonday.setDate(now.getDate() + diffToMonday)
+  const weekSunday    = new Date(weekMonday); weekSunday.setDate(weekMonday.getDate() + 6)
+  const weekStartClip = weekMonday < periodStart ? periodStart : weekMonday
+  const weekEndClip   = weekSunday > periodEnd ? periodEnd : weekSunday
+  const weekRangeLabel = `${weekStartClip.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekEndClip.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+
+  const todayStr      = toISO(now)
+  const weekStartStr  = toISO(weekStartClip)
+  const weekEndStr    = toISO(weekEndClip)
+  const spentToday    = monthExpenses.filter(e => e.date === todayStr).reduce((s, e) => s + e.amount, 0)
+  const spentThisWeek = monthExpenses.filter(e => e.date >= weekStartStr && e.date <= weekEndStr).reduce((s, e) => s + e.amount, 0)
+
+  const dailyTarget   = daysInPeriod > 0 ? summary.totalBudgeted / daysInPeriod : 0
+  const weeklyTarget  = dailyTarget * 7
+  const monthlyTarget = summary.totalBudgeted
+  const remainingToday      = dailyTarget - spentToday
+  const remainingThisWeek   = weeklyTarget - spentThisWeek
+  const remainingThisMonth  = summary.totalBudgeted - summary.totalSpent
+  const pctDailyUsed   = dailyTarget   > 0 ? (spentToday       / dailyTarget)   * 100 : 0
+  const pctWeeklyUsed  = weeklyTarget  > 0 ? (spentThisWeek     / weeklyTarget)  * 100 : 0
+  const pctMonthlyUsed = monthlyTarget > 0 ? (summary.totalSpent / monthlyTarget) * 100 : 0
+
+  const aggregatePct = summary.totalBudgeted > 0 ? (summary.totalSpent / summary.totalBudgeted) * 100 : 0
+  const aggregateStatusKey = getBudgetStatus(aggregatePct)
+  const aggregateStatusMeta = aggregateStatusKey === 'exceeded'
+    ? { label: 'Over Budget',       color: '#dc2626', bg: '#fee2e2' }
+    : aggregateStatusKey === 'warning'
+    ? { label: 'Approaching Limit', color: '#d97706', bg: '#fef3c7' }
+    : { label: 'On Track',          color: '#16a34a', bg: '#dcfce7' }
+
+  // ── Spending Guidance Breakdown (per category) ────────────────────────
+  const breakdownRows = useMemo(() => budgetsWithSpent.map(b => {
+    const daily  = daysInPeriod > 0 ? b.monthly_limit / daysInPeriod : 0
+    const weekly = daily * 7
+    return { ...b, dailyTarget: daily, weeklyTarget: weekly }
+  }), [budgetsWithSpent, daysInPeriod])
+
   return (
     <div className="space-y-5">
-
+    {view === 'overview' && (
+    <div key="overview" className="space-y-5 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -322,7 +347,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </Button>
         </div>
       </div>
-
       {/* ── KPI Flip Cards ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KPICard
@@ -362,7 +386,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           tooltip="Budgets where spending has gone over the limit"
         />
       </div>
-
       {/* Month Navigator — compact inline bar */}
       <div className="flex items-center justify-between bg-white border border-border rounded-xl px-4 py-2.5 shadow-sm">
         <button onClick={prevMonth}
@@ -385,6 +408,211 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Monthly Budget summary */}
+      <Card className="bg-white rounded-xl shadow-sm">
+        <CardContent className="py-4 px-5">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+            <div className="md:pr-8 md:border-r border-border">
+              <p className="text-sm text-muted-foreground">Monthly Budget</p>
+              <p className="text-2xl sm:text-3xl font-bold tabular-nums mt-1" style={{ color: theme.colors.primary }}>
+                {fmt(summary.totalBudgeted)}
+              </p>
+              <span
+                className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={{ background: aggregateStatusMeta.bg, color: aggregateStatusMeta.color }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: aggregateStatusMeta.color }} />
+                {aggregateStatusMeta.label}
+              </span>
+              <p className="text-xs text-muted-foreground mt-2">
+                {summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}% of budget used` : 'No budget set'}
+              </p>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-4">
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dbeafe' }}>
+                  <Wallet className="w-4 h-4" style={{ color: '#2563eb' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Spent So Far</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(summary.totalSpent)}</p>
+                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}%` : '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+                  <RefreshCw className="w-4 h-4" style={{ color: '#16a34a' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Remaining</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(remainingThisMonth)}</p>
+                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.max(0, 100 - Math.round(aggregatePct))}%` : '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#fef3c7' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#d97706' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Days Left</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{daysLeftInPeriod} days</p>
+                  <p className="text-[11px] text-muted-foreground">{Math.round((daysLeftInPeriod / Math.max(1, daysInPeriod)) * 100)}% of period left</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden mt-4">
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${Math.min(100, aggregatePct)}%`, background: aggregateStatusMeta.color }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Spending Guidance */}
+      <Card className="bg-white rounded-xl shadow-sm">
+        <CardContent className="py-4 px-5">
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+            <div>
+              <p className="text-sm font-bold">Spending Guidance</p>
+              <p className="text-xs text-muted-foreground">Here's how much you can spend based on your monthly budget.</p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => setView('breakdown')}
+                disabled={monthBudgets.length === 0}
+              >
+                <LayoutGrid className="w-4 h-4 mr-1" /> Spending Guidance Breakdown
+              </Button>
+              <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                Show details
+                <button
+                  type="button"
+                  onClick={() => setShowGuidanceDetails(v => !v)}
+                  className="w-9 h-5 rounded-full relative transition-colors flex-shrink-0"
+                  style={{ background: showGuidanceDetails ? theme.colors.primary : '#cbd5e1' }}
+                >
+                  <span
+                    className="absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all"
+                    style={{ left: showGuidanceDetails ? '18px' : '2px' }}
+                  />
+                </button>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {/* Daily */}
+            <div className="rounded-xl border border-border p-4" style={{ background: '#eff6ff' }}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dbeafe' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#2563eb' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Daily</p>
+                  <p className="text-[11px] text-muted-foreground">Target per day</p>
+                </div>
+              </div>
+              <p className="text-xl sm:text-2xl font-bold tabular-nums mt-3">{fmt(dailyTarget)}</p>
+              <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden mt-2">
+                <div className="h-full rounded-full bg-blue-600 transition-all duration-700 ease-out" style={{ width: `${Math.min(100, pctDailyUsed)}%` }} />
+              </div>
+              {showGuidanceDetails && (
+                <div className="space-y-1.5 mt-3 text-xs">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Spent Today</span><span className="font-medium">{fmt(spentToday)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Remaining Today</span><span className={`font-medium ${remainingToday < 0 ? 'text-destructive' : 'text-success'}`}>{fmt(remainingToday)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Days Left</span><span className="font-medium">{daysElapsed} of {daysInPeriod}</span></div>
+                </div>
+              )}
+              <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                {Math.round(Math.min(999, pctDailyUsed))}% of daily target used
+              </div>
+            </div>
+
+            {/* Weekly */}
+            <div className="rounded-xl border border-border p-4" style={{ background: '#faf5ff' }}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#f3e8ff' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#9333ea' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Weekly</p>
+                  <p className="text-[11px] text-muted-foreground">Target per week</p>
+                </div>
+              </div>
+              <p className="text-xl sm:text-2xl font-bold tabular-nums mt-3">{fmt(weeklyTarget)}</p>
+              <div className="h-1.5 bg-purple-100 rounded-full overflow-hidden mt-2">
+                <div className="h-full rounded-full bg-purple-600 transition-all duration-700 ease-out" style={{ width: `${Math.min(100, pctWeeklyUsed)}%` }} />
+              </div>
+              {showGuidanceDetails && (
+                <div className="space-y-1.5 mt-3 text-xs">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Spent This Week</span><span className="font-medium">{fmt(spentThisWeek)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Remaining This Week</span><span className={`font-medium ${remainingThisWeek < 0 ? 'text-destructive' : 'text-success'}`}>{fmt(remainingThisWeek)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Week</span><span className="font-medium">{weekRangeLabel}</span></div>
+                </div>
+              )}
+              <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
+                {Math.round(Math.min(999, pctWeeklyUsed))}% of weekly target used
+              </div>
+            </div>
+
+            {/* Monthly */}
+            <div className="rounded-xl border border-border p-4" style={{ background: '#f0fdf4' }}>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#16a34a' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">Monthly</p>
+                  <p className="text-[11px] text-muted-foreground">Total for month</p>
+                </div>
+              </div>
+              <p className="text-xl sm:text-2xl font-bold tabular-nums mt-3">{fmt(monthlyTarget)}</p>
+              <div className="h-1.5 bg-green-100 rounded-full overflow-hidden mt-2">
+                <div className="h-full rounded-full bg-green-600 transition-all duration-700 ease-out" style={{ width: `${Math.min(100, pctMonthlyUsed)}%` }} />
+              </div>
+              {showGuidanceDetails && (
+                <div className="space-y-1.5 mt-3 text-xs">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Spent This Month</span><span className="font-medium">{fmt(summary.totalSpent)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Remaining This Month</span><span className={`font-medium ${remainingThisMonth < 0 ? 'text-destructive' : 'text-success'}`}>{fmt(remainingThisMonth)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Days Left</span><span className="font-medium">{daysElapsed} of {daysInPeriod}</span></div>
+                </div>
+              )}
+              <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#dcfce7', color: '#15803d' }}>
+                {Math.round(Math.min(999, pctMonthlyUsed))}% of monthly budget used
+              </div>
+            </div>
+          </div>
+
+          {/* Budget Pace Guide */}
+          <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6 mt-5 pt-4 border-t border-border">
+            <div className="flex-shrink-0">
+              <p className="text-sm font-semibold">Budget Pace Guide</p>
+              <p className="text-xs text-muted-foreground">Based on your spending so far this month</p>
+            </div>
+            <div className="flex flex-wrap gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                <span className="font-semibold">On Track</span>
+                <span className="text-muted-foreground">You're spending within your budget pace.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+                <span className="font-semibold">Approaching Limit</span>
+                <span className="text-muted-foreground">You've used more than 80% of your budget pace.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                <span className="font-semibold">Over Budget</span>
+                <span className="text-muted-foreground">You've spent more than 100% of your budget.</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Budget Cards */}
       {budgetsWithSpent.length === 0 ? (
@@ -434,7 +662,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     </Button>
                   </div>
                 </div>
-
                 <div className="space-y-1.5">
                   <div className="flex justify-between text-sm gap-2">
                     <span className="text-muted-foreground flex-shrink-0">Spent</span>
@@ -460,7 +687,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     </span>
                   </div>
                 </div>
-
                 {status === 'exceeded' && (
                   <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
                     <XCircle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -478,7 +704,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           })}
         </div>
       )}
-
       {/* ── Dialog — key forces full remount on open/edit ── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent key={dialogKey}>
@@ -486,13 +711,11 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
             <DialogTitle>{editing ? 'Edit Budget' : 'Create Budget'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
             <div className="space-y-1.5">
               <Label>Budget Name</Label>
               <Input placeholder="e.g. Food Budget" {...register('budget_name')} />
               {errors.budget_name && <p className="text-xs text-destructive">{errors.budget_name.message}</p>}
             </div>
-
             <div className="space-y-1.5">
               <Label>Category</Label>
               <Select
@@ -508,13 +731,11 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               </Select>
               {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
             </div>
-
             <div className="space-y-1.5">
               <Label>Monthly Limit</Label>
               <Input type="number" step="0.01" placeholder="0.00" {...register('monthly_limit')} />
               {errors.monthly_limit && <p className="text-xs text-destructive">{errors.monthly_limit.message}</p>}
             </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Month</Label>
@@ -531,7 +752,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                 </Select>
                 {errors.budget_month && <p className="text-xs text-destructive">{errors.budget_month.message}</p>}
               </div>
-
               <div className="space-y-1.5">
                 <Label>Year</Label>
                 <Select
@@ -548,7 +768,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                 {errors.budget_year && <p className="text-xs text-destructive">{errors.budget_year.message}</p>}
               </div>
             </div>
-
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button type="submit" disabled={loading}
@@ -561,7 +780,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </form>
         </DialogContent>
       </Dialog>
-
       {/* ── Rollover Dialog ── */}
       <Dialog open={rolloverOpen} onOpenChange={setRolloverOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -571,13 +789,11 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               Rollover Budgets
             </DialogTitle>
           </DialogHeader>
-
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Copy selected budgets from {MONTH_NAMES[viewMonth - 1]} {viewYear} into another month.
               Only the name, category, and limit carry over — spending always starts fresh for the new month.
             </p>
-
             {monthBudgets.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
                 No budgets in {MONTH_NAMES[viewMonth - 1]} {viewYear} to roll over.
@@ -593,7 +809,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <button type="button" onClick={clearAllRollover} className="text-xs font-semibold text-muted-foreground hover:underline">Clear all</button>
                   </div>
                 </div>
-
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {monthBudgets.map(b => {
                     const checked = rolloverSelected.has(b.id)
@@ -622,7 +837,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     )
                   })}
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Target Month</Label>
@@ -647,7 +861,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     </Select>
                   </div>
                 </div>
-
                 {rolloverIsSameMonth && (
                   <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
                     Target month is the same as the month you're viewing — pick a different month.
@@ -655,7 +868,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                 )}
               </>
             )}
-
             <div className="flex justify-end gap-3 pt-2 border-t border-border">
               <Button type="button" variant="outline" onClick={() => setRolloverOpen(false)}>Cancel</Button>
               <Button
@@ -671,6 +883,226 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </div>
         </DialogContent>
       </Dialog>
+    </div>
+    )}
+
+    {/* ── Spending Guidance Breakdown — reached from the button above.
+        Shares this component's state entirely (viewMonth/viewYear, budgets,
+        expenses), so the selected month, filters, and everything else are
+        already "preserved" simply because nothing was unmounted — this is
+        a view swap within the same component tree, not a navigation. ──── */}
+    {view === 'breakdown' && (
+    <div key="breakdown" className="space-y-5 animate-fade-in">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setView('overview')}
+            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0 border border-border"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
+              Monthly Budgets
+            </h1>
+            <p className="text-muted-foreground text-sm flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" />
+              {MONTH_NAMES[viewMonth - 1]} 1 – {MONTH_NAMES[viewMonth - 1]} {daysInPeriod}, {viewYear} ({daysInPeriod} days)
+            </p>
+          </div>
+        </div>
+        <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
+          <Plus className="w-4 h-4 mr-1" /> Create Budget
+        </Button>
+      </div>
+
+      {/* Total Monthly Budget summary */}
+      <Card className="bg-white rounded-xl shadow-sm">
+        <CardContent className="py-4 px-5">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
+            <div className="md:pr-8 md:border-r border-border">
+              <p className="text-sm text-muted-foreground">Total Monthly Budget</p>
+              <p className="text-2xl sm:text-3xl font-bold tabular-nums mt-1" style={{ color: theme.colors.primary }}>
+                {fmt(summary.totalBudgeted)}
+              </p>
+              <span
+                className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={{ background: aggregateStatusMeta.bg, color: aggregateStatusMeta.color }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: aggregateStatusMeta.color }} />
+                {aggregateStatusMeta.label}
+              </span>
+              <p className="text-xs text-muted-foreground mt-2">
+                {summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}% of budget used` : 'No budget set'}
+              </p>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-4">
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dbeafe' }}>
+                  <Wallet className="w-4 h-4" style={{ color: '#2563eb' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Spent So Far</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(summary.totalSpent)}</p>
+                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}%` : '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+                  <RefreshCw className="w-4 h-4" style={{ color: '#16a34a' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Remaining</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(remainingThisMonth)}</p>
+                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.max(0, 100 - Math.round(aggregatePct))}%` : '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#fef3c7' }}>
+                  <Calendar className="w-4 h-4" style={{ color: '#d97706' }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Days Left</p>
+                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{daysLeftInPeriod} days</p>
+                  <p className="text-[11px] text-muted-foreground">{Math.round((daysLeftInPeriod / Math.max(1, daysInPeriod)) * 100)}% of period left</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden mt-4">
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out"
+              style={{ width: `${Math.min(100, aggregatePct)}%`, background: aggregateStatusMeta.color }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Budget Breakdown table */}
+      <Card className="bg-white rounded-xl shadow-sm">
+        <CardContent className="py-4 px-5">
+          <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+            <div>
+              <p className="text-sm font-bold">Budget Breakdown</p>
+              <p className="text-xs text-muted-foreground">See how much you can spend each day and week for every budget category.</p>
+            </div>
+          </div>
+
+          {breakdownRows.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Wallet className="w-10 h-10 mx-auto mb-3 opacity-20" />
+              <p className="text-sm">No budgets for {MONTH_NAMES[viewMonth - 1]} {viewYear}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto -mx-5">
+              <table className="w-full text-sm min-w-[720px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left px-5 py-2.5 font-medium text-muted-foreground text-xs">Category</th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Monthly Budget</th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Daily Target<br /><span className="font-normal">(Average)</span></th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Weekly Target<br /><span className="font-normal">(Average)</span></th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Spent So Far</th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
+                    <th className="text-right px-5 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {breakdownRows.map(b => {
+                    const pct = b.percentage || 0
+                    const status = getBudgetStatus(pct)
+                    const spentPct  = b.monthly_limit > 0 ? Math.round(((b.spent || 0) / b.monthly_limit) * 100) : 0
+                    const remainPct = 100 - spentPct
+                    const statusMeta = status === 'exceeded'
+                      ? { label: 'Over Budget',       color: '#dc2626', bg: '#fee2e2' }
+                      : status === 'warning'
+                      ? { label: 'Approaching',       color: '#d97706', bg: '#fef3c7' }
+                      : { label: 'On Track',           color: '#16a34a', bg: '#dcfce7' }
+                    return (
+                      <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
+                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ background: CATEGORY_COLORS[b.category] || '#94a3b8' }} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{b.budget_name}</p>
+                              <p className="text-xs text-muted-foreground truncate capitalize">{b.category}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium tabular-nums">{fmt(b.monthly_limit)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.dailyTarget)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.weeklyTarget)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {fmt(b.spent || 0)}
+                          <span className="text-muted-foreground text-xs ml-1">{spentPct}%</span>
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {fmt(Math.max(0, b.remaining || 0))}
+                          <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
+                            style={{ background: statusMeta.bg, color: statusMeta.color }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusMeta.color }} />
+                            {statusMeta.label}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* How to use + Budget Pace Guide */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="bg-white rounded-xl shadow-sm">
+          <CardContent className="py-4 px-5 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: theme.colors.primary + '18' }}>
+              <Info className="w-4 h-4" style={{ color: theme.colors.primary }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">How to use</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Use your daily and weekly targets as a guide to help you stay on track. Try not to exceed your daily target for better monthly control.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-white rounded-xl shadow-sm">
+          <CardContent className="py-4 px-5">
+            <p className="text-sm font-semibold mb-2">Budget Pace Guide</p>
+            <div className="flex flex-wrap gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                <span className="font-semibold">On Track</span>
+                <span className="text-muted-foreground">You're within your budget pace.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
+                <span className="font-semibold">Approaching Limit</span>
+                <span className="text-muted-foreground">You've used more than 80% of your budget pace.</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                <span className="font-semibold">Over Budget</span>
+                <span className="text-muted-foreground">You've spent more than 100% of your budget.</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+    )}
     </div>
   )
 }

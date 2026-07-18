@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -443,11 +443,15 @@ export function WealthContent({
   // search / filter
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+const [customAssetCategories, setCustomAssetCategories] = useState<string[]>([])
 
-  const [customAssetCategories, setCustomAssetCategories] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return []
-    try { return JSON.parse(localStorage.getItem('ts_asset_categories') || '[]') } catch { return [] }
-  })
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('ts_asset_categories')
+      if (stored) setCustomAssetCategories(JSON.parse(stored))
+    } catch {}
+  }, [])
+
   const [newAssetCat, setNewAssetCat] = useState('')
 
   // exchange rate editing (per currency, applied to all accounts of that currency)
