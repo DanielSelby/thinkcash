@@ -906,7 +906,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </button>
           <div>
             <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
-              Monthly Budgets
+              Monthly Budgets Guidance
             </h1>
             <p className="text-muted-foreground text-sm flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5" />
