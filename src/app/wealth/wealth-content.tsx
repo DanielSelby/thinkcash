@@ -934,9 +934,41 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
     <div className="space-y-6">
 
       {/* Header */}
-      <div>
-        <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>Net Worth Tracker</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Assets + Investments − Debts − Loans = Net Worth</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>Net Worth Tracker</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Assets + Investments − Debts − Loans = Net Worth</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => openCreate('asset')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: SECTION_COLORS.asset.bg }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Asset
+          </button>
+          <button
+            onClick={() => openCreate('investment')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: SECTION_COLORS.investment.bg }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Investment
+          </button>
+          <button
+            onClick={() => openCreate('debt')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: SECTION_COLORS.debt.bg }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Debt
+          </button>
+          <button
+            onClick={() => openCreate('loan')}
+            className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: SECTION_COLORS.loan.bg }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Loan
+          </button>
+        </div>
       </div>
 
       {/* Net Worth Hero */}
