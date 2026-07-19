@@ -342,6 +342,9 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           <Button variant="outline" onClick={openRollover} disabled={monthBudgets.length === 0}>
             <Copy className="w-4 h-4 mr-1" /> Rollover Budgets
           </Button>
+          <Button variant="outline" onClick={() => setView('breakdown')} disabled={monthBudgets.length === 0}>
+            <LayoutGrid className="w-4 h-4 mr-1" /> Spending Guide
+          </Button>
           <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
             <Plus className="w-4 h-4 mr-1" /> Create Budget
           </Button>
@@ -1004,6 +1007,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Weekly Target<br /><span className="font-normal">(Average)</span></th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Spent So Far</th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
+                    <th className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs w-36">% Used</th>
                     <th className="text-right px-5 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
                   </tr>
                 </thead>
@@ -1022,10 +1026,19 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                       <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
                               style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
-                              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ background: CATEGORY_COLORS[b.category] || '#94a3b8' }} />
+                              {({
+                                'Food & Dining': '🍽️', 'Transport': '🚗', 'Housing': '🏠',
+                                'Utilities': '💡', 'Utilities Bills': '💡', 'Healthcare': '🏥',
+                                'Education': '📚', 'Entertainment': '🎬', 'Shopping': '🛍️',
+                                'Clothing': '👗', 'Personal Care': '💆', 'Savings': '🏦',
+                                'Debt Payment': '💳', 'Insurance': '🛡️', 'Travel': '✈️',
+                                'Communication': '📱', 'Family Support': '👨‍👩‍👧', 'Emergency': '🚨',
+                                'Charity & Donations': '❤️', 'Charity & Donation': '❤️',
+                                'Tithe & Offerings': '🙏', 'Tithe & Offerings - Church Donations': '🙏',
+                                'Church Donations': '⛪', 'Investment': '📈', 'Other': '📦',
+                              } as Record<string, string>)[b.category] || '📦'}
                             </div>
                             <div className="min-w-0">
                               <p className="font-medium truncate">{b.budget_name}</p>
@@ -1043,6 +1056,27 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                         <td className="px-3 py-3 text-right tabular-nums">
                           {fmt(Math.max(0, b.remaining || 0))}
                           <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col items-center gap-1 min-w-[110px]">
+                            <div className="flex items-center justify-between w-full text-xs">
+                              <span className="font-semibold tabular-nums" style={{
+                                color: pct >= 100 ? '#dc2626' : pct >= 80 ? '#d97706' : '#16a34a'
+                              }}>
+                                {Math.round(pct)}%
+                              </span>
+                              <span className="text-muted-foreground text-[10px]">{fmt(b.spent || 0)} / {fmt(b.monthly_limit)}</span>
+                            </div>
+                            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-700 ease-out"
+                                style={{
+                                  width: `${Math.min(100, pct)}%`,
+                                  background: pct >= 100 ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#16a34a',
+                                }}
+                              />
+                            </div>
+                          </div>
                         </td>
                         <td className="px-5 py-3 text-right">
                           <span
