@@ -1466,7 +1466,7 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                       </SelectTrigger>
                       <SelectContent>
                         {/* Built-in groups */}
-                        <SelectItem value="">No category</SelectItem>
+                        <SelectItem value="none">No category</SelectItem>
                         <SelectItem value="personal">Personal</SelectItem>
                         <SelectItem value="business">Business</SelectItem>
                         <SelectItem value="family">Family</SelectItem>
