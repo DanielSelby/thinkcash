@@ -1005,9 +1005,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Monthly Budget</th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Daily Target<br /><span className="font-normal">(Average)</span></th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Weekly Target<br /><span className="font-normal">(Average)</span></th>
-                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Spent So Far</th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
-                    <th className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs w-36">% Used</th>
+                    <th className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs w-36">Spent So Far / % Used</th>
                     <th className="text-right px-5 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
                   </tr>
                 </thead>
@@ -1049,10 +1048,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                         <td className="px-3 py-3 text-right font-medium tabular-nums">{fmt(b.monthly_limit)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.dailyTarget)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.weeklyTarget)}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          {fmt(b.spent || 0)}
-                          <span className="text-muted-foreground text-xs ml-1">{spentPct}%</span>
-                        </td>
+                        
                         <td className="px-3 py-3 text-right tabular-nums">
                           {fmt(Math.max(0, b.remaining || 0))}
                           <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
@@ -1065,7 +1061,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                               }}>
                                 {Math.round(pct)}%
                               </span>
-                              <span className="text-muted-foreground text-[10px]">{fmt(b.spent || 0)} / {fmt(b.monthly_limit)}</span>
+                              <span className="text-muted-foreground text-[10px]">{fmt(b.spent || 0)}</span>
                             </div>
                             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                               <div
