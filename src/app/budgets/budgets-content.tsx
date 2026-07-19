@@ -320,11 +320,24 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     : { label: 'On Track',          color: '#16a34a', bg: '#dcfce7' }
 
   // ── Spending Guidance Breakdown (per category) ────────────────────────
-  const breakdownRows = useMemo(() => budgetsWithSpent.map(b => {
-    const daily  = daysInPeriod > 0 ? b.monthly_limit / daysInPeriod : 0
-    const weekly = daily * 7
-    return { ...b, dailyTarget: daily, weeklyTarget: weekly }
-  }), [budgetsWithSpent, daysInPeriod])
+  const breakdownRows = useMemo(() => {
+    const now = new Date()
+    const dayOfMonth = now.getDate()
+    return budgetsWithSpent.map(b => {
+      const daily   = daysInPeriod > 0 ? b.monthly_limit / daysInPeriod : 0
+      const weekly  = daily * 7
+      // Projected spend = (spent so far / days elapsed) × total days in month
+      const projected = dayOfMonth > 0
+        ? Math.round(((b.spent || 0) / dayOfMonth) * daysInPeriod)
+        : 0
+      const projectedStatus = projected > b.monthly_limit
+        ? 'over'
+        : projected > b.monthly_limit * 0.8
+        ? 'warning'
+        : 'ok'
+      return { ...b, dailyTarget: daily, weeklyTarget: weekly, projectedSpend: projected, projectedStatus }
+    })
+  }, [budgetsWithSpent, daysInPeriod])
 
   return (
     <div className="space-y-5">
@@ -1114,6 +1127,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Weekly Target<br /><span className="font-normal">(Average)</span></th>
                     <th className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs w-36">Spent So Far / % Used</th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Projected Spend<br /><span className="font-normal">(End of Month)</span></th>
                     <th className="text-right px-5 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
                   </tr>
                 </thead>
@@ -1178,9 +1192,38 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                           </div>
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
+
                           {fmt(Math.max(0, b.remaining || 0))}
+
                           <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
+
                         </td>
+
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          <span
+                            className="font-semibold"
+                            style={{
+                              color: b.projectedStatus === 'over'
+                                ? '#dc2626'
+                                : b.projectedStatus === 'warning'
+                                ? '#d97706'
+                                : '#16a34a',
+                            }}
+                          >
+                            {fmt(b.projectedSpend ?? 0)}
+                          </span>
+                          {b.projectedSpend > b.monthly_limit && (
+                            <p className="text-[10px] text-red-500 mt-0.5">
+                              +{fmt(b.projectedSpend - b.monthly_limit)} over
+                            </p>
+                          )}
+                          {b.projectedSpend <= b.monthly_limit && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {fmt(b.monthly_limit - b.projectedSpend)} under
+                            </p>
+                          )}
+                        </td>
+
                         <td className="px-5 py-3 text-right">
                           <span
                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
