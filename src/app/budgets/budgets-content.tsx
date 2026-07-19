@@ -6,7 +6,10 @@ import { z } from 'zod'
 import {
   Plus, Edit2, Trash2, Wallet, AlertTriangle,
   CheckCircle, XCircle, Loader2, ChevronLeft, ChevronRight, Copy,
-  Calendar, LayoutGrid, RefreshCw, ArrowLeft, Info,
+  Calendar, LayoutGrid, RefreshCw, ArrowLeft, Info,UtensilsCrossed, Car, Home, Zap, HeartPulse, GraduationCap,
+  Tv2, ShoppingBag, Shirt, Sparkles, PiggyBank, CreditCard,
+  ShieldCheck, Plane, Smartphone, Users, Siren, Heart,
+  Church, TrendingUp, Package,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -1148,17 +1151,59 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                           <div className="flex items-center gap-2.5">
                             <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
                               style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
-                              {({
-                                'Food & Dining': '🍽️', 'Transport': '🚗', 'Housing': '🏠',
-                                'Utilities': '💡', 'Utilities Bills': '💡', 'Healthcare': '🏥',
-                                'Education': '📚', 'Entertainment': '🎬', 'Shopping': '🛍️',
-                                'Clothing': '👗', 'Personal Care': '💆', 'Savings': '🏦',
-                                'Debt Payment': '💳', 'Insurance': '🛡️', 'Travel': '✈️',
-                                'Communication': '📱', 'Family Support': '👨‍👩‍👧', 'Emergency': '🚨',
-                                'Charity & Donations': '❤️', 'Charity & Donation': '❤️',
-                                'Tithe & Offerings': '🙏', 'Tithe & Offerings - Church Donations': '🙏',
-                                'Church Donations': '⛪', 'Investment': '📈', 'Other': '📦',
-                              } as Record<string, string>)[b.category] || '📦'}
+                             {(() => {
+                                const iconMap: Record<string, React.ReactNode> = {
+                                  'Food & Dining':    <UtensilsCrossed className="w-4 h-4" />,
+                                  'Transport':        <Car className="w-4 h-4" />,
+                                  'Housing':          <Home className="w-4 h-4" />,
+                                  'Utilities':        <Zap className="w-4 h-4" />,
+                                  'Utilities Bills':  <Zap className="w-4 h-4" />,
+                                  'Healthcare':       <HeartPulse className="w-4 h-4" />,
+                                  'Education':        <GraduationCap className="w-4 h-4" />,
+                                  'Entertainment':    <Tv2 className="w-4 h-4" />,
+                                  'Shopping':         <ShoppingBag className="w-4 h-4" />,
+                                  'Clothing':         <Shirt className="w-4 h-4" />,
+                                  'Personal Care':    <Sparkles className="w-4 h-4" />,
+                                  'Savings':          <PiggyBank className="w-4 h-4" />,
+                                  'Debt Payment':     <CreditCard className="w-4 h-4" />,
+                                  'Insurance':        <ShieldCheck className="w-4 h-4" />,
+                                  'Travel':           <Plane className="w-4 h-4" />,
+                                  'Communication':    <Smartphone className="w-4 h-4" />,
+                                  'Family Support':   <Users className="w-4 h-4" />,
+                                  'Emergency':        <Siren className="w-4 h-4" />,
+                                  'Charity & Donations': <Heart className="w-4 h-4" />,
+                                  'Charity & Donation':  <Heart className="w-4 h-4" />,
+                                  'Tithe & Offerings': <Church className="w-4 h-4" />,
+                                  'Tithe & Offerings - Church Donations': <Church className="w-4 h-4" />,
+                                  'Church Donations': <Church className="w-4 h-4" />,
+                                  'Investment':       <TrendingUp className="w-4 h-4" />,
+                                  'Other':            <Package className="w-4 h-4" />,
+                                }
+                                if (iconMap[b.category]) return iconMap[b.category]
+                                // Auto-match custom categories by keyword
+                                const cat = b.category.toLowerCase()
+                                if (cat.includes('food') || cat.includes('eat') || cat.includes('dining') || cat.includes('restaurant') || cat.includes('lunch') || cat.includes('dinner') || cat.includes('breakfast')) return <UtensilsCrossed className="w-4 h-4" />
+                                if (cat.includes('transport') || cat.includes('fuel') || cat.includes('car') || cat.includes('uber') || cat.includes('taxi') || cat.includes('bus') || cat.includes('vehicle')) return <Car className="w-4 h-4" />
+                                if (cat.includes('house') || cat.includes('rent') || cat.includes('home') || cat.includes('mortgage') || cat.includes('property')) return <Home className="w-4 h-4" />
+                                if (cat.includes('util') || cat.includes('electric') || cat.includes('water') || cat.includes('gas') || cat.includes('power') || cat.includes('bill')) return <Zap className="w-4 h-4" />
+                                if (cat.includes('health') || cat.includes('medical') || cat.includes('doctor') || cat.includes('hospital') || cat.includes('pharma') || cat.includes('clinic')) return <HeartPulse className="w-4 h-4" />
+                                if (cat.includes('edu') || cat.includes('school') || cat.includes('tuition') || cat.includes('course') || cat.includes('training') || cat.includes('book')) return <GraduationCap className="w-4 h-4" />
+                                if (cat.includes('entertain') || cat.includes('movie') || cat.includes('cinema') || cat.includes('stream') || cat.includes('tv') || cat.includes('netflix') || cat.includes('sport')) return <Tv2 className="w-4 h-4" />
+                                if (cat.includes('shop') || cat.includes('grocery') || cat.includes('market') || cat.includes('supermarket') || cat.includes('mall')) return <ShoppingBag className="w-4 h-4" />
+                                if (cat.includes('cloth') || cat.includes('fashion') || cat.includes('wear') || cat.includes('dress') || cat.includes('shoe')) return <Shirt className="w-4 h-4" />
+                                if (cat.includes('personal') || cat.includes('salon') || cat.includes('hair') || cat.includes('beauty') || cat.includes('spa') || cat.includes('groom')) return <Sparkles className="w-4 h-4" />
+                                if (cat.includes('sav') || cat.includes('invest') && !cat.includes('debt')) return <PiggyBank className="w-4 h-4" />
+                                if (cat.includes('debt') || cat.includes('loan') || cat.includes('credit') || cat.includes('repay') || cat.includes('payment')) return <CreditCard className="w-4 h-4" />
+                                if (cat.includes('insur') || cat.includes('protect') || cat.includes('cover') || cat.includes('policy')) return <ShieldCheck className="w-4 h-4" />
+                                if (cat.includes('travel') || cat.includes('flight') || cat.includes('hotel') || cat.includes('trip') || cat.includes('holiday') || cat.includes('vacation')) return <Plane className="w-4 h-4" />
+                                if (cat.includes('phone') || cat.includes('mobile') || cat.includes('internet') || cat.includes('data') || cat.includes('telecom') || cat.includes('network') || cat.includes('airtime')) return <Smartphone className="w-4 h-4" />
+                                if (cat.includes('family') || cat.includes('child') || cat.includes('parent') || cat.includes('support') || cat.includes('depend')) return <Users className="w-4 h-4" />
+                                if (cat.includes('emerg') || cat.includes('urgent') || cat.includes('crisis')) return <Siren className="w-4 h-4" />
+                                if (cat.includes('charit') || cat.includes('donat') || cat.includes('ngo') || cat.includes('welfare')) return <Heart className="w-4 h-4" />
+                                if (cat.includes('church') || cat.includes('tithe') || cat.includes('offer') || cat.includes('faith') || cat.includes('worship') || cat.includes('mosque') || cat.includes('religion')) return <Church className="w-4 h-4" />
+                                if (cat.includes('invest') || cat.includes('stock') || cat.includes('fund') || cat.includes('portfolio') || cat.includes('asset')) return <TrendingUp className="w-4 h-4" />
+                                return <Package className="w-4 h-4" />
+                              })()}
                             </div>
                             <div className="min-w-0">
                               <p className="font-medium truncate">{b.budget_name}</p>
