@@ -919,67 +919,174 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         </Button>
       </div>
 
-      {/* Total Monthly Budget summary */}
-      <Card className="bg-white rounded-xl shadow-sm">
-        <CardContent className="py-4 px-5">
-          <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8">
-            <div className="md:pr-8 md:border-r border-border">
-              <p className="text-sm text-muted-foreground">Total Monthly Budget</p>
-              <p className="text-2xl sm:text-3xl font-bold tabular-nums mt-1" style={{ color: theme.colors.primary }}>
-                {fmt(summary.totalBudgeted)}
+      {/* ── KPI Row ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {/* Monthly Budget */}
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+            <Wallet className="w-6 h-6" style={{ color: '#16a34a' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium">Monthly Budget</p>
+            <p className="text-lg font-bold tabular-nums truncate" style={{ color: theme.colors.primary }}>{fmt(summary.totalBudgeted)}</p>
+            <p className="text-[11px] text-muted-foreground">100% of plan</p>
+          </div>
+        </div>
+
+        {/* Spent So Far */}
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dbeafe' }}>
+            <TrendingDown className="w-6 h-6" style={{ color: '#2563eb' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium">Spent So Far</p>
+            <p className="text-lg font-bold tabular-nums truncate text-blue-600">{fmt(summary.totalSpent)}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}% of budget` : '—'}</p>
+          </div>
+        </div>
+
+        {/* Remaining Budget */}
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#f3e8ff' }}>
+            <RefreshCw className="w-6 h-6" style={{ color: '#7c3aed' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium">Remaining Budget</p>
+            <p className="text-lg font-bold tabular-nums truncate text-violet-600">{fmt(Math.max(0, remainingThisMonth))}</p>
+            <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.max(0, 100 - Math.round(aggregatePct))}% left` : '—'}</p>
+          </div>
+        </div>
+
+        {/* Days Left */}
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#fef3c7' }}>
+            <Calendar className="w-6 h-6" style={{ color: '#d97706' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium">Days Left in Month</p>
+            <p className="text-lg font-bold tabular-nums truncate text-amber-600">{daysLeftInPeriod} Days</p>
+            <p className="text-[11px] text-muted-foreground">
+              Ends on {new Date(viewYear, viewMonth - 1, daysInPeriod).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+        </div>
+
+        {/* Budget Health */}
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
+            <CheckCircle className="w-6 h-6" style={{ color: '#16a34a' }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium">Budget Health</p>
+            <p className="text-lg font-bold tabular-nums" style={{ color: aggregateStatusMeta.color }}>
+              {summary.totalBudgeted > 0 ? `${Math.max(0, 100 - Math.round(aggregatePct))}%` : '—'}
+            </p>
+            <div className="flex items-center gap-0.5 mt-0.5">
+              {[1,2,3,4,5].map(s => (
+                <span key={s} className="text-[10px]" style={{
+                  color: (100 - aggregatePct) >= s * 20 ? '#f59e0b' : '#d1d5db'
+                }}>★</span>
+              ))}
+              <span className="text-[10px] text-muted-foreground ml-1">
+                {aggregateStatusMeta.label}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Overall Progress + Budget Insight ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-4">
+
+        {/* Overall Progress */}
+        <Card className="bg-white rounded-2xl shadow-sm border border-border">
+          <CardContent className="p-5">
+            <p className="text-sm font-bold mb-1">Overall Progress</p>
+            <div className="flex items-end justify-between gap-2 mb-2">
+              <p className="text-2xl font-bold tabular-nums" style={{ color: aggregateStatusMeta.color }}>
+                {Math.round(aggregatePct)}% <span className="text-base font-semibold text-muted-foreground">Used</span>
               </p>
-              <span
-                className="inline-flex items-center gap-1 mt-2 px-2.5 py-1 rounded-full text-xs font-semibold"
-                style={{ background: aggregateStatusMeta.bg, color: aggregateStatusMeta.color }}
-              >
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold mb-1"
+                style={{ background: aggregateStatusMeta.bg, color: aggregateStatusMeta.color }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: aggregateStatusMeta.color }} />
                 {aggregateStatusMeta.label}
               </span>
-              <p className="text-xs text-muted-foreground mt-2">
-                {summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}% of budget used` : 'No budget set'}
+            </div>
+            <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: `${Math.min(100, aggregatePct)}%`,
+                  background: aggregatePct >= 100 ? '#dc2626' : aggregatePct >= 80 ? '#f59e0b' : '#16a34a',
+                }} />
+            </div>
+            <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground flex-wrap gap-2">
+              <span className="tabular-nums">{fmt(summary.totalSpent)} of {fmt(summary.totalBudgeted)} used</span>
+              <span className="tabular-nums">{fmt(Math.max(0, remainingThisMonth))} remaining</span>
+              <span>{daysLeftInPeriod} days left</span>
+            </div>
+
+            {/* Per-budget mini bars */}
+            <div className="mt-4 space-y-2.5">
+              {budgetsWithSpent.slice(0, 4).map(b => {
+                const pct = Math.min(100, b.percentage || 0)
+                const barColor = pct >= 100 ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#16a34a'
+                return (
+                  <div key={b.id}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="font-medium truncate max-w-[160px]">{b.budget_name}</span>
+                      <span className="tabular-nums font-semibold" style={{ color: barColor }}>{Math.round(pct)}%</span>
+                    </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, background: barColor }} />
+                    </div>
+                  </div>
+                )
+              })}
+              {budgetsWithSpent.length > 4 && (
+                <p className="text-[11px] text-muted-foreground text-center pt-1">
+                  +{budgetsWithSpent.length - 4} more budgets below
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Budget Insight */}
+        <Card className="bg-white rounded-2xl shadow-sm border border-border overflow-hidden">
+          <CardContent className="p-5 h-full flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg">💡</span>
+                <p className="text-sm font-bold">Budget Insight</p>
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {aggregatePct >= 100
+                  ? `You've exceeded your total budget of ${fmt(summary.totalBudgeted)}. Review your spending and adjust your budget categories.`
+                  : aggregatePct >= 80
+                  ? `You've used ${Math.round(aggregatePct)}% of your total budget. With ${daysLeftInPeriod} days left, spend carefully — you have ${fmt(Math.max(0, remainingThisMonth))} remaining.`
+                  : `You have spent ${Math.round(aggregatePct)}% of your total budget. You're on track! Try to keep your daily spending around ${fmt(dailyTarget)} to finish the month strong.`}
               </p>
+              {daysLeftInPeriod > 0 && summary.totalBudgeted > 0 && (
+                <div className="mt-4 p-3 rounded-xl" style={{ background: theme.colors.primary + '0f' }}>
+                  <p className="text-xs font-semibold" style={{ color: theme.colors.primary }}>Suggested daily spend</p>
+                  <p className="text-lg font-bold tabular-nums mt-0.5" style={{ color: theme.colors.primary }}>
+                    {fmt(Math.max(0, remainingThisMonth) / Math.max(1, daysLeftInPeriod))}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">/ day</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">to stay within budget for the rest of {MONTH_NAMES[viewMonth - 1]}</p>
+                </div>
+              )}
             </div>
-            <div className="flex-1 grid grid-cols-3 gap-4">
-              <div className="flex items-start gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dbeafe' }}>
-                  <Wallet className="w-4 h-4" style={{ color: '#2563eb' }} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Spent So Far</p>
-                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(summary.totalSpent)}</p>
-                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.round(aggregatePct)}%` : '—'}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#dcfce7' }}>
-                  <RefreshCw className="w-4 h-4" style={{ color: '#16a34a' }} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Remaining</p>
-                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{fmt(remainingThisMonth)}</p>
-                  <p className="text-[11px] text-muted-foreground">{summary.totalBudgeted > 0 ? `${Math.max(0, 100 - Math.round(aggregatePct))}%` : '—'}</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#fef3c7' }}>
-                  <Calendar className="w-4 h-4" style={{ color: '#d97706' }} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">Days Left</p>
-                  <p className="text-sm sm:text-base font-bold tabular-nums truncate">{daysLeftInPeriod} days</p>
-                  <p className="text-[11px] text-muted-foreground">{Math.round((daysLeftInPeriod / Math.max(1, daysInPeriod)) * 100)}% of period left</p>
-                </div>
-              </div>
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-border text-xs text-muted-foreground">
+              <span>{summary.safe} of {monthBudgets.length} budgets on track</span>
+              {summary.exceeded > 0 && (
+                <span className="text-red-500 font-semibold">{summary.exceeded} exceeded</span>
+              )}
             </div>
-          </div>
-          <div className="h-2 bg-muted rounded-full overflow-hidden mt-4">
-            <div
-              className="h-full rounded-full transition-all duration-700 ease-out"
-              style={{ width: `${Math.min(100, aggregatePct)}%`, background: aggregateStatusMeta.color }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Budget Breakdown table */}
       <Card className="bg-white rounded-xl shadow-sm">
@@ -1005,8 +1112,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Monthly Budget</th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Daily Target<br /><span className="font-normal">(Average)</span></th>
                     <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Weekly Target<br /><span className="font-normal">(Average)</span></th>
-                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
                     <th className="text-center px-3 py-2.5 font-medium text-muted-foreground text-xs w-36">Spent So Far / % Used</th>
+                    <th className="text-right px-3 py-2.5 font-medium text-muted-foreground text-xs">Remaining</th>
                     <th className="text-right px-5 py-2.5 font-medium text-muted-foreground text-xs">Status</th>
                   </tr>
                 </thead>
@@ -1049,10 +1156,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                         <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.dailyTarget)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{fmt(b.weeklyTarget)}</td>
                         
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          {fmt(Math.max(0, b.remaining || 0))}
-                          <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
-                        </td>
                         <td className="px-3 py-3">
                           <div className="flex flex-col items-center gap-1 min-w-[110px]">
                             <div className="flex items-center justify-between w-full text-xs">
@@ -1073,6 +1176,10 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                               />
                             </div>
                           </div>
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums">
+                          {fmt(Math.max(0, b.remaining || 0))}
+                          <span className="text-muted-foreground text-xs ml-1">{Math.max(0, remainPct)}%</span>
                         </td>
                         <td className="px-5 py-3 text-right">
                           <span
