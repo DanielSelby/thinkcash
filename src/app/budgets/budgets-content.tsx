@@ -1015,6 +1015,21 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <ChevronDown className="w-3 h-3 text-muted-foreground" />
             </div>
 
+            {/* Category filter */}
+            <div className="relative">
+              <select
+                value={searchFilter}
+                onChange={e => setSearchFilter(e.target.value)}
+                className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1.5 bg-white text-xs font-semibold outline-none cursor-pointer"
+              >
+                <option value="">All Categories</option>
+                {breakdownRows.map(b => (
+                  <option key={b.category} value={b.category}>{b.category}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+            </div>
+
             <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
 
               <Plus className="w-4 h-4 mr-1" /> Create Budget
