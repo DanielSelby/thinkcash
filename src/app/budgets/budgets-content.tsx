@@ -961,29 +961,69 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         already "preserved" simply because nothing was unmounted — this is
         a view swap within the same component tree, not a navigation. ──── */}
     {view === 'breakdown' && (
-    <div key="breakdown" className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setView('overview')}
-            className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-muted transition-colors flex-shrink-0 border border-border"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+
+      <div key="breakdown" className="space-y-5 animate-fade-in">
+
+        {/* Header */}
+
+        <div className="flex items-center justify-between flex-wrap gap-3">
+
           <div>
-            <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>
-              Monthly Budget Guidance
-            </h1>
-            <p className="text-muted-foreground text-sm flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" />
+
+            <button onClick={() => setView('overview')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-1">
+
+              <ChevronLeft className="w-4 h-4" /> Back to Budgets
+
+            </button>
+
+            <h1 className="font-display text-xl font-bold" style={{ color: theme.colors.primary }}>Monthly Budgets</h1>
+
+            <p className="text-muted-foreground text-sm mt-0.5">
+
+              <Calendar className="w-3.5 h-3.5 inline mr-1" />
+
               {MONTH_NAMES[viewMonth - 1]} 1 – {MONTH_NAMES[viewMonth - 1]} {daysInPeriod}, {viewYear} ({daysInPeriod} days)
+
             </p>
+
           </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+
+            {/* Month/Year picker */}
+            <div className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 bg-white text-xs font-medium">
+              <Calendar className="w-3.5 h-3.5 text-muted-foreground mr-1" />
+              <select
+                value={`${viewYear}-${String(viewMonth).padStart(2,'0')}`}
+                onChange={e => {
+                  const [y, m] = e.target.value.split('-')
+                  setViewYear(Number(y))
+                  setViewMonth(Number(m))
+                }}
+                className="appearance-none bg-transparent outline-none cursor-pointer font-semibold text-xs pr-4"
+              >
+                {Array.from({ length: 24 }, (_, i) => {
+                  const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+                  const y = d.getFullYear(); const m = d.getMonth() + 1
+                  return (
+                    <option key={`${y}-${m}`} value={`${y}-${String(m).padStart(2,'0')}`}>
+                      {MONTH_NAMES[m - 1]} {y}
+                    </option>
+                  )
+                })}
+              </select>
+              <ChevronDown className="w-3 h-3 text-muted-foreground" />
+            </div>
+
+            <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
+
+              <Plus className="w-4 h-4 mr-1" /> Create Budget
+
+            </Button>
+
+          </div>
+
         </div>
-        <Button onClick={openCreate} style={{ background: theme.colors.primary, color: '#fff' }}>
-          <Plus className="w-4 h-4 mr-1" /> Create Budget
-        </Button>
-      </div>
 
       {/* ── KPI Row ── */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
