@@ -50,6 +50,176 @@ interface Props {
 // pick it from scratch every time.
 const nextMonthOf = (month: number, year: number) =>
   month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year }
+
+function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget, fmt, theme, viewMonth, viewYear, MONTH_NAMES }: {
+  allDays: { day: number; label: string; dayName: string; date: string }[]
+  monthExpenses: any[]
+  budgetsWithSpent: any[]
+  dailyTarget: number
+  fmt: (n: number) => string
+  theme: any
+  viewMonth: number
+  viewYear: number
+  MONTH_NAMES: string[]
+}) {
+  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+  const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set())
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+
+  const toggleDay = (d: string) => {
+    setSelectedDays(prev => {
+      const next = new Set(prev)
+      if (next.has(d)) next.delete(d); else next.add(d)
+      return next
+    })
+  }
+
+  const chartData = useMemo(() => {
+    return allDays
+      .filter(d => selectedDays.size === 0 || selectedDays.has(d.dayName))
+      .map(d => {
+        const dayExp = monthExpenses
+          .filter(e => e.date === d.date)
+          .filter(e => selectedCategory === 'all' || e.category === selectedCategory)
+          .reduce((s, e) => s + Number(e.amount), 0)
+        return { label: d.label, dayName: d.dayName, spent: dayExp, target: dailyTarget }
+      })
+  }, [allDays, monthExpenses, selectedDays, selectedCategory, dailyTarget])
+
+  const categories = useMemo(() =>
+    ['all', ...Array.from(new Set(budgetsWithSpent.map(b => b.category)))],
+    [budgetsWithSpent]
+  )
+
+  const maxVal = Math.max(...chartData.map(d => Math.max(d.spent, d.target)), 1)
+  const H = 160
+  const W_STEP = Math.max(20, Math.min(48, 700 / Math.max(chartData.length, 1)))
+
+  const toY = (v: number) => H - (v / maxVal) * H
+
+  const spendPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.spent)}`).join(' ')
+  const targetPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.target)}`).join(' ')
+  const areaPath = chartData.length > 0
+    ? `${spendPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
+    : ''
+
+  const totalW = chartData.length * W_STEP
+
+  return (
+    <Card className="bg-white rounded-2xl shadow-sm border border-border">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <p className="text-sm font-bold">Daily Spend</p>
+            <p className="text-xs text-muted-foreground">{MONTH_NAMES[viewMonth - 1]} {viewYear} — actual vs daily target</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Category slicer */}
+            <div className="relative">
+              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+                className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1.5 bg-white text-xs font-semibold outline-none cursor-pointer">
+                {categories.map(c => (
+                  <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>
+                ))}
+              </select>
+              <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+            </div>
+            {/* Clear day filter */}
+            {selectedDays.size > 0 && (
+              <button onClick={() => setSelectedDays(new Set())}
+                className="text-xs font-semibold flex items-center gap-1 px-2 py-1.5 rounded-lg border border-border hover:bg-muted/40"
+                style={{ color: theme.colors.primary }}>
+                <X className="w-3 h-3" /> Clear days
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Day-of-week slicer pills */}
+        <div className="flex gap-1.5 flex-wrap mb-4">
+          {DAY_NAMES.map(d => {
+            const isSelected = selectedDays.has(d)
+            return (
+              <button key={d} onClick={() => toggleDay(d)}
+                className="px-3 py-1 rounded-full text-xs font-semibold border transition-colors"
+                style={isSelected
+                  ? { background: theme.colors.primary, color: '#fff', borderColor: theme.colors.primary }
+                  : { background: '#f1f5f9', color: '#64748b', borderColor: 'transparent' }}>
+                {d}
+              </button>
+            )
+          })}
+          <span className="text-[11px] text-muted-foreground self-center ml-1">
+            {selectedDays.size === 0 ? 'All days' : `${selectedDays.size} day${selectedDays.size > 1 ? 's' : ''} selected`}
+          </span>
+        </div>
+
+        {/* SVG Area Chart */}
+        {chartData.length === 0 ? (
+          <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">No data for selected filters</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <svg width={Math.max(totalW + 40, 300)} height={H + 40} className="block">
+              <defs>
+                <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={theme.colors.primary} stopOpacity="0.3" />
+                  <stop offset="100%" stopColor={theme.colors.primary} stopOpacity="0.02" />
+                </linearGradient>
+              </defs>
+              <g transform="translate(20, 8)">
+                {/* Grid lines */}
+                {[0, 0.25, 0.5, 0.75, 1].map(pct => (
+                  <g key={pct}>
+                    <line x1={0} y1={H * pct} x2={totalW} y2={H * pct}
+                      stroke="#f0f0f0" strokeWidth={1} />
+                    <text x={-4} y={H * pct + 3} fontSize={8} fill="#94a3b8" textAnchor="end">
+                      {fmt(maxVal * (1 - pct)).replace(/GH[₵C]?\s?/, '').replace(/GHS\s?/, '')}
+                    </text>
+                  </g>
+                ))}
+                {/* Area fill */}
+                {areaPath && <path d={areaPath} fill="url(#spendGrad)" />}
+                {/* Target line */}
+                <path d={targetPath} stroke="#94a3b8" strokeWidth={1.5} fill="none" strokeDasharray="4 3" />
+                {/* Spend line */}
+                <path d={spendPath} stroke={theme.colors.primary} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                {/* Dots + X labels */}
+                {chartData.map((d, i) => (
+                  <g key={i}>
+                    <circle cx={i * W_STEP + W_STEP / 2} cy={toY(d.spent)} r={3}
+                      fill={d.spent > dailyTarget ? '#dc2626' : theme.colors.primary}
+                      stroke="#fff" strokeWidth={1.5} />
+                    <text x={i * W_STEP + W_STEP / 2} y={H + 14} fontSize={9}
+                      fill="#94a3b8" textAnchor="middle">{d.label}</text>
+                    <text x={i * W_STEP + W_STEP / 2} y={H + 24} fontSize={8}
+                      fill="#cbd5e1" textAnchor="middle">{d.dayName}</text>
+                  </g>
+                ))}
+              </g>
+            </svg>
+          </div>
+        )}
+
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border text-xs text-muted-foreground flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <span className="w-4 h-0.5 rounded inline-block" style={{ background: theme.colors.primary }} />
+            Actual Spend
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-4 h-0.5 rounded inline-block bg-gray-300" style={{ borderTop: '1.5px dashed #94a3b8', background: 'transparent' }} />
+            Daily Target ({fmt(dailyTarget)})
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+            Over target
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme, currency } = useAppStore()
   const { expenseCategories } = useCategories()
@@ -1208,6 +1378,33 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Daily Spend Area Chart ── */}
+      {(() => {
+        const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+        const allDays = Array.from({ length: daysInPeriod }, (_, i) => {
+          const d = new Date(viewYear, viewMonth - 1, i + 1)
+          return {
+            day:     i + 1,
+            label:   String(i + 1),
+            dayName: DAY_NAMES[d.getDay()],
+            date:    `${viewYear}-${String(viewMonth).padStart(2,'0')}-${String(i + 1).padStart(2,'0')}`,
+          }
+        })
+        return (
+          <DailySpendChart
+            allDays={allDays}
+            monthExpenses={monthExpenses}
+            budgetsWithSpent={budgetsWithSpent}
+            dailyTarget={dailyTarget}
+            fmt={fmt}
+            theme={theme}
+            viewMonth={viewMonth}
+            viewYear={viewYear}
+            MONTH_NAMES={MONTH_NAMES}
+          />
+        )
+      })()}
 
       {/* Budget Breakdown table */}
       <Card className="bg-white rounded-xl shadow-sm">
