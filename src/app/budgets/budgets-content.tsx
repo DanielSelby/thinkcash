@@ -9,7 +9,7 @@ import {
   Calendar, LayoutGrid, RefreshCw, ArrowLeft, Info,UtensilsCrossed, Car, Home, Zap, HeartPulse, GraduationCap,
   Tv2, ShoppingBag, Shirt, Sparkles, PiggyBank, CreditCard,
   ShieldCheck, Plane, Smartphone, Users, Siren, Heart,
-  Church, TrendingUp, Package,
+  Church, TrendingUp, Package,SlidersHorizontal, Search, X,ChevronDown
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -62,6 +62,9 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [loading,   setLoading]   = useState(false)
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
   const [viewYear,  setViewYear]  = useState(now.getFullYear())
+  const [statusFilter,   setStatusFilter]   = useState<'all' | 'on_track' | 'warning' | 'exceeded'>('all')
+  const [searchFilter,   setSearchFilter]   = useState('')
+  const [showFilters,    setShowFilters]    = useState(false)
   // Controlled form values for Selects
   const [selCategory, setSelCategory] = useState('')
   const [selMonth,    setSelMonth]    = useState(String(now.getMonth() + 1))
@@ -341,6 +344,21 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       return { ...b, dailyTarget: daily, weeklyTarget: weekly, projectedSpend: projected, projectedStatus }
     })
   }, [budgetsWithSpent, daysInPeriod])
+
+  const filteredBreakdownRows = useMemo(() => {
+    return breakdownRows
+      .filter(b => {
+        if (statusFilter === 'on_track')  return (b.percentage || 0) < 80
+        if (statusFilter === 'warning')   return (b.percentage || 0) >= 80 && (b.percentage || 0) < 100
+        if (statusFilter === 'exceeded')  return (b.percentage || 0) >= 100
+        return true
+      })
+      .filter(b => {
+        if (!searchFilter.trim()) return true
+        return b.category.toLowerCase().includes(searchFilter.toLowerCase()) ||
+               b.budget_name?.toLowerCase().includes(searchFilter.toLowerCase())
+      })
+  }, [breakdownRows, statusFilter, searchFilter])
 
   return (
     <div className="space-y-5">
@@ -1112,12 +1130,100 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <p className="text-sm font-bold">Budget Breakdown</p>
               <p className="text-xs text-muted-foreground">See how much you can spend each day and week for every budget category.</p>
             </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Month/Year picker */}
+              <div className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 bg-white text-xs font-medium cursor-pointer"
+                onClick={() => {}}>
+                <Calendar className="w-3.5 h-3.5 text-muted-foreground mr-1" />
+                <select
+                  value={`${viewYear}-${String(viewMonth).padStart(2,'0')}`}
+                  onChange={e => {
+                    const [y, m] = e.target.value.split('-')
+                    setViewYear(Number(y))
+                    setViewMonth(Number(m))
+                  }}
+                  className="appearance-none bg-transparent outline-none cursor-pointer font-semibold text-xs pr-4"
+                >
+                  {Array.from({ length: 24 }, (_, i) => {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+                    const y = d.getFullYear(); const m = d.getMonth() + 1
+                    return (
+                      <option key={`${y}-${m}`} value={`${y}-${String(m).padStart(2,'0')}`}>
+                        {MONTH_NAMES[m - 1]} {y}
+                      </option>
+                    )
+                  })}
+                </select>
+                <ChevronDown className="w-3 h-3 text-muted-foreground" />
+              </div>
+
+              {/* Status filter */}
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value as any)}
+                  className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1.5 bg-white text-xs font-semibold outline-none cursor-pointer"
+                >
+                  <option value="all">All Status</option>
+                  <option value="on_track">On Track</option>
+                  <option value="warning">Warning</option>
+                  <option value="exceeded">Exceeded</option>
+                </select>
+                <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+              </div>
+
+              {/* Filters toggle */}
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className="flex items-center gap-1.5 border border-border rounded-lg px-3 py-1.5 text-xs font-semibold bg-white hover:bg-muted/40 transition-colors"
+                style={showFilters ? { background: theme.colors.primary, color: '#fff', borderColor: theme.colors.primary } : {}}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" /> Filters
+              </button>
+            </div>
           </div>
+
+          {/* Expanded filters panel */}
+          {showFilters && (
+            <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-muted/30 border border-border flex-wrap">
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <input
+                  value={searchFilter}
+                  onChange={e => setSearchFilter(e.target.value)}
+                  placeholder="Search category or budget name…"
+                  className="flex-1 text-xs bg-transparent outline-none placeholder:text-muted-foreground/60"
+                />
+                {searchFilter && (
+                  <button onClick={() => setSearchFilter('')}>
+                    <X className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>Showing <span className="font-semibold text-foreground">{filteredBreakdownRows.length}</span> of <span className="font-semibold text-foreground">{breakdownRows.length}</span> budgets</span>
+                {(statusFilter !== 'all' || searchFilter) && (
+                  <button
+                    onClick={() => { setStatusFilter('all'); setSearchFilter('') }}
+                    className="text-xs font-semibold hover:underline flex items-center gap-1"
+                    style={{ color: theme.colors.primary }}
+                  >
+                    <X className="w-3 h-3" /> Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {breakdownRows.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Wallet className="w-10 h-10 mx-auto mb-3 opacity-20" />
-              <p className="text-sm">No budgets for {MONTH_NAMES[viewMonth - 1]} {viewYear}</p>
+              <p className="text-sm">
+                {filteredBreakdownRows.length === 0 && breakdownRows.length > 0
+                  ? 'No budgets match the selected filters'
+                  : `No budgets for ${MONTH_NAMES[viewMonth - 1]} ${viewYear}`}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto -mx-5">
@@ -1135,7 +1241,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {breakdownRows.map(b => {
+                  {filteredBreakdownRows.map(b => {
                     const pct = b.percentage || 0
                     const status = getBudgetStatus(pct)
                     const spentPct  = b.monthly_limit > 0 ? Math.round(((b.spent || 0) / b.monthly_limit) * 100) : 0
