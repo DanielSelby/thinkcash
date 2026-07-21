@@ -303,8 +303,13 @@ const assetSchema = z.object({
   depreciation_method:      z.string().optional(),
   annual_depreciation_rate: z.coerce.number().min(0).max(100).optional(),
   notes:                    z.string().optional(),
+  warranty_start:           z.string().optional(),
+  warranty_end:             z.string().optional(),
+  warranty_provider:        z.string().optional(),
+  warranty_number:          z.string().optional(),
 })
 type AssetFormData = z.infer<typeof assetSchema>
+
 
 const investmentSchema = z.object({
   name:            z.string().min(1, 'Name required'),
@@ -1458,8 +1463,8 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                   <Label>Asset Category <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <div className="flex gap-2">
                     <Select
-                      onValueChange={v => assetForm.setValue('asset_category' as any, v)}
-                      defaultValue={assetForm.getValues('asset_category' as any) || ''}
+                      onValueChange={v => assetForm.setValue('asset_category', v)}
+                      defaultValue={assetForm.getValues('asset_category') || ''}
                     >
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Select or add category..." />
@@ -1622,10 +1627,10 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                     <ShieldCheck className="w-3.5 h-3.5" /> Warranty
                   </p>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5"><Label className="text-xs">Warranty Start</Label><Input type="date" {...assetForm.register('warranty_start' as any)} /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Warranty End</Label><Input type="date" {...assetForm.register('warranty_end' as any)} /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Provider</Label><Input placeholder="e.g. Samsung, HP" {...assetForm.register('warranty_provider' as any)} /></div>
-                    <div className="space-y-1.5"><Label className="text-xs">Warranty Number</Label><Input placeholder="e.g. WR-12345" {...assetForm.register('warranty_number' as any)} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Warranty Start</Label><Input type="date" {...assetForm.register('warranty_start' )} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Warranty End</Label><Input type="date" {...assetForm.register('warranty_end' )} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Provider</Label><Input placeholder="e.g. Samsung, HP" {...assetForm.register('warranty_provider' )} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Warranty Number</Label><Input placeholder="e.g. WR-12345" {...assetForm.register('warranty_number' )} /></div>
                   </div>
                 </div>
               </div>
