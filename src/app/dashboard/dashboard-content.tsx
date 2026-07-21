@@ -1679,7 +1679,7 @@ function FinancialHealthScore({
     year:      'This Year',
     custom:    'Custom Range',
   }
-  
+
   return (
     <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
       <CardHeader className="pb-2">
@@ -1760,7 +1760,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [accountTypeFilter, setAccountTypeFilter] = useState('all')
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
-  const [chartView, setChartView] = useState<'monthly' | 'daily'>('monthly')
+ const [chartView,   setChartView]   = useState<'monthly' | 'daily'>('monthly')
+  const [chartDayFilter, setChartDayFilter] = useState<string>('all')
   const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
   const [showAccBalances,     setShowAccBalances]     = useState(false)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
@@ -2076,13 +2077,18 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       cur.setDate(cur.getDate() + 1)
     }
 
-    return filled.map((r, i) => ({
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+    const dayFiltered = chartDayFilter === 'all'
+      ? filled
+      : filled.filter(r => DAY_NAMES[new Date(r.date).getDay()] === chartDayFilter)
+
+    return dayFiltered.map((r, i) => ({
       ...r,
-      label: (filled.length <= 60 || i % 7 === 0)
+      label: (dayFiltered.length <= 60 || i % 7 === 0)
         ? new Date(r.date).toLocaleDateString('en-GH', { day: 'numeric', month: 'short' })
         : '',
     }))
-  }, [filteredIncomes, filteredExpenses, accounts, currency, chartView])
+  }, [filteredIncomes, filteredExpenses, accounts, currency, chartView, chartDayFilter])
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
@@ -2508,24 +2514,63 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 ))}
               </div>
               {/* Granularity toggle */}
+
               <div className="flex items-center gap-0.5 p-0.5 bg-muted rounded-lg flex-shrink-0">
+
                 <button
+
                   onClick={() => setChartView('monthly')}
+
                   className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+
                     chartView === 'monthly' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+
                   }`}
+
                 >
+
                   Monthly
+
                 </button>
+
                 <button
+
                   onClick={() => setChartView('daily')}
+
                   className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+
                     chartView === 'daily' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+
                   }`}
+
                 >
+
                   Daily
+
                 </button>
+
               </div>
+
+              {/* Day-of-week dropdown — only useful in daily view */}
+              {chartView === 'daily' && (
+                <div className="relative flex-shrink-0">
+                  <select
+                    value={chartDayFilter}
+                    onChange={e => setChartDayFilter(e.target.value)}
+                    className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
+                  >
+                    <option value="all">All Days</option>
+                    <option value="Sun">Sunday</option>
+                    <option value="Mon">Monday</option>
+                    <option value="Tue">Tuesday</option>
+                    <option value="Wed">Wednesday</option>
+                    <option value="Thu">Thursday</option>
+                    <option value="Fri">Friday</option>
+                    <option value="Sat">Saturday</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                </div>
+              )}
             </div>
           </div>
 
