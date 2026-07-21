@@ -1761,7 +1761,10 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [activeDonutIndex,  setActiveDonutIndex]  = useState<number | null>(null)
   const [showTotalAccBalance, setShowTotalAccBalance] = useState(false)
  const [chartView,   setChartView]   = useState<'monthly' | 'daily'>('monthly')
-  const [chartDayFilter, setChartDayFilter] = useState<string>('all')
+  const [chartDayFilter,    setChartDayFilter]    = useState<string>('all')
+  const [compareMode,       setCompareMode]       = useState(false)
+  const [compareBy,         setCompareBy]         = useState<'day' | 'month' | 'quarter' | 'year'>('month')
+  const [compareSeries,     setCompareSeries]     = useState<'income' | 'expense' | 'both'>('both')
   const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
   const [showAccBalances,     setShowAccBalances]     = useState(false)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
@@ -2089,6 +2092,43 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         : '',
     }))
   }, [filteredIncomes, filteredExpenses, accounts, currency, chartView, chartDayFilter])
+
+  const compareData = useMemo(() => {
+    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+    const QTR = (m: number) => `Q${Math.ceil((m + 1) / 3)}`
+    const map: Record<string, { label: string; income: number; expense: number }> = {}
+
+    const getKey = (dateStr: string) => {
+      const d = new Date(dateStr)
+      if (compareBy === 'day')     return DAY_NAMES[d.getDay()]
+      if (compareBy === 'month')   return d.toLocaleDateString('en-GH', { month: 'short', year: '2-digit' })
+      if (compareBy === 'quarter') return `${QTR(d.getMonth())} ${d.getFullYear()}`
+      if (compareBy === 'year')    return String(d.getFullYear())
+      return ''
+    }
+
+    const ORDER: Record<string, number> = compareBy === 'day'
+      ? Object.fromEntries(DAY_NAMES.map((d, i) => [d, i]))
+      : {}
+
+    filteredIncomes.filter(r => getTransactionCurrency(r) === currency).forEach(r => {
+      if (!r.date) return
+      const k = getKey(r.date)
+      if (!map[k]) map[k] = { label: k, income: 0, expense: 0 }
+      map[k].income += Number(r.amount)
+    })
+    filteredExpenses.filter(r => getTransactionCurrency(r) === currency).forEach(r => {
+      if (!r.date) return
+      const k = getKey(r.date)
+      if (!map[k]) map[k] = { label: k, income: 0, expense: 0 }
+      map[k].expense += Number(r.amount)
+    })
+
+    return Object.values(map).sort((a, b) => {
+      if (compareBy === 'day') return (ORDER[a.label] ?? 0) - (ORDER[b.label] ?? 0)
+      return a.label.localeCompare(b.label)
+    })
+  }, [filteredIncomes, filteredExpenses, currency, compareBy, getTransactionCurrency])
 
   const budgetData = useMemo(() =>
     budgets.map(b => {
@@ -2552,7 +2592,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </div>
 
               {/* Day-of-week dropdown — only useful in daily view */}
-              {chartView === 'daily' && (
+              {chartView === 'daily' && !compareMode && (
                 <div className="relative flex-shrink-0">
                   <select
                     value={chartDayFilter}
@@ -2570,6 +2610,48 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   </select>
                   <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
                 </div>
+              )}
+
+              {/* Compare toggle */}
+              <button
+                onClick={() => setCompareMode(v => !v)}
+                className="px-3 py-1 rounded-lg text-xs font-semibold border transition-colors flex-shrink-0"
+                style={compareMode
+                  ? { background: theme.colors.primary, color: '#fff', borderColor: theme.colors.primary }
+                  : { borderColor: 'var(--border)', color: 'var(--muted-foreground)' }}
+              >
+                Compare
+              </button>
+
+              {/* Compare options */}
+              {compareMode && (
+                <>
+                  <div className="relative flex-shrink-0">
+                    <select
+                      value={compareBy}
+                      onChange={e => setCompareBy(e.target.value as any)}
+                      className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
+                    >
+                      <option value="day">By Day of Week</option>
+                      <option value="month">By Month</option>
+                      <option value="quarter">By Quarter</option>
+                      <option value="year">By Year</option>
+                    </select>
+                    <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                  <div className="relative flex-shrink-0">
+                    <select
+                      value={compareSeries}
+                      onChange={e => setCompareSeries(e.target.value as any)}
+                      className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
+                    >
+                      <option value="both">Income & Expense</option>
+                      <option value="income">Income only</option>
+                      <option value="expense">Expense only</option>
+                    </select>
+                    <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -2737,6 +2819,134 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           )}
         </CardContent>
       </Card>
+
+    
+
+      {/* ── Compare Lollipop Chart ── */}
+      {compareMode && (
+        <Card className="rounded-xl shadow-sm bg-white">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold tracking-tight">
+              Compare {compareSeries === 'both' ? 'Income & Expense' : compareSeries === 'income' ? 'Income' : 'Expense'} by {compareBy === 'day' ? 'Day of Week' : compareBy === 'month' ? 'Month' : compareBy === 'quarter' ? 'Quarter' : 'Year'}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">Lollipop chart — height shows total amount per {compareBy}</p>
+          </CardHeader>
+          <CardContent>
+            {compareData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">No data for selected period</div>
+            ) : (
+              <div className="overflow-x-auto">
+                {(() => {
+                  const H = 200
+                  const PAD_L = 48
+                  const PAD_B = 40
+                  const BAR_W = Math.max(28, Math.min(64, (700 - PAD_L) / compareData.length))
+                  const totalW = PAD_L + compareData.length * BAR_W
+                  const maxVal = Math.max(
+                    ...compareData.map(d =>
+                      compareSeries === 'income' ? d.income
+                      : compareSeries === 'expense' ? d.expense
+                      : Math.max(d.income, d.expense)
+                    ), 1
+                  )
+                  const toY = (v: number) => H - (v / maxVal) * H
+
+                  const shortFmt = (v: number) =>
+                    v >= 1_000_000 ? `${(v/1_000_000).toFixed(1)}M`
+                    : v >= 1_000 ? `${(v/1_000).toFixed(0)}K`
+                    : String(Math.round(v))
+
+                  return (
+                    <svg width={Math.max(totalW, 300)} height={H + PAD_B + 8} className="block">
+                      <g transform={`translate(${PAD_L}, 8)`}>
+                        {/* Grid lines */}
+                        {[0, 0.25, 0.5, 0.75, 1].map(pct => (
+                          <g key={pct}>
+                            <line x1={0} y1={H * pct} x2={totalW - PAD_L} y2={H * pct}
+                              stroke="#f0f0f0" strokeWidth={1} />
+                            <text x={-6} y={H * pct + 4} fontSize={9} fill="#94a3b8" textAnchor="end">
+                              {shortFmt(maxVal * (1 - pct))}
+                            </text>
+                          </g>
+                        ))}
+
+                        {/* Lollipops */}
+                        {compareData.map((d, i) => {
+                          const cx = i * BAR_W + BAR_W / 2
+                          const incY  = toY(d.income)
+                          const expY  = toY(d.expense)
+                          return (
+                            <g key={d.label}>
+                              {/* Income lollipop */}
+                              {compareSeries !== 'expense' && (
+                                <>
+                                  <line x1={cx - (compareSeries === 'both' ? 8 : 0)} y1={H}
+                                    x2={cx - (compareSeries === 'both' ? 8 : 0)} y2={incY}
+                                    stroke="#16a34a" strokeWidth={2} strokeLinecap="round" />
+                                  <circle cx={cx - (compareSeries === 'both' ? 8 : 0)} cy={incY}
+                                    r={5} fill="#16a34a" stroke="#fff" strokeWidth={1.5} />
+                                  {d.income > 0 && (
+                                    <text x={cx - (compareSeries === 'both' ? 8 : 0)} y={incY - 8}
+                                      fontSize={8} fill="#16a34a" textAnchor="middle" fontWeight={600}>
+                                      {shortFmt(d.income)}
+                                    </text>
+                                  )}
+                                </>
+                              )}
+                              {/* Expense lollipop */}
+                              {compareSeries !== 'income' && (
+                                <>
+                                  <line x1={cx + (compareSeries === 'both' ? 8 : 0)} y1={H}
+                                    x2={cx + (compareSeries === 'both' ? 8 : 0)} y2={expY}
+                                    stroke="#dc2626" strokeWidth={2} strokeLinecap="round" />
+                                  <circle cx={cx + (compareSeries === 'both' ? 8 : 0)} cy={expY}
+                                    r={5} fill="#dc2626" stroke="#fff" strokeWidth={1.5} />
+                                  {d.expense > 0 && (
+                                    <text x={cx + (compareSeries === 'both' ? 8 : 0)} y={expY - 8}
+                                      fontSize={8} fill="#dc2626" textAnchor="middle" fontWeight={600}>
+                                      {shortFmt(d.expense)}
+                                    </text>
+                                  )}
+                                </>
+                              )}
+                              {/* X label */}
+                              <text x={cx} y={H + 16} fontSize={10} fill="#64748b" textAnchor="middle" fontWeight={500}>
+                                {d.label}
+                              </text>
+                            </g>
+                          )
+                        })}
+
+                        {/* Baseline */}
+                        <line x1={0} y1={H} x2={totalW - PAD_L} y2={H} stroke="#e2e8f0" strokeWidth={1.5} />
+                      </g>
+                    </svg>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Legend */}
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border text-xs text-muted-foreground flex-wrap">
+              {compareSeries !== 'expense' && (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Income
+                </span>
+              )}
+              {compareSeries !== 'income' && (
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Expense
+                </span>
+              )}
+              <span className="ml-auto text-[11px]">
+                {compareData.length} {compareBy === 'day' ? 'days' : compareBy === 'month' ? 'months' : compareBy === 'quarter' ? 'quarters' : 'years'} compared
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Total Account Balance toggle */}
 
       {/* Income/Expense category donuts + Cash Flow diverging chart — side
           by side on larger screens so these two sit together as a row
