@@ -1765,6 +1765,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
   const [compareMode,       setCompareMode]       = useState(false)
   const [compareBy,         setCompareBy]         = useState<'day' | 'month' | 'quarter' | 'year'>('month')
   const [compareSeries,     setCompareSeries]     = useState<'income' | 'expense' | 'both'>('both')
+  const [lollipopHover,     setLollipopHover]     = useState<{ idx: number; x: number; y: number } | null>(null)
   const [chartSeries, setChartSeries] = useState<'both' | 'income' | 'expense'>('both')
   const [showAccBalances,     setShowAccBalances]     = useState(false)
   const [incomeView,           setIncomeView]           = useState<'tree' | 'donut' | 'treeExpand'>('tree')
@@ -2513,9 +2514,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
         </div>
       )}
 
-      {/* Area Chart — full width on its own row so the combined/income/expense
-          toggle view has room to breathe rather than competing for space
-          with another chart beside it. ───────────────────────────────────── */}
+      {/* Area Chart + Compare Lollipop — side by side when compareMode is on */}
+      <div className={compareMode ? 'grid grid-cols-1 xl:grid-cols-2 gap-4 items-start' : ''}>
       <Card className="rounded-xl shadow-sm hover:shadow-md bg-white transition-shadow duration-200">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-2 flex-wrap">
@@ -2817,10 +2817,9 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
               </AreaChart>
             </ResponsiveContainer>
           )}
-        </CardContent>
-      </Card>
 
-    
+      </CardContent>
+      </Card>
 
       {/* ── Compare Lollipop Chart ── */}
       {compareMode && (
@@ -2872,50 +2871,107 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
 
                         {/* Lollipops */}
                         {compareData.map((d, i) => {
-                          const cx = i * BAR_W + BAR_W / 2
+                          const cx    = i * BAR_W + BAR_W / 2
                           const incY  = toY(d.income)
                           const expY  = toY(d.expense)
+                          const isHovered = lollipopHover?.idx === i
                           return (
-                            <g key={d.label}>
+                            <g key={d.label}
+                              onMouseEnter={e => setLollipopHover({ idx: i, x: cx, y: Math.min(incY, expY) })}
+                              onMouseLeave={() => setLollipopHover(null)}
+                              style={{ cursor: 'pointer' }}>
+
+                              {/* Hover hit area */}
+                              <rect x={cx - BAR_W / 2} y={0} width={BAR_W} height={H}
+                                fill="transparent" />
+
+                              {/* Hover column highlight */}
+                              {isHovered && (
+                                <rect x={cx - BAR_W / 2} y={0} width={BAR_W} height={H}
+                                  fill={theme.colors.primary} fillOpacity={0.06} rx={4} />
+                              )}
+
                               {/* Income lollipop */}
                               {compareSeries !== 'expense' && (
                                 <>
                                   <line x1={cx - (compareSeries === 'both' ? 8 : 0)} y1={H}
                                     x2={cx - (compareSeries === 'both' ? 8 : 0)} y2={incY}
-                                    stroke="#16a34a" strokeWidth={2} strokeLinecap="round" />
+                                    stroke="#16a34a" strokeWidth={isHovered ? 3 : 2} strokeLinecap="round" />
                                   <circle cx={cx - (compareSeries === 'both' ? 8 : 0)} cy={incY}
-                                    r={5} fill="#16a34a" stroke="#fff" strokeWidth={1.5} />
+                                    r={isHovered ? 7 : 5} fill="#16a34a" stroke="#fff" strokeWidth={1.5} />
                                   {d.income > 0 && (
-                                    <text x={cx - (compareSeries === 'both' ? 8 : 0)} y={incY - 8}
+                                    <text x={cx - (compareSeries === 'both' ? 8 : 0)} y={incY - 10}
                                       fontSize={8} fill="#16a34a" textAnchor="middle" fontWeight={600}>
                                       {shortFmt(d.income)}
                                     </text>
                                   )}
                                 </>
                               )}
+
                               {/* Expense lollipop */}
                               {compareSeries !== 'income' && (
                                 <>
                                   <line x1={cx + (compareSeries === 'both' ? 8 : 0)} y1={H}
                                     x2={cx + (compareSeries === 'both' ? 8 : 0)} y2={expY}
-                                    stroke="#dc2626" strokeWidth={2} strokeLinecap="round" />
+                                    stroke="#dc2626" strokeWidth={isHovered ? 3 : 2} strokeLinecap="round" />
                                   <circle cx={cx + (compareSeries === 'both' ? 8 : 0)} cy={expY}
-                                    r={5} fill="#dc2626" stroke="#fff" strokeWidth={1.5} />
+                                    r={isHovered ? 7 : 5} fill="#dc2626" stroke="#fff" strokeWidth={1.5} />
                                   {d.expense > 0 && (
-                                    <text x={cx + (compareSeries === 'both' ? 8 : 0)} y={expY - 8}
+                                    <text x={cx + (compareSeries === 'both' ? 8 : 0)} y={expY - 10}
                                       fontSize={8} fill="#dc2626" textAnchor="middle" fontWeight={600}>
                                       {shortFmt(d.expense)}
                                     </text>
                                   )}
                                 </>
                               )}
+
                               {/* X label */}
-                              <text x={cx} y={H + 16} fontSize={10} fill="#64748b" textAnchor="middle" fontWeight={500}>
+                              <text x={cx} y={H + 16} fontSize={10}
+                                fill={isHovered ? theme.colors.primary : '#64748b'}
+                                textAnchor="middle" fontWeight={isHovered ? 700 : 500}>
                                 {d.label}
                               </text>
                             </g>
                           )
                         })}
+
+                        {/* Floating tooltip */}
+                        {lollipopHover !== null && (() => {
+                          const d   = compareData[lollipopHover.idx]
+                          const ttW = 150
+                          const ttH = compareSeries === 'both' ? 72 : 52
+                          const ttX = Math.min(
+                            lollipopHover.x - ttW / 2,
+                            totalW - PAD_L - ttW - 4
+                          )
+                          const ttY = Math.max(4, lollipopHover.y - ttH - 12)
+                          return (
+                            <g style={{ pointerEvents: 'none' }}>
+                              <rect x={ttX} y={ttY} width={ttW} height={ttH}
+                                rx={8} fill="white"
+                                stroke="#e2e8f0" strokeWidth={1}
+                                filter="drop-shadow(0 2px 8px rgba(0,0,0,0.12))" />
+                              <text x={ttX + 10} y={ttY + 16} fontSize={10}
+                                fill="#374151" fontWeight={700}>{d.label}</text>
+                              {compareSeries !== 'expense' && (
+                                <>
+                                  <circle cx={ttX + 10} cy={ttY + 30} r={4} fill="#16a34a" />
+                                  <text x={ttX + 20} y={ttY + 34} fontSize={9} fill="#374151">
+                                    Income: <tspan fontWeight={700} fill="#16a34a">{fmt(d.income)}</tspan>
+                                  </text>
+                                </>
+                              )}
+                              {compareSeries !== 'income' && (
+                                <>
+                                  <circle cx={ttX + 10} cy={ttY + (compareSeries === 'both' ? 48 : 30)} r={4} fill="#dc2626" />
+                                  <text x={ttX + 20} y={ttY + (compareSeries === 'both' ? 52 : 34)} fontSize={9} fill="#374151">
+                                    Expense: <tspan fontWeight={700} fill="#dc2626">{fmt(d.expense)}</tspan>
+                                  </text>
+                                </>
+                              )}
+                            </g>
+                          )
+                        })()}
 
                         {/* Baseline */}
                         <line x1={0} y1={H} x2={totalW - PAD_L} y2={H} stroke="#e2e8f0" strokeWidth={1.5} />
@@ -2945,6 +3001,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
           </CardContent>
         </Card>
       )}
+      </div>
 
       {/* Total Account Balance toggle */}
 
