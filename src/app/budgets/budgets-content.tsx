@@ -65,6 +65,7 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
   const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set())
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
 
   const toggleDay = (d: string) => {
     setSelectedDays(prev => {
@@ -184,17 +185,59 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
                 {/* Spend line */}
                 <path d={spendPath} stroke={theme.colors.primary} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 {/* Dots + X labels */}
-                {chartData.map((d, i) => (
-                  <g key={i}>
-                    <circle cx={i * W_STEP + W_STEP / 2} cy={toY(d.spent)} r={3}
-                      fill={d.spent > dailyTarget ? '#dc2626' : theme.colors.primary}
-                      stroke="#fff" strokeWidth={1.5} />
-                    <text x={i * W_STEP + W_STEP / 2} y={H + 14} fontSize={9}
-                      fill="#94a3b8" textAnchor="middle">{d.label}</text>
-                    <text x={i * W_STEP + W_STEP / 2} y={H + 24} fontSize={8}
-                      fill="#cbd5e1" textAnchor="middle">{d.dayName}</text>
-                  </g>
-                ))}
+                {chartData.map((d, i) => {
+                  const cx = i * W_STEP + W_STEP / 2
+                  const cy = toY(d.spent)
+                  const isHov = hoveredIdx === i
+                  return (
+                    <g key={i}
+                      onMouseEnter={() => setHoveredIdx(i)}
+                      onMouseLeave={() => setHoveredIdx(null)}
+                      style={{ cursor: 'pointer' }}>
+                      {/* Hit area */}
+                      <rect x={cx - W_STEP / 2} y={0} width={W_STEP} height={H} fill="transparent" />
+                      {/* Hover highlight */}
+                      {isHov && <rect x={cx - W_STEP / 2} y={0} width={W_STEP} height={H}
+                        fill={theme.colors.primary} fillOpacity={0.06} rx={3} />}
+                      <circle cx={cx} cy={cy} r={isHov ? 5 : 3}
+                        fill={d.spent > dailyTarget ? '#dc2626' : theme.colors.primary}
+                        stroke="#fff" strokeWidth={1.5} />
+                      <text x={cx} y={H + 14} fontSize={9}
+                        fill={isHov ? theme.colors.primary : '#94a3b8'}
+                        textAnchor="middle" fontWeight={isHov ? 700 : 400}>{d.label}</text>
+                      <text x={cx} y={H + 24} fontSize={8}
+                        fill="#cbd5e1" textAnchor="middle">{d.dayName}</text>
+                      {/* Tooltip */}
+                      {isHov && (() => {
+                        const ttW = 130; const ttH = 58
+                        const ttX = Math.min(cx - ttW / 2, totalW - ttW - 4)
+                        const ttY = Math.max(4, cy - ttH - 10)
+                        return (
+                          <g style={{ pointerEvents: 'none' }}>
+                            <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={7}
+                              fill="white" stroke="#e2e8f0" strokeWidth={1}
+                              filter="drop-shadow(0 2px 6px rgba(0,0,0,0.10))" />
+                            <text x={ttX + 10} y={ttY + 15} fontSize={10} fontWeight={700} fill="#374151">
+                              {d.dayName} {d.label}
+                            </text>
+                            <circle cx={ttX + 14} cy={ttY + 28} r={4}
+                              fill={d.spent > dailyTarget ? '#dc2626' : theme.colors.primary} />
+                            <text x={ttX + 24} y={ttY + 32} fontSize={9} fill="#374151">
+                              Spent: <tspan fontWeight={700}
+                                fill={d.spent > dailyTarget ? '#dc2626' : theme.colors.primary}>
+                                {fmt(d.spent)}
+                              </tspan>
+                            </text>
+                            <circle cx={ttX + 14} cy={ttY + 44} r={4} fill="#94a3b8" />
+                            <text x={ttX + 24} y={ttY + 48} fontSize={9} fill="#374151">
+                              Target: <tspan fontWeight={700} fill="#64748b">{fmt(dailyTarget)}</tspan>
+                            </text>
+                          </g>
+                        )
+                      })()}
+                    </g>
+                  )
+                })}
               </g>
             </svg>
           </div>
@@ -220,6 +263,74 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
   )
 }
 
+function BudgetDetailRow({ b, monthExpenses, fmt, theme }: { b: any; monthExpenses: any[]; fmt: (n: number) => string; theme: any }) {
+  const txns = monthExpenses
+    .filter((e: any) => e.category === b.category)
+    .sort((a: any, c: any) => (c.date ?? '').localeCompare(a.date ?? ''))
+  const topDays: Record<string, number> = {}
+  txns.forEach((t: any) => { topDays[t.date ?? ''] = (topDays[t.date ?? ''] || 0) + Number(t.amount) })
+  const peakDay = Object.entries(topDays).sort((a, b) => b[1] - a[1])[0]
+  const avgTxn = txns.length > 0 ? txns.reduce((s: number, t: any) => s + Number(t.amount), 0) / txns.length : 0
+
+  return (
+    <tr className="bg-muted/20 border-b border-border">
+      <td colSpan={9} className="px-5 py-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
+            {[
+              { label: 'Budget Limit',  value: fmt(b.monthly_limit) },
+              { label: 'Spent',         value: fmt(b.spent || 0),                      color: '#dc2626' },
+              { label: 'Remaining',     value: fmt(Math.max(0, b.remaining || 0)),      color: '#16a34a' },
+              { label: 'Transactions',  value: String(txns.length) },
+              { label: 'Avg per Txn',   value: fmt(avgTxn) },
+              { label: 'Daily Budget',  value: fmt(b.dailyTarget) },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="flex justify-between text-xs">
+                <span className="text-muted-foreground">{label}</span>
+                <span className="font-semibold tabular-nums" style={color ? { color } : {}}>{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Usage</p>
+            <div className="h-3 bg-muted rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.min(100, b.percentage || 0)}%`, background: (b.percentage || 0) >= 100 ? '#dc2626' : (b.percentage || 0) >= 80 ? '#f59e0b' : '#16a34a' }} />
+            </div>
+            <p className="text-xs text-muted-foreground">{Math.round(b.percentage || 0)}% used · {Math.round(100 - Math.min(100, b.percentage || 0))}% left</p>
+            {peakDay && (
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Peak Spend Day</p>
+                <p className="text-sm font-bold mt-1">{new Date(peakDay[0]).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                <p className="text-xs text-muted-foreground">{fmt(peakDay[1])} spent</p>
+              </div>
+            )}
+          </div>
+          <div className="sm:col-span-2 space-y-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Recent Transactions</p>
+            {txns.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No transactions this month</p>
+            ) : (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                {txns.slice(0, 8).map((t: any, ti: number) => (
+                  <div key={ti} className="flex items-center justify-between text-xs py-1 border-b border-border/40 last:border-0">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{t.title || t.category || 'Expense'}</p>
+                      <p className="text-[10px] text-muted-foreground">{t.date}</p>
+                    </div>
+                    <span className="font-semibold tabular-nums text-red-500 flex-shrink-0 ml-2">-{fmt(Number(t.amount))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const { activeTheme, currency } = useAppStore()
   const { expenseCategories } = useCategories()
@@ -232,7 +343,9 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [loading,   setLoading]   = useState(false)
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1)
   const [viewYear,  setViewYear]  = useState(now.getFullYear())
-  const [statusFilter,   setStatusFilter]   = useState<'all' | 'on_track' | 'warning' | 'exceeded'>('all')
+  const [statusFilter,      setStatusFilter]      = useState<'all' | 'on_track' | 'warning' | 'exceeded'>('all')
+  const [showAllProgress,   setShowAllProgress]   = useState(false)
+  const [selectedBudgetId,  setSelectedBudgetId]  = useState<string | null>(null)
   const [searchFilter,   setSearchFilter]   = useState('')
   const [showFilters,    setShowFilters]    = useState(false)
   // Controlled form values for Selects
@@ -1318,7 +1431,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
 
             {/* Per-budget mini bars */}
             <div className="mt-4 space-y-2.5">
-              {budgetsWithSpent.slice(0, 4).map(b => {
+              {(showAllProgress ? budgetsWithSpent : budgetsWithSpent.slice(0, 4)).map(b => {
                 const pct = Math.min(100, b.percentage || 0)
                 const barColor = pct >= 100 ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#16a34a'
                 return (
@@ -1334,10 +1447,14 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                   </div>
                 )
               })}
-              {budgetsWithSpent.length > 4 && (
-                <p className="text-[11px] text-muted-foreground text-center pt-1">
-                  +{budgetsWithSpent.length - 4} more budgets below
-                </p>
+             {budgetsWithSpent.length > 4 && (
+                <button
+                  onClick={() => setShowAllProgress(v => !v)}
+                  className="w-full text-[11px] font-semibold text-center pt-1 hover:underline"
+                  style={{ color: theme.colors.primary }}
+                >
+                  {showAllProgress ? '− Show less' : `+ ${budgetsWithSpent.length - 4} more budgets`}
+                </button>
               )}
             </div>
           </CardContent>
@@ -1536,7 +1653,9 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                       ? { label: 'Approaching',       color: '#d97706', bg: '#fef3c7' }
                       : { label: 'On Track',           color: '#16a34a', bg: '#dcfce7' }
                     return (
-                      <tr key={b.id} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <tr key={b.id}
+                        className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                        onClick={() => setSelectedBudgetId(p => p === b.id ? null : b.id)}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
                             <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
@@ -1669,7 +1788,80 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                           </span>
                         </td>
                       </tr>
-                    )
+                      )
+                      
+
+
+                      {/* Detail panel row */}
+                      {selectedBudgetId === b.id && (() => {
+                       const txns = monthExpenses
+                        .filter((e: any) => e.category === b.category)
+                        .sort((a: any, c: any) => (c.date ?? '').localeCompare(a.date ?? ''))
+                         const topDays: Record<string, number> = {}
+                        txns.forEach((t: any) => { topDays[t.date ?? ''] = (topDays[t.date ?? ''] || 0) + Number(t.amount) })
+                        const peakDay = Object.entries(topDays).sort((a, b) => b[1] - a[1])[0]
+                        const avgTxn = txns.length > 0 ? txns.reduce((s: number, t: any) => s + Number(t.amount), 0) / txns.length : 0
+                        return (
+                          <tr className="bg-muted/20 border-b border-border">
+                            <td colSpan={9} className="px-5 py-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* KPIs */}
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
+                                  {[
+                                    { label: 'Budget Limit',   value: fmt(b.monthly_limit) },
+                                    { label: 'Spent',          value: fmt(b.spent || 0), color: '#dc2626' },
+                                    { label: 'Remaining',      value: fmt(Math.max(0, b.remaining || 0)), color: '#16a34a' },
+                                    { label: 'Transactions',   value: txns.length },
+                                    { label: 'Avg per Txn',    value: fmt(avgTxn) },
+                                    { label: 'Daily Budget',   value: fmt(b.dailyTarget) },
+                                  ].map(({ label, value, color }) => (
+                                    <div key={label} className="flex justify-between text-xs">
+                                      <span className="text-muted-foreground">{label}</span>
+                                      <span className="font-semibold tabular-nums" style={color ? { color } : {}}>{value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Progress bar */}
+                                <div className="space-y-2">
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Usage</p>
+                                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-700"
+                                      style={{ width: `${Math.min(100, b.percentage || 0)}%`, background: (b.percentage || 0) >= 100 ? '#dc2626' : (b.percentage || 0) >= 80 ? '#f59e0b' : '#16a34a' }} />
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">{Math.round(b.percentage || 0)}% used · {Math.round(100 - Math.min(100, b.percentage || 0))}% left</p>
+                                  {peakDay && (
+                                    <div className="mt-3">
+                                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Peak Spend Day</p>
+                                      <p className="text-sm font-bold mt-1">{new Date(peakDay[0]).toLocaleDateString('en-GH', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                      <p className="text-xs text-muted-foreground">{fmt(peakDay[1])} spent</p>
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Recent transactions */}
+                                <div className="sm:col-span-2 space-y-2">
+                                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Recent Transactions</p>
+                                  {txns.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No transactions this month</p>
+                                  ) : (
+                                    <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                      {txns.slice(0, 8).map((t: any, ti: number) => (
+                                        <div key={ti} className="flex items-center justify-between text-xs py-1 border-b border-border/40 last:border-0">
+                                          <div className="min-w-0">
+                                            <p className="font-medium truncate">{t.title || t.category || 'Expense'}</p>
+                                            <p className="text-[10px] text-muted-foreground">{t.date}</p>
+                                          </div>
+                                          <span className="font-semibold tabular-nums text-red-500 flex-shrink-0 ml-2">-{fmt(Number(t.amount))}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })()}
                   })}
                 </tbody>
               </table>
