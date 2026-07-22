@@ -2623,36 +2623,7 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                 Compare
               </button>
 
-              {/* Compare options */}
-              {compareMode && (
-                <>
-                  <div className="relative flex-shrink-0">
-                    <select
-                      value={compareBy}
-                      onChange={e => setCompareBy(e.target.value as any)}
-                      className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
-                    >
-                      <option value="day">By Day of Week</option>
-                      <option value="month">By Month</option>
-                      <option value="quarter">By Quarter</option>
-                      <option value="year">By Year</option>
-                    </select>
-                    <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                  </div>
-                  <div className="relative flex-shrink-0">
-                    <select
-                      value={compareSeries}
-                      onChange={e => setCompareSeries(e.target.value as any)}
-                      className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
-                    >
-                      <option value="both">Income & Expense</option>
-                      <option value="income">Income only</option>
-                      <option value="expense">Expense only</option>
-                    </select>
-                    <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                  </div>
-                </>
-              )}
+              
             </div>
           </div>
 
@@ -2825,10 +2796,41 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {compareMode && (
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold tracking-tight">
-              Compare {compareSeries === 'both' ? 'Income & Expense' : compareSeries === 'income' ? 'Income' : 'Expense'} by {compareBy === 'day' ? 'Day of Week' : compareBy === 'month' ? 'Month' : compareBy === 'quarter' ? 'Quarter' : 'Year'}
-            </CardTitle>
-            <p className="text-xs text-muted-foreground">Lollipop chart — height shows total amount per {compareBy}</p>
+            <div className="flex items-start justify-between gap-2 flex-wrap">
+              <div>
+                <CardTitle className="text-sm font-semibold tracking-tight">
+                  Compare {compareSeries === 'both' ? 'Income & Expense' : compareSeries === 'income' ? 'Income' : 'Expense'} by {compareBy === 'day' ? 'Day of Week' : compareBy === 'month' ? 'Month' : compareBy === 'quarter' ? 'Quarter' : 'Year'}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Lollipop chart — height shows total amount per {compareBy}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative flex-shrink-0">
+                  <select
+                    value={compareBy}
+                    onChange={e => setCompareBy(e.target.value as any)}
+                    className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
+                  >
+                    <option value="day">By Day of Week</option>
+                    <option value="month">By Month</option>
+                    <option value="quarter">By Quarter</option>
+                    <option value="year">By Year</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                </div>
+                <div className="relative flex-shrink-0">
+                  <select
+                    value={compareSeries}
+                    onChange={e => setCompareSeries(e.target.value as any)}
+                    className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1 bg-white text-xs font-semibold outline-none cursor-pointer"
+                  >
+                    <option value="both">Income & Expense</option>
+                    <option value="income">Income only</option>
+                    <option value="expense">Expense only</option>
+                  </select>
+                  <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {compareData.length === 0 ? (
