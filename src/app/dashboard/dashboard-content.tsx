@@ -2796,8 +2796,8 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
       {compareMode && (
         <Card className="rounded-xl shadow-sm bg-white">
           <CardHeader className="pb-2">
-            <div className="flex items-start justify-between gap-2 flex-wrap">
-              <div>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="min-w-0">
                 <CardTitle className="text-sm font-semibold tracking-tight">
                   Compare {compareSeries === 'both' ? 'Income & Expense' : compareSeries === 'income' ? 'Income' : 'Expense'} by {compareBy === 'day' ? 'Day of Week' : compareBy === 'month' ? 'Month' : compareBy === 'quarter' ? 'Quarter' : 'Year'}
                 </CardTitle>
@@ -2860,15 +2860,11 @@ export function DashboardContent({ accounts, transfers, incomes, expenses, budge
                   return (
                     <svg width={Math.max(totalW, 300)} height={H + PAD_B + 8} className="block">
                       <g transform={`translate(${PAD_L}, 8)`}>
-                        {/* Grid lines */}
+                        {/* Y axis labels only — no grid lines */}
                         {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-                          <g key={pct}>
-                            <line x1={0} y1={H * pct} x2={totalW - PAD_L} y2={H * pct}
-                              stroke="#f0f0f0" strokeWidth={1} />
-                            <text x={-6} y={H * pct + 4} fontSize={9} fill="#94a3b8" textAnchor="end">
-                              {shortFmt(maxVal * (1 - pct))}
-                            </text>
-                          </g>
+                          <text key={pct} x={-6} y={H * pct + 4} fontSize={9} fill="#94a3b8" textAnchor="end">
+                            {shortFmt(maxVal * (1 - pct))}
+                          </text>
                         ))}
 
                         {/* Lollipops */}

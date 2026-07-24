@@ -307,7 +307,10 @@ const assetSchema = z.object({
   warranty_end:             z.string().optional(),
   warranty_provider:        z.string().optional(),
   warranty_number:          z.string().optional(),
+  purchase_source:          z.string().optional(), // 'new_purchase' | 'existing_asset'
+  funding_account_id:       z.string().optional(),
 })
+
 type AssetFormData = z.infer<typeof assetSchema>
 
 
@@ -558,7 +561,8 @@ export function WealthContent({
   // ── Dialog helpers ────────────────────────────────────────────────
   const openCreate = (type: DialogType) => {
     setEditingId(null); setDialogType(type); setActiveTab('basic')
-    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', asset_category: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '' })
+    if (type === 'asset') assetForm.reset({ name: '', asset_type: '', asset_category: '', description: '', asset_tag: generateTag(), current_value: 0, purchase_value: 0, purchase_date: '', location: '', status: 'active', condition: 'good', useful_life_years: undefined, depreciation_method: 'none', annual_depreciation_rate: 0, notes: '', purchase_source: '',
+    funding_account_id: '',})
     if (type === 'investment') investmentForm.reset({ name: '', investment_type: '', invested_amount: 0, current_value: 0, institution: '', notes: '' })
     if (type === 'debt')  debtForm.reset({ name: '', debt_type: '', total_amount: 0, remaining: 0, interest_rate: 0, due_date: '', notes: '' })
     if (type === 'loan')  loanForm.reset({ name: '', loan_type: '', principal: 0, remaining: 0, interest_rate: 0, monthly_payment: 0, start_date: '', end_date: '', institution: '', notes: '' })
@@ -1579,6 +1583,76 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
                   <Label>Purchase Date</Label>
                   <Input type="date" {...assetForm.register('purchase_date')} />
                 </div>
+
+                   {/* Source of Funds */}
+<div className="pt-2 border-t border-border space-y-3">
+  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+    Source of Funds <span className="font-normal normal-case text-muted-foreground">(optional)</span>
+  </p>
+
+  {/* Toggle: New Purchase vs Existing Asset */}
+  <div className="grid grid-cols-2 gap-2">
+    {[
+      { value: 'new_purchase',    label: '🛒 New Purchase',    sub: 'Bought with funds from an account' },
+      { value: 'existing_asset',  label: '📦 Existing Asset',  sub: 'Already owned, recording it now'   },
+    ].map(opt => {
+      const selected = assetForm.watch('purchase_source') === opt.value
+      return (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => {
+            assetForm.setValue('purchase_source', selected ? '' : opt.value)
+            if (opt.value !== 'new_purchase') assetForm.setValue('funding_account_id', '')
+          }}
+          className="text-left p-3 rounded-xl border-2 transition-all"
+          style={{
+            borderColor: selected ? SECTION_COLORS.asset.bg : '#e2e8f0',
+            background:  selected ? SECTION_COLORS.asset.light : 'transparent',
+          }}
+        >
+          <p className="text-xs font-semibold" style={{ color: selected ? SECTION_COLORS.asset.bg : undefined }}>
+            {opt.label}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">{opt.sub}</p>
+        </button>
+      )
+    })}
+  </div>
+
+  {/* Account selector — only shown for New Purchase */}
+  {assetForm.watch('purchase_source') === 'new_purchase' && (
+    <div className="space-y-1.5">
+      <Label>
+        Account used to purchase{' '}
+        <span className="text-muted-foreground text-xs">(where money came from)</span>
+      </Label>
+      <Select
+        onValueChange={v => assetForm.setValue('funding_account_id', v === 'none' ? '' : v)}
+        defaultValue={assetForm.getValues('funding_account_id') || 'none'}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select account…" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">No account / Cash</SelectItem>
+          {accounts.map(a => (
+            <SelectItem key={a.id} value={a.id}>
+              {a.name} ({a.currency})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {assetForm.watch('funding_account_id') && assetForm.watch('funding_account_id') !== 'none' && (
+        <p className="text-[10px] text-muted-foreground">
+          ℹ️ This is recorded for reference only — it does not automatically deduct from the account balance.
+          Log the expense separately in your Expenses if needed.
+        </p>
+      )}
+    </div>
+  )}
+</div>
+                
                 <div className="pt-2 border-t border-border space-y-3">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                     <DepIcon className="w-3.5 h-3.5" /> Depreciation
