@@ -212,6 +212,7 @@ export function UserAccountsContent({
   const [stmtTypeFilter, setStmtTypeFilter] = useState<'all' | 'income' | 'expense' | 'transfer'>('all')
   const [localIncomes,   setLocalIncomes]   = useState(incomes)
   const [localExpenses,  setLocalExpenses]  = useState(expenses)
+  const [localCustodyTx, setLocalCustodyTx] = useState(custodyTransactions)
 
   // ── Forms ─────────────────────────────────────────────────────────
   const accountForm = useForm<AccountFormData>({
@@ -248,8 +249,8 @@ export function UserAccountsContent({
       const totalExpense  = localExpenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
       const transfersOut  = transfers.filter(t => t.from_account_id === acc.id).reduce((s, t) => s + Number(t.amount), 0)
       const transfersIn   = transfers.filter(t => t.to_account_id   === acc.id).reduce((s, t) => s + Number(t.to_amount ?? t.amount), 0)
-      const custodyIn     = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
-      const custodyOut    = custodyTransactions.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
+      const custodyIn     = localCustodyTx.filter(c => c.account_id === acc.id && c.direction === 'received').reduce((s, c) => s + Number(c.amount), 0)
+      const custodyOut    = localCustodyTx.filter(c => c.account_id === acc.id && c.direction === 'given').reduce((s, c) => s + Number(c.amount), 0)
       const balance       = acc.opening_balance + totalIncome - totalExpense - transfersOut + transfersIn + custodyIn - custodyOut
       const overdraftAllowed = (acc as any).allow_negative === true || acc.type === 'bank'
       const isNegative    = balance < 0
@@ -462,21 +463,42 @@ export function UserAccountsContent({
     if (!actionAccount) return
     setDepositLoading(true)
     const supabase = createClient()
-    const { data: created, error } = await supabase.from('incomes').insert({
-      user_id:    userId,
-      title:      data.note || `Deposit to ${actionAccount.name}`,
-      amount:     data.amount,
-      category:   data.category,
-      date:       data.date,
-      account_id: actionAccount.id,
-      notes:      data.note || null,
-    }).select().single()
-    if (error) {
-      toast({ title: 'Deposit failed', description: error.message, variant: 'destructive' })
+
+    if (actionAccount.isCustody) {
+      const { error } = await supabase.from('custody_transactions').insert({
+        user_id:     userId,
+        account_id:  actionAccount.id,
+        amount:      data.amount,
+        currency:    actionAccount.currency,
+        direction:   'received',
+        date:        data.date,
+        person_name: (actionAccount as any).custody_for || actionAccount.name,
+        notes:       data.note || `Received into ${actionAccount.name}`,
+      })
+      if (error) {
+        toast({ title: 'Deposit failed', description: error.message, variant: 'destructive' })
+      } else {
+        setLocalCustodyTx(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, direction: 'received' }])
+        toast({ title: `+${formatCurrency(data.amount, actionAccount.currency)} received into ${actionAccount.name}`, variant: 'success' })
+        setDepositOpen(false)
+      }
     } else {
-      setLocalIncomes(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
-      toast({ title: `+${formatCurrency(data.amount, actionAccount.currency)} deposited to ${actionAccount.name}`, variant: 'success' })
-      setDepositOpen(false)
+      const { data: created, error } = await supabase.from('incomes').insert({
+        user_id:    userId,
+        title:      data.note || `Deposit to ${actionAccount.name}`,
+        amount:     data.amount,
+        category:   data.category,
+        date:       data.date,
+        account_id: actionAccount.id,
+        notes:      data.note || null,
+      }).select().single()
+      if (error) {
+        toast({ title: 'Deposit failed', description: error.message, variant: 'destructive' })
+      } else {
+        setLocalIncomes(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
+        toast({ title: `+${formatCurrency(data.amount, actionAccount.currency)} deposited to ${actionAccount.name}`, variant: 'success' })
+        setDepositOpen(false)
+      }
     }
     setDepositLoading(false)
   }
@@ -493,22 +515,43 @@ export function UserAccountsContent({
     }
     setWithdrawLoading(true)
     const supabase = createClient()
-    const { error } = await supabase.from('expenses').insert({
-      user_id:        userId,
-      title:          data.note || `Withdrawal from ${actionAccount.name}`,
-      amount:         data.amount,
-      category:       data.category,
-      date:           data.date,
-      account_id:     actionAccount.id,
-      payment_method: 'bank_transfer',
-      notes:          data.note || null,
-    }).select().single()
-    if (error) {
-      toast({ title: 'Withdrawal failed', description: error.message, variant: 'destructive' })
+
+    if (actionAccount.isCustody) {
+      const { error } = await supabase.from('custody_transactions').insert({
+        user_id:     userId,
+        account_id:  actionAccount.id,
+        amount:      data.amount,
+        currency:    actionAccount.currency,
+        direction:   'given',
+        date:        data.date,
+        person_name: (actionAccount as any).custody_for || actionAccount.name,
+        notes:       data.note || `Disbursed from ${actionAccount.name}`,
+      })
+      if (error) {
+        toast({ title: 'Withdrawal failed', description: error.message, variant: 'destructive' })
+      } else {
+        setLocalCustodyTx(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, direction: 'given' }])
+        toast({ title: `-${formatCurrency(data.amount, actionAccount.currency)} disbursed from ${actionAccount.name}`, variant: 'success' })
+        setWithdrawOpen(false)
+      }
     } else {
-      setLocalExpenses(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
-      toast({ title: `-${formatCurrency(data.amount, actionAccount.currency)} withdrawn from ${actionAccount.name}`, variant: 'success' })
-      setWithdrawOpen(false)
+      const { error } = await supabase.from('expenses').insert({
+        user_id:        userId,
+        title:          data.note || `Withdrawal from ${actionAccount.name}`,
+        amount:         data.amount,
+        category:       data.category,
+        date:           data.date,
+        account_id:     actionAccount.id,
+        payment_method: 'bank_transfer',
+        notes:          data.note || null,
+      }).select().single()
+      if (error) {
+        toast({ title: 'Withdrawal failed', description: error.message, variant: 'destructive' })
+      } else {
+        setLocalExpenses(prev => [...prev, { amount: data.amount, account_id: actionAccount.id, date: data.date }])
+        toast({ title: `-${formatCurrency(data.amount, actionAccount.currency)} withdrawn from ${actionAccount.name}`, variant: 'success' })
+        setWithdrawOpen(false)
+      }
     }
     setWithdrawLoading(false)
   }
