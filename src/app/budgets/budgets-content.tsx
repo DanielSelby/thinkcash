@@ -51,6 +51,27 @@ interface Props {
 const nextMonthOf = (month: number, year: number) =>
   month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year }
 
+// Converts a series of (x, y) points into a smooth cubic-Bézier path string
+// using Catmull-Rom-to-Bézier conversion. Used to give area/line charts a
+// curved surface instead of straight segments between points.
+function smoothLinePath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`
+  let d = `M ${points[0].x} ${points[0].y}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? 0 : i - 1]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[i + 2 < points.length ? i + 2 : i + 1]
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
+  }
+  return d
+}
+
 function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget, fmt, theme, viewMonth, viewYear, MONTH_NAMES }: {
   allDays: { day: number; label: string; dayName: string; date: string }[]
   monthExpenses: any[]
@@ -98,8 +119,10 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
 
   const toY = (v: number) => H - (v / maxVal) * H
 
-  const spendPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.spent)}`).join(' ')
-  const targetPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.target)}`).join(' ')
+  const spendPoints  = chartData.map((d, i) => ({ x: i * W_STEP + W_STEP / 2, y: toY(d.spent) }))
+  const targetPoints = chartData.map((d, i) => ({ x: i * W_STEP + W_STEP / 2, y: toY(d.target) }))
+  const spendPath  = smoothLinePath(spendPoints)
+  const targetPath = smoothLinePath(targetPoints)
   const areaPath = chartData.length > 0
     ? `${spendPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
     : ''
@@ -353,8 +376,10 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
   const W_STEP = Math.max(20, Math.min(48, 700 / Math.max(chartData.length, 1)))
   const toY = (v: number) => H - (v / maxVal) * H
 
-  const actualPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.actual)}`).join(' ')
-  const budgetPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.budget)}`).join(' ')
+  const actualPoints = chartData.map((d, i) => ({ x: i * W_STEP + W_STEP / 2, y: toY(d.actual) }))
+  const budgetPoints = chartData.map((d, i) => ({ x: i * W_STEP + W_STEP / 2, y: toY(d.budget) }))
+  const actualPath = smoothLinePath(actualPoints)
+  const budgetPath = smoothLinePath(budgetPoints)
   const areaPath = chartData.length > 0
     ? `${actualPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
     : ''
