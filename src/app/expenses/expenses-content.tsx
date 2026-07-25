@@ -155,6 +155,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
   const [search,              setSearch]              = useState('')
   const [categoryFilter,      setCategoryFilter]      = useState('all')
   const [accountFilter,       setAccountFilter]       = useState('all')
+  const [activeBudgetIndex,   setActiveBudgetIndex]   = useState<number | null>(null)
   const [activeCategoryIndex, setActiveCategoryIndex] = useState<number | null>(null)
   const [dateFrom,            setDateFrom]            = useState('')
   const [dateTo,              setDateTo]              = useState('')
@@ -683,14 +684,14 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                 {MONTH_NAMES[Number(budgetPeriod.month) - 1]} {budgetPeriod.year}
                 {monthFilter === 'all' && yearFilter === 'all' ? ' · current month' : ''}
               </p>
-              {activeCategoryIndex !== null && budgetVsActual[activeCategoryIndex] ? (
+              {activeBudgetIndex !== null && budgetVsActual[activeBudgetIndex] ? (
                 <p className="text-xs font-semibold mt-0.5"
-                  style={{ color: chartColors[activeCategoryIndex % chartColors.length] }}>
-                  {budgetVsActual[activeCategoryIndex].name}:&nbsp;
-                  Spent {formatCurrency(budgetVsActual[activeCategoryIndex].actual)} of&nbsp;
-                  {formatCurrency(budgetVsActual[activeCategoryIndex].budget)} budget
-                  {budgetVsActual[activeCategoryIndex].budget > 0 && (
-                    ` · ${Math.round((budgetVsActual[activeCategoryIndex].actual / budgetVsActual[activeCategoryIndex].budget) * 100)}% used`
+                  style={{ color: chartColors[activeBudgetIndex % chartColors.length] }}>
+                  {budgetVsActual[activeBudgetIndex].name}:&nbsp;
+                  Spent {formatCurrency(budgetVsActual[activeBudgetIndex].actual)} of&nbsp;
+                  {formatCurrency(budgetVsActual[activeBudgetIndex].budget)} budget
+                  {budgetVsActual[activeBudgetIndex].budget > 0 && (
+                    ` · ${Math.round((budgetVsActual[activeBudgetIndex].actual / budgetVsActual[activeBudgetIndex].budget) * 100)}% used`
                   )}
                 </p>
               ) : (
@@ -774,12 +775,12 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       <Bar
                         dataKey="budget" name="Budget limit"
                         radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
-                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                        onClick={(_, i) => setActiveBudgetIndex(p => p === i ? null : i)}
                       >
                         {budgetVsActual.map((_, i) => (
                           <Cell key={i}
                             fill={
-                              activeCategoryIndex !== null && activeCategoryIndex !== i
+                              activeBudgetIndex !== null && activeBudgetIndex !== i
                                 ? (theme.colors.primaryLight || theme.colors.primary + 'aa') + '55'
                                 : (theme.colors.primaryLight || theme.colors.primary + 'aa')
                             }
@@ -802,11 +803,11 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       <Bar
                         dataKey="actual" name="Actual spent"
                         radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
-                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                        onClick={(_, i) => setActiveBudgetIndex(p => p === i ? null : i)}
                       >
                         {budgetVsActual.map((row, i) => {
                           const over   = row.actual > row.budget && row.budget > 0
-                          const dimmed = activeCategoryIndex !== null && activeCategoryIndex !== i
+                          const dimmed = activeBudgetIndex !== null && activeBudgetIndex !== i
                           return (
                             <Cell key={i}
                               fill={dimmed
