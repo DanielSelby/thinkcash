@@ -1698,10 +1698,11 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
         </SelectContent>
       </Select>
       {assetForm.watch('funding_account_id') && assetForm.watch('funding_account_id') !== 'none' && (
-  <p className="text-[10px] text-emerald-600 font-medium">
-    ✓ GHS {Number(assetForm.watch('purchase_value') || 0).toLocaleString()} will be deducted from this account when you save.
-  </p>
-)}
+        <p className="text-[10px] text-muted-foreground">
+          ℹ️ This is recorded for reference only — it does not automatically deduct from the account balance.
+          Log the expense separately in your Expenses if needed.
+        </p>
+      )}
     </div>
   )}
 </div>

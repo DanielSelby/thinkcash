@@ -107,8 +107,7 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
   const totalW = chartData.length * W_STEP
 
   return (
-    <Card className="bg-white rounded-2xl shadow-sm border border-border">
-      <CardContent className="p-5">
+    <>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div>
             <p className="text-sm font-bold">Daily Spend</p>
@@ -168,15 +167,11 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
                 </linearGradient>
               </defs>
               <g transform="translate(20, 8)">
-                {/* Grid lines */}
+                {/* Y-axis value labels only — no gridlines */}
                 {[0, 0.25, 0.5, 0.75, 1].map(pct => (
-                  <g key={pct}>
-                    <line x1={0} y1={H * pct} x2={totalW} y2={H * pct}
-                      stroke="#f0f0f0" strokeWidth={1} />
-                    <text x={-4} y={H * pct + 3} fontSize={8} fill="#94a3b8" textAnchor="end">
-                      {fmt(maxVal * (1 - pct)).replace(/GH[₵C]?\s?/, '').replace(/GHS\s?/, '')}
-                    </text>
-                  </g>
+                  <text key={pct} x={-4} y={H * pct + 3} fontSize={8} fill="#94a3b8" textAnchor="end">
+                    {fmt(maxVal * (1 - pct)).replace(/GH[₵C]?\s?/, '').replace(/GHS\s?/, '')}
+                  </text>
                 ))}
                 {/* Area fill */}
                 {areaPath && <path d={areaPath} fill="url(#spendGrad)" />}
@@ -258,10 +253,166 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
             Over target
           </span>
         </div>
-      </CardContent>
-    </Card>
+    </>
   )
 }
+
+function BudgetVsActualAreaChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget, fmt, theme, viewMonth, viewYear, MONTH_NAMES }: {
+  allDays: { day: number; label: string; dayName: string; date: string }[]
+  monthExpenses: any[]
+  budgetsWithSpent: any[]
+  dailyTarget: number
+  fmt: (n: number) => string
+  theme: any
+  viewMonth: number
+  viewYear: number
+  MONTH_NAMES: string[]
+}) {
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
+
+  const categories = useMemo(() =>
+    ['all', ...Array.from(new Set(budgetsWithSpent.map(b => b.category)))],
+    [budgetsWithSpent]
+  )
+
+  // Cumulative actual spend vs cumulative budget pace, day by day —
+  // this is what makes "Budget vs Actual" meaningful as an area chart
+  // over the course of the month, rather than a single bar per category.
+  const chartData = useMemo(() => {
+    let cumActual = 0
+    return allDays.map((d, i) => {
+      const dayExp = monthExpenses
+        .filter(e => e.date === d.date)
+        .filter(e => selectedCategory === 'all' || e.category === selectedCategory)
+        .reduce((s, e) => s + Number(e.amount), 0)
+      cumActual += dayExp
+      const cumBudget = dailyTarget * (i + 1)
+      return { label: d.label, dayName: d.dayName, actual: cumActual, budget: cumBudget }
+    })
+  }, [allDays, monthExpenses, selectedCategory, dailyTarget])
+
+  const maxVal = Math.max(...chartData.map(d => Math.max(d.actual, d.budget)), 1)
+  const H = 160
+  const W_STEP = Math.max(20, Math.min(48, 700 / Math.max(chartData.length, 1)))
+  const toY = (v: number) => H - (v / maxVal) * H
+
+  const actualPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.actual)}`).join(' ')
+  const budgetPath = chartData.map((d, i) => `${i === 0 ? 'M' : 'L'} ${i * W_STEP + W_STEP / 2} ${toY(d.budget)}`).join(' ')
+  const areaPath = chartData.length > 0
+    ? `${actualPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
+    : ''
+
+  const totalW = chartData.length * W_STEP
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+        <div>
+          <p className="text-sm font-bold">Budget vs Actual</p>
+          <p className="text-xs text-muted-foreground">{MONTH_NAMES[viewMonth - 1]} {viewYear} — cumulative spend vs budget pace</p>
+        </div>
+        <div className="relative">
+          <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)}
+            className="appearance-none border border-border rounded-lg pl-3 pr-7 py-1.5 bg-white text-xs font-semibold outline-none cursor-pointer">
+            {categories.map(c => (
+              <option key={c} value={c}>{c === 'all' ? 'All Categories' : c}</option>
+            ))}
+          </select>
+          <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+        </div>
+      </div>
+
+      {chartData.length === 0 ? (
+        <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">No data for selected filters</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <svg width={Math.max(totalW + 40, 300)} height={H + 40} className="block">
+            <defs>
+              <linearGradient id="budgetActualGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={theme.colors.primary} stopOpacity="0.3" />
+                <stop offset="100%" stopColor={theme.colors.primary} stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
+            <g transform="translate(20, 8)">
+              {areaPath && <path d={areaPath} fill="url(#budgetActualGrad)" />}
+              <path d={budgetPath} stroke="#94a3b8" strokeWidth={1.5} fill="none" strokeDasharray="4 3" />
+              <path d={actualPath} stroke={theme.colors.primary} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              {chartData.map((d, i) => {
+                const cx = i * W_STEP + W_STEP / 2
+                const cy = toY(d.actual)
+                const isHov = hoveredIdx === i
+                const over = d.actual > d.budget
+                return (
+                  <g key={i}
+                    onMouseEnter={() => setHoveredIdx(i)}
+                    onMouseLeave={() => setHoveredIdx(null)}
+                    style={{ cursor: 'pointer' }}>
+                    <rect x={cx - W_STEP / 2} y={0} width={W_STEP} height={H} fill="transparent" />
+                    {isHov && <rect x={cx - W_STEP / 2} y={0} width={W_STEP} height={H}
+                      fill={theme.colors.primary} fillOpacity={0.06} rx={3} />}
+                    <circle cx={cx} cy={cy} r={isHov ? 5 : 3}
+                      fill={over ? '#dc2626' : theme.colors.primary}
+                      stroke="#fff" strokeWidth={1.5} />
+                    <text x={cx} y={H + 14} fontSize={9}
+                      fill={isHov ? theme.colors.primary : '#94a3b8'}
+                      textAnchor="middle" fontWeight={isHov ? 700 : 400}>{d.label}</text>
+                    <text x={cx} y={H + 24} fontSize={8}
+                      fill="#cbd5e1" textAnchor="middle">{d.dayName}</text>
+                    {isHov && (() => {
+                      const ttW = 140; const ttH = 58
+                      const ttX = Math.min(cx - ttW / 2, totalW - ttW - 4)
+                      const ttY = Math.max(4, cy - ttH - 10)
+                      return (
+                        <g style={{ pointerEvents: 'none' }}>
+                          <rect x={ttX} y={ttY} width={ttW} height={ttH} rx={7}
+                            fill="white" stroke="#e2e8f0" strokeWidth={1}
+                            filter="drop-shadow(0 2px 6px rgba(0,0,0,0.10))" />
+                          <text x={ttX + 10} y={ttY + 15} fontSize={10} fontWeight={700} fill="#374151">
+                            {d.dayName} {d.label}
+                          </text>
+                          <circle cx={ttX + 14} cy={ttY + 28} r={4}
+                            fill={over ? '#dc2626' : theme.colors.primary} />
+                          <text x={ttX + 24} y={ttY + 32} fontSize={9} fill="#374151">
+                            Actual: <tspan fontWeight={700}
+                              fill={over ? '#dc2626' : theme.colors.primary}>
+                              {fmt(d.actual)}
+                            </tspan>
+                          </text>
+                          <circle cx={ttX + 14} cy={ttY + 44} r={4} fill="#94a3b8" />
+                          <text x={ttX + 24} y={ttY + 48} fontSize={9} fill="#374151">
+                            Budget: <tspan fontWeight={700} fill="#64748b">{fmt(d.budget)}</tspan>
+                          </text>
+                        </g>
+                      )
+                    })()}
+                  </g>
+                )
+              })}
+            </g>
+          </svg>
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border text-xs text-muted-foreground flex-wrap">
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-0.5 rounded inline-block" style={{ background: theme.colors.primary }} />
+          Cumulative Actual
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-4 h-0.5 rounded inline-block bg-gray-300" style={{ borderTop: '1.5px dashed #94a3b8', background: 'transparent' }} />
+          Cumulative Budget Pace
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+          Over pace
+        </span>
+      </div>
+    </>
+  )
+}
+
+
 
 function BudgetDetailRow({ b, monthExpenses, fmt, theme }: { b: any; monthExpenses: any[]; fmt: (n: number) => string; theme: any }) {
   const txns = monthExpenses
@@ -365,6 +516,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [rolloverYear,     setRolloverYear]     = useState(String(now.getFullYear()))
   const [view, setView] = useState<'overview' | 'breakdown'>('overview')
   const [showGuidanceDetails, setShowGuidanceDetails] = useState(true)
+  const [guideChartView, setGuideChartView] = useState<'daily' | 'budget'>('daily')
   const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -1496,7 +1648,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         </Card>
       </div>
 
-      {/* ── Daily Spend Area Chart ── */}
+      {/* ── Daily Spend / Budget vs Actual — toggle between the two, same card ── */}
       {(() => {
         const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
         const allDays = Array.from({ length: daysInPeriod }, (_, i) => {
@@ -1509,17 +1661,55 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
           }
         })
         return (
-          <DailySpendChart
-            allDays={allDays}
-            monthExpenses={monthExpenses}
-            budgetsWithSpent={budgetsWithSpent}
-            dailyTarget={dailyTarget}
-            fmt={fmt}
-            theme={theme}
-            viewMonth={viewMonth}
-            viewYear={viewYear}
-            MONTH_NAMES={MONTH_NAMES}
-          />
+          <Card className="bg-white rounded-2xl shadow-sm border border-border">
+            <CardContent className="p-5">
+              <div className="flex gap-1 p-1 bg-muted/40 rounded-lg w-fit mb-4">
+                <button
+                  onClick={() => setGuideChartView('daily')}
+                  className="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                  style={guideChartView === 'daily'
+                    ? { background: theme.colors.primary, color: '#fff' }
+                    : { color: '#64748b' }}
+                >
+                  Daily Spend
+                </button>
+                <button
+                  onClick={() => setGuideChartView('budget')}
+                  className="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                  style={guideChartView === 'budget'
+                    ? { background: theme.colors.primary, color: '#fff' }
+                    : { color: '#64748b' }}
+                >
+                  Budget vs Actual
+                </button>
+              </div>
+              {guideChartView === 'daily' ? (
+                <DailySpendChart
+                  allDays={allDays}
+                  monthExpenses={monthExpenses}
+                  budgetsWithSpent={budgetsWithSpent}
+                  dailyTarget={dailyTarget}
+                  fmt={fmt}
+                  theme={theme}
+                  viewMonth={viewMonth}
+                  viewYear={viewYear}
+                  MONTH_NAMES={MONTH_NAMES}
+                />
+              ) : (
+                <BudgetVsActualAreaChart
+                  allDays={allDays}
+                  monthExpenses={monthExpenses}
+                  budgetsWithSpent={budgetsWithSpent}
+                  dailyTarget={dailyTarget}
+                  fmt={fmt}
+                  theme={theme}
+                  viewMonth={viewMonth}
+                  viewYear={viewYear}
+                  MONTH_NAMES={MONTH_NAMES}
+                />
+              )}
+            </CardContent>
+          </Card>
         )
       })()}
 
