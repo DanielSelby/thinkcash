@@ -155,7 +155,13 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
 
   const maxVal = Math.max(...chartData.map(d => Math.max(d.spent, d.target)), 1)
   const H = 160
-  const W_STEP = Math.max(20, Math.min(48, 700 / Math.max(chartData.length, 1)))
+  // Fixed internal width regardless of how many points are plotted — this
+  // keeps the SVG's viewBox aspect ratio constant, so text/dots/strokes
+  // (all sized in SVG user-units) never look stretched or "zoomed" when a
+  // filter narrows the data down to just a few points. Only the spacing
+  // between points changes, not the coordinate scale itself.
+  const VIEW_W = 700
+  const W_STEP = VIEW_W / Math.max(chartData.length, 1)
 
   const toY = (v: number) => H - (v / maxVal) * H
 
@@ -167,7 +173,7 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
     ? `${spendPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
     : ''
 
-  const totalW = chartData.length * W_STEP
+  const totalW = VIEW_W
 
   return (
     <>
@@ -224,7 +230,7 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
           <div>
             <svg
               width="100%" height={H + 40}
-              viewBox={`0 0 ${Math.max(totalW + 40, 300)} ${H + 40}`}
+              viewBox={`0 0 ${totalW + 40} ${H + 40}`}
               preserveAspectRatio="none"
               className="block"
             >
@@ -419,7 +425,11 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
 
   const maxVal = Math.max(...chartData.map(d => Math.max(d.actual, d.budget)), 1)
   const H = 160
-  const W_STEP = Math.max(20, Math.min(48, 700 / Math.max(chartData.length, 1)))
+  // Fixed internal width regardless of point count — see DailySpendChart
+  // for why: keeps text/dots/strokes visually consistent size whether the
+  // date filter shows the full month or just a handful of days.
+  const VIEW_W = 700
+  const W_STEP = VIEW_W / Math.max(chartData.length, 1)
   const toY = (v: number) => H - (v / maxVal) * H
 
   const actualPoints = chartData.map((d, i) => ({ x: i * W_STEP + W_STEP / 2, y: toY(d.actual) }))
@@ -430,7 +440,7 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
     ? `${actualPath} L ${(chartData.length - 1) * W_STEP + W_STEP / 2} ${H} L ${W_STEP / 2} ${H} Z`
     : ''
 
-  const totalW = chartData.length * W_STEP
+  const totalW = VIEW_W
 
   return (
     <>
