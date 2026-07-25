@@ -27,6 +27,7 @@ import { useAppStore } from '@/store'
 import { THEMES } from '@/lib/config'
 import type { Expense, UserAccount } from '@/types'
 
+
 const schema = z.object({
   title:          z.string().min(1, 'Title is required'),
   amount:         z.coerce.number().positive('Amount must be positive'),
@@ -161,6 +162,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
   const [dateTo,              setDateTo]              = useState('')
   const [monthFilter,         setMonthFilter]         = useState('all')
   const [yearFilter,          setYearFilter]          = useState('all')
+  const [categoryTopN,        setCategoryTopN]        = useState<5 | 10 | 'all'>(10)
 
   const chartColors = useMemo(
     () => buildThemedPalette(theme.colors.primary, 10),
@@ -850,10 +852,35 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
           {/* Category Share donut */}
           <Card className="rounded-xl shadow-sm bg-white">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Category Share</CardTitle>
-              <p className="text-xs text-muted-foreground">Click a slice to zoom in</p>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle className="text-sm font-semibold">Category Share</CardTitle>
+                  <p className="text-xs text-muted-foreground">Click a slice to zoom in</p>
+                </div>
+                <div className="flex items-center gap-1 p-0.5 bg-muted rounded-lg flex-shrink-0">
+                  {([5, 10, 'all'] as const).map(n => (
+                    <button
+                      key={n}
+                      onClick={() => { setCategoryTopN(n); setActiveCategoryIndex(null) }}
+                      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                        categoryTopN === n
+                          ? 'bg-white shadow-sm text-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {n === 'all' ? 'All' : `Top ${n}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
+              {(() => {
+                const slicedCategories = categoryTopN === 'all'
+                  ? expenseByCategory
+                  : expenseByCategory.slice(0, categoryTopN)
+                const slicedTotal = slicedCategories.reduce((s, c) => s + c.value, 0)
+                return (
               <div className="flex flex-col sm:flex-row items-center gap-4">
 
                 {/* Donut chart */}
@@ -861,7 +888,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
-                        data={expenseByCategory}
+                        data={slicedCategories}
                         dataKey="value" nameKey="name"
                         cx="50%" cy="50%"
                         innerRadius="52%" outerRadius="78%"
@@ -871,7 +898,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                         animationDuration={500}
                         onClick={(_, i) => selectCategory(expenseByCategory[i].name)}
                       >
-                        {expenseByCategory.map((_, i) => (
+                        {slicedCategories.map((_, i) => (
                           <Cell key={i}
                             fill={
                               activeCategoryIndex !== null && activeCategoryIndex !== i
@@ -892,18 +919,18 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                     <div className="text-center leading-tight">
                       <p className="text-[9px] text-muted-foreground font-semibold uppercase tracking-wide">
                         {activeCategoryIndex !== null
-                          ? expenseByCategory[activeCategoryIndex]?.name
+                          ? slicedCategories[activeCategoryIndex]?.name
                           : 'Total'}
                       </p>
                       <p className="text-sm font-bold tabular-nums mt-0.5 text-destructive">
                         {activeCategoryIndex !== null
-                          ? formatCurrency(expenseByCategory[activeCategoryIndex]?.value ?? 0)
-                          : formatCurrency(grandTotalFiltered)}
+                          ? formatCurrency(slicedCategories[activeCategoryIndex]?.value ?? 0)
+                          : formatCurrency(slicedTotal)}
                       </p>
                       {activeCategoryIndex !== null ? (
                         <p className="text-[9px] text-muted-foreground mt-0.5">
-                          {grandTotalFiltered > 0
-                            ? Math.round((expenseByCategory[activeCategoryIndex].value / grandTotalFiltered) * 100)
+                          {slicedTotal > 0
+                            ? Math.round((slicedCategories[activeCategoryIndex].value / slicedTotal) * 100)
                             : 0}% of total
                         </p>
                       ) : hasMixedExpenseCurrency ? (
@@ -915,8 +942,8 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
 
                 {/* Breakdown list */}
                 <div className="flex-1 w-full space-y-1.5 min-w-0">
-                  {expenseByCategory.map((cat, i) => {
-                    const pct     = grandTotalFiltered > 0 ? Math.round((cat.value / grandTotalFiltered) * 100) : 0
+                  {slicedCategories.map((cat, i) => {
+                    const pct     = slicedTotal > 0 ? Math.round((cat.value / slicedTotal) * 100) : 0
                     const color   = chartColors[i % chartColors.length]
                     const isActive = activeCategoryIndex === i
                     return (
@@ -949,18 +976,24 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                   })}
 
                   {/* Total row */}
-                  {expenseByCategory.length > 0 && (
+                  {slicedCategories.length > 0 && (
                     <div className="flex items-center gap-2.5 px-2.5 py-1.5 border-t border-border mt-1 pt-2">
                       <span className="w-2.5 h-2.5 flex-shrink-0" />
-                      <span className="text-xs font-semibold flex-1">Total</span>
+                      <span className="text-xs font-semibold flex-1">
+                        {categoryTopN !== 'all' && expenseByCategory.length > categoryTopN
+                          ? `Top ${categoryTopN} of ${expenseByCategory.length}`
+                          : 'Total'}
+                      </span>
                       <span className="text-[10px] font-semibold text-muted-foreground w-8 text-right flex-shrink-0">100%</span>
                       <span className="text-xs font-bold tabular-nums text-destructive flex-shrink-0">
-                        {formatCurrency(grandTotalFiltered)}
+                        {formatCurrency(slicedTotal)}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
+                )
+              })()}
             </CardContent>
           </Card>
         </div>
