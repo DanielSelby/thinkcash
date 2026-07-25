@@ -646,24 +646,78 @@ export function WealthContent({
     setSavingRate(false)
   }
 
-  const onSubmitAsset = async (data: AssetFormData) => {
-    setLoading(true)
-    const supabase = createClient()
-    const payload: any = {
-      ...data,
-      updated_at: new Date().toISOString(),
-    }
-    if (editingId) {
-      const { data: updated, error } = await supabase.from('assets').update(payload).eq('id', editingId).select().single()
-      if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-      else { setAssets(p => p.map(x => x.id === editingId ? updated : x)); toast({ title: 'Asset updated', variant: 'success' }); setDialogType(null) }
-    } else {
-      const { data: created, error } = await supabase.from('assets').insert({ ...payload, user_id: userId }).select().single()
-      if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
-      else { setAssets(p => [created, ...p]); toast({ title: 'Asset added', variant: 'success' }); setDialogType(null) }
-    }
-    setLoading(false)
+   const onSubmitAsset = async (data: AssetFormData) => {
+  setLoading(true)
+  const supabase = createClient()
+  const payload: any = {
+    ...data,
+    updated_at: new Date().toISOString(),
   }
+  if (editingId) {
+    const { data: updated, error } = await supabase
+      .from('assets')
+      .update(payload)
+      .eq('id', editingId)
+      .select()
+      .single()
+    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
+    else {
+      setAssets(p => p.map(x => x.id === editingId ? updated : x))
+      toast({ title: 'Asset updated', variant: 'success' })
+      setDialogType(null)
+    }
+  } else {
+    const { data: created, error } = await supabase
+      .from('assets')
+      .insert({ ...payload, user_id: userId })
+      .select()
+      .single()
+    if (error) toast({ title: 'Failed', description: error.message, variant: 'destructive' })
+    else {
+      setAssets(p => [created, ...p])
+
+      // ── Deduct from account if New Purchase and account selected ──
+      if (
+        data.purchase_source === 'new_purchase' &&
+        data.funding_account_id &&
+        data.funding_account_id !== 'none' &&
+        Number(data.purchase_value ?? 0) > 0
+      ) {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { error: expErr } = await supabase.from('expenses').insert({
+            user_id:        user.id,
+            title:          `Asset purchase: ${data.name}`,
+            amount:         Number(data.purchase_value),
+            category:       'asset purchase',
+            payment_method: 'bank_transfer',
+            date:           data.purchase_date || new Date().toISOString().split('T')[0],
+            account_id:     data.funding_account_id,
+            notes:          `Purchased asset: ${data.name}${data.asset_type ? ` (${data.asset_type})` : ''}`,
+          })
+          if (expErr) {
+            toast({
+              title:       'Asset saved but expense not recorded',
+              description: expErr.message,
+              variant:     'destructive',
+            })
+          } else {
+            const accountName = accounts.find(a => a.id === data.funding_account_id)?.name ?? 'account'
+            toast({
+              title:   `Asset added · GHS ${Number(data.purchase_value).toLocaleString()} deducted from ${accountName}`,
+              variant: 'success',
+            })
+          }
+        }
+      } else {
+        toast({ title: 'Asset added', variant: 'success' })
+      }
+
+      setDialogType(null)
+    }
+  }
+  setLoading(false)
+}
 
   const onSubmitInvestment = async (data: InvestmentFormData) => {
     setLoading(true)
@@ -1644,11 +1698,10 @@ const getAccountName = (id?: string | null) => accounts.find(a => a.id === id)?.
         </SelectContent>
       </Select>
       {assetForm.watch('funding_account_id') && assetForm.watch('funding_account_id') !== 'none' && (
-        <p className="text-[10px] text-muted-foreground">
-          ℹ️ This is recorded for reference only — it does not automatically deduct from the account balance.
-          Log the expense separately in your Expenses if needed.
-        </p>
-      )}
+  <p className="text-[10px] text-emerald-600 font-medium">
+    ✓ GHS {Number(assetForm.watch('purchase_value') || 0).toLocaleString()} will be deducted from this account when you save.
+  </p>
+)}
     </div>
   )}
 </div>
