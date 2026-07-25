@@ -97,6 +97,42 @@ const ALL_CURRENCIES = [
 
 const CUSTOM_KEY = 'ts_custom_currencies'
 
+// Keyword → domain map for auto-detecting a logo when the user names a
+// well-known institution. Uses Clearbit's free logo API (no key required):
+// https://logo.clearbit.com/{domain} returns that company's logo as a PNG.
+// Matching is keyword-based against whatever the user typed in Institution
+// or Account Name, so "MTN MoMo", "MTN Mobile Money", "mtn" all match.
+const INSTITUTION_LOGO_DOMAINS: { keywords: string[]; domain: string }[] = [
+  { keywords: ['ecobank'],                          domain: 'ecobank.com' },
+  { keywords: ['gcb', 'ghana commercial bank'],      domain: 'gcbbank.com.gh' },
+  { keywords: ['mtn'],                               domain: 'mtn.com' },
+  { keywords: ['vodafone', 'telecel'],                domain: 'telecel.com.gh' },
+  { keywords: ['airteltigo', 'airtel', 'tigo'],       domain: 'airteltigo.com.gh' },
+  { keywords: ['absa'],                               domain: 'absa.com.gh' },
+  { keywords: ['stanbic'],                            domain: 'stanbicbank.com.gh' },
+  { keywords: ['standard chartered', 'stanchart'],    domain: 'sc.com' },
+  { keywords: ['gtbank', 'guaranty trust'],           domain: 'gtbank.com' },
+  { keywords: ['fidelity bank', 'fidelity'],          domain: 'fidelitybank.com.gh' },
+  { keywords: ['cal bank', 'calbank'],                domain: 'calbank.net' },
+  { keywords: ['zenith bank', 'zenith'],              domain: 'zenithbank.com.gh' },
+  { keywords: ['republic bank'],                      domain: 'republicghana.com' },
+  { keywords: ['access bank'],                        domain: 'accessbankplc.com' },
+  { keywords: ['uba', 'united bank for africa'],      domain: 'ubagroup.com' },
+  { keywords: ['fnb', 'first national bank'],         domain: 'fnb.com.gh' },
+  { keywords: ['prudential'],                          domain: 'prudentialbank.com.gh' },
+  { keywords: ['first atlantic'],                     domain: 'firstatlanticbank.com.gh' },
+  { keywords: ['agricultural development bank', 'adb bank'], domain: 'adb.com.gh' },
+  { keywords: ['paypal'],                              domain: 'paypal.com' },
+  { keywords: ['visa'],                                domain: 'visa.com' },
+  { keywords: ['mastercard'],                          domain: 'mastercard.com' },
+]
+
+function getAutoLogoUrl(institution?: string | null, name?: string | null): string | null {
+  const haystack = `${institution ?? ''} ${name ?? ''}`.toLowerCase()
+  const match = INSTITUTION_LOGO_DOMAINS.find(m => m.keywords.some(k => haystack.includes(k)))
+  return match ? `https://logo.clearbit.com/${match.domain}` : null
+}
+
 const SORT_OPTIONS = [
   { value: 'balance_desc', label: 'Highest Balance' },
   { value: 'balance_asc',  label: 'Lowest Balance'  },
@@ -116,6 +152,7 @@ const accountSchema = z.object({
   is_custody:       z.boolean().optional(),
   exclude_from_net: z.boolean().optional(),
   custody_for:      z.string().optional(),
+  logo_url:         z.string().optional(),
 })
 type AccountFormData = z.infer<typeof accountSchema>
 
@@ -353,7 +390,7 @@ export function UserAccountsContent({
   // ── CRUD ──────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditing(null)
-    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false, is_custody: false, exclude_from_net: false, custody_for: '' })
+    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false, is_custody: false, exclude_from_net: false, custody_for: '', logo_url: '' })
     setOpen(true)
   }
 
@@ -366,6 +403,7 @@ export function UserAccountsContent({
       is_custody:       (acc as any).is_custody        ?? false,
       exclude_from_net: (acc as any).exclude_from_net  ?? false,
       custody_for:      (acc as any).custody_for       ?? '',
+      logo_url:         (acc as any).logo_url          ?? '',
     })
     setOpen(true)
   }
@@ -379,6 +417,7 @@ export function UserAccountsContent({
       is_custody:       data.is_custody        ?? false,
       exclude_from_net: data.is_custody        ? true : (data.exclude_from_net ?? false),
       custody_for:      data.custody_for       || null,
+      logo_url:         data.logo_url          || null,
     }
     if (editing) {
       const { data: updated, error } = await supabase.from('user_accounts').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editing.id).select().single()
@@ -820,6 +859,11 @@ export function UserAccountsContent({
                 const typeLabel = ACCOUNT_TYPES.find(t => t.value === acc.type)?.label || acc.type
                 const isSelected = selectedAcc === acc.id
                 const isStarred  = starredAccs.has(acc.id)
+                // Custom logo wins; otherwise try auto-detecting from institution/name.
+                // logoFailed tracks a broken image URL for this render only, so a bad
+                // custom URL or missing Clearbit entry falls back to the icon instead
+                // of showing a broken-image glyph.
+                const logoUrl = (acc as any).logo_url || getAutoLogoUrl(acc.institution, acc.name)
 
                 return (
                   <Card
@@ -836,8 +880,17 @@ export function UserAccountsContent({
                       {/* Card header */}
                       <div className="flex items-start justify-between mb-3 gap-2">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: color + '18' }}>
-                            <Icon className="w-5 h-5" style={{ color }} />
+                          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: logoUrl ? '#fff' : color + '18', border: logoUrl ? '1px solid #e5e7eb' : 'none' }}>
+                            {logoUrl ? (
+                              <img
+                                src={logoUrl}
+                                alt={acc.institution || acc.name}
+                                className="w-full h-full object-contain p-1"
+                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.style.background = color + '18' }}
+                              />
+                            ) : (
+                              <Icon className="w-5 h-5" style={{ color }} />
+                            )}
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -997,8 +1050,17 @@ export function UserAccountsContent({
                   {/* Panel header */}
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: color + '18' }}>
-                        <Icon className="w-5 h-5" style={{ color }} />
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: ((acc as any).logo_url || getAutoLogoUrl(acc.institution, acc.name)) ? '#fff' : color + '18', border: ((acc as any).logo_url || getAutoLogoUrl(acc.institution, acc.name)) ? '1px solid #e5e7eb' : 'none' }}>
+                        {((acc as any).logo_url || getAutoLogoUrl(acc.institution, acc.name)) ? (
+                          <img
+                            src={(acc as any).logo_url || getAutoLogoUrl(acc.institution, acc.name) || ''}
+                            alt={acc.institution || acc.name}
+                            className="w-full h-full object-contain p-1"
+                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.style.background = color + '18' }}
+                          />
+                        ) : (
+                          <Icon className="w-5 h-5" style={{ color }} />
+                        )}
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold text-sm truncate">{acc.name}</p>
@@ -1347,6 +1409,44 @@ export function UserAccountsContent({
             <div className="space-y-1.5">
               <Label>Institution / Provider <span className="text-muted-foreground">(optional)</span></Label>
               <Input placeholder="e.g. GCB Bank, MTN, Ecobank" {...accountForm.register('institution')} />
+              <p className="text-xs text-muted-foreground">A logo will be auto-detected for well-known banks/telcos if you leave the field below blank.</p>
+            </div>
+
+            {/* Account Logo */}
+            <div className="space-y-1.5">
+              <Label>Account Logo <span className="text-muted-foreground">(optional)</span></Label>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl border border-border flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
+                  {(() => {
+                    const preview = accountForm.watch('logo_url') || getAutoLogoUrl(accountForm.watch('institution'), accountForm.watch('name'))
+                    return preview ? (
+                      <img
+                        src={preview}
+                        alt="Logo preview"
+                        className="w-full h-full object-contain p-1"
+                        onError={e => { (e.target as HTMLImageElement).style.opacity = '0.2' }}
+                      />
+                    ) : (
+                      <Wallet className="w-5 h-5 text-muted-foreground/40" />
+                    )
+                  })()}
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <Input
+                    placeholder="Paste a logo image URL, or leave blank for auto-detect"
+                    {...accountForm.register('logo_url')}
+                  />
+                  {accountForm.watch('logo_url') && (
+                    <button
+                      type="button"
+                      onClick={() => accountForm.setValue('logo_url', '')}
+                      className="text-xs font-semibold text-muted-foreground hover:text-destructive"
+                    >
+                      Clear — use auto-detected logo instead
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
