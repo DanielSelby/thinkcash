@@ -51,23 +51,63 @@ interface Props {
 const nextMonthOf = (month: number, year: number) =>
   month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year }
 
-// Converts a series of (x, y) points into a smooth cubic-Bézier path string
-// using Catmull-Rom-to-Bézier conversion. Used to give area/line charts a
-// curved surface instead of straight segments between points.
+// Converts a series of (x, y) points into a smooth cubic path using
+// monotone cubic Hermite interpolation (the same technique as d3's
+// curveMonotoneX). Unlike a plain Catmull-Rom spline, this guarantees the
+// curve never overshoots above/below the surrounding data points — so a
+// single spike stays a spike and flat/near-zero stretches stay flat,
+// even when points are sparse (e.g. a day-of-week filter leaving big
+// gaps between plotted points).
 function smoothLinePath(points: { x: number; y: number }[]): string {
-  if (points.length === 0) return ''
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`
+  const n = points.length
+  if (n === 0) return ''
+  if (n === 1) return `M ${points[0].x} ${points[0].y}`
+  if (n === 2) return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`
+
+  const dx: number[] = []
+  const secant: number[] = []
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = points[i + 1].x - points[i].x
+    secant[i] = dx[i] === 0 ? 0 : (points[i + 1].y - points[i].y) / dx[i]
+  }
+
+  const tangent: number[] = new Array(n)
+  tangent[0] = secant[0]
+  tangent[n - 1] = secant[n - 2]
+  for (let i = 1; i < n - 1; i++) {
+    if (secant[i - 1] === 0 || secant[i] === 0 || (secant[i - 1] > 0) !== (secant[i] > 0)) {
+      tangent[i] = 0
+    } else {
+      tangent[i] = (secant[i - 1] + secant[i]) / 2
+    }
+  }
+
+  // Fritsch-Carlson: clamp tangents so the curve can't overshoot between
+  // any two consecutive points.
+  for (let i = 0; i < n - 1; i++) {
+    if (secant[i] === 0) {
+      tangent[i] = 0
+      tangent[i + 1] = 0
+      continue
+    }
+    const a = tangent[i] / secant[i]
+    const b = tangent[i + 1] / secant[i]
+    const s = a * a + b * b
+    if (s > 9) {
+      const scale = 3 / Math.sqrt(s)
+      tangent[i] = a * scale * secant[i]
+      tangent[i + 1] = b * scale * secant[i]
+    }
+  }
+
   let d = `M ${points[0].x} ${points[0].y}`
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i === 0 ? 0 : i - 1]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = points[i + 2 < points.length ? i + 2 : i + 1]
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = p1.y + (p2.y - p0.y) / 6
-    const cp2x = p2.x - (p3.x - p1.x) / 6
-    const cp2y = p2.y - (p3.y - p1.y) / 6
-    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i]
+    const cp1x = points[i].x + h / 3
+    const cp1y = points[i].y + (tangent[i] * h) / 3
+    const cp2x = points[i + 1].x - h / 3
+    const cp2y = points[i + 1].y - (tangent[i + 1] * h) / 3
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[i + 1].x} ${points[i + 1].y}`
   }
   return d
 }
@@ -294,12 +334,18 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
   defaultMonth: number
   defaultYear: number
 }) {
-  // Distinct palette from Daily Spend — Daily Spend uses theme.colors.primary,
-  // this chart uses its own fixed violet/amber scheme so the two are never
-  // visually confused, even if the user's app theme changes.
-  const ACTUAL_COLOR = '#7c3aed' // violet
-  const BUDGET_COLOR = '#f59e0b' // amber
-  const OVER_COLOR   = '#dc2626' // red, over-pace dot only
+  // Follows the app's active theme so this chart re-colors whenever the
+  // user switches theme — primary for the Actual line. The Budget pace
+  // line uses theme.colors.warning rather than accent: every theme
+  // defines warning as an amber/orange, which stays visually distinct
+  // from primary in all six themes (accent doesn't — e.g. plum's accent
+  // is a near-white blush with poor contrast, and eclipse's accent is
+  // another shade of green too close to its own primary). "Over pace"
+  // stays a fixed red since that's a universal warning signal, not a
+  // brand color.
+  const ACTUAL_COLOR = theme.colors.primary
+  const BUDGET_COLOR = theme.colors.warning || '#f59e0b'
+  const OVER_COLOR   = '#dc2626' // red, over-pace dot only — intentionally not theme-driven
 
   const now = new Date()
   const [month, setMonth]               = useState(defaultMonth)
