@@ -457,7 +457,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
 
   const budgetVsActual = useMemo(() => {
     if (!periodBudgets.length) return expenseByCategory.map(c => ({
-      name: c.name, budget: 0, actual: c.value, pct: 0,
+      name: c.name, category: c.name, budget: 0, actual: c.value, pct: 0,
     }))
     return periodBudgets.map(b => {
       const actual = filtered
@@ -466,11 +466,33 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
       const budget = Number(b.monthly_limit ?? b.amount ?? 0)
       return {
         name: b.budget_name || b.category,
+        category: b.category,
         budget, actual,
         pct: budget > 0 ? Math.round((actual / budget) * 100) : 0,
       }
     }).sort((a, b) => b.actual - a.actual)
   }, [periodBudgets, filtered, expenseByCategory])
+
+  // Cross-references the two charts by category (not by array index, since
+  // budgetVsActual and expenseByCategory are separately filtered/sorted and
+  // rarely line up positionally). Clicking either chart highlights the same
+  // category in both, when that category exists in both; if a category has
+  // no budget, only the donut side lights up, and Budget vs Actual just
+  // shows nothing selected there — which is correct, not a bug.
+  const selectCategory = (category: string) => {
+    const isSame =
+      (activeCategoryIndex !== null && expenseByCategory[activeCategoryIndex]?.name === category) ||
+      (activeBudgetIndex   !== null && budgetVsActual[activeBudgetIndex]?.category === category)
+    if (isSame) {
+      setActiveCategoryIndex(null)
+      setActiveBudgetIndex(null)
+      return
+    }
+    const catIdx = expenseByCategory.findIndex(c => c.name === category)
+    const budIdx = budgetVsActual.findIndex(b => b.category === category)
+    setActiveCategoryIndex(catIdx === -1 ? null : catIdx)
+    setActiveBudgetIndex(budIdx === -1 ? null : budIdx)
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -775,7 +797,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       <Bar
                         dataKey="budget" name="Budget limit"
                         radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
-                        onClick={(_, i) => setActiveBudgetIndex(p => p === i ? null : i)}
+                        onClick={(_, i) => selectCategory(budgetVsActual[i].category)}
                       >
                         {budgetVsActual.map((_, i) => (
                           <Cell key={i}
@@ -803,7 +825,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                       <Bar
                         dataKey="actual" name="Actual spent"
                         radius={[0, 4, 4, 0]} cursor="pointer" animationDuration={500}
-                        onClick={(_, i) => setActiveBudgetIndex(p => p === i ? null : i)}
+                        onClick={(_, i) => selectCategory(budgetVsActual[i].category)}
                       >
                         {budgetVsActual.map((row, i) => {
                           const over   = row.actual > row.budget && row.budget > 0
@@ -847,7 +869,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                         labelLine={false}
                         label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
                         animationDuration={500}
-                        onClick={(_, i) => setActiveCategoryIndex(p => p === i ? null : i)}
+                        onClick={(_, i) => selectCategory(expenseByCategory[i].name)}
                       >
                         {expenseByCategory.map((_, i) => (
                           <Cell key={i}
@@ -900,7 +922,7 @@ export function ExpensesContent({ initialExpenses, accounts, userId, budgets = [
                     return (
                       <button
                         key={cat.name}
-                        onClick={() => setActiveCategoryIndex(p => p === i ? null : i)}
+                        onClick={() => selectCategory(cat.name)}
                         className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all text-left ${
                           isActive ? 'bg-muted/60 ring-1 ring-border' : 'hover:bg-muted/40'
                         } ${
