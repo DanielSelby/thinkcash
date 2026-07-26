@@ -97,6 +97,16 @@ const ALL_CURRENCIES = [
 
 const CUSTOM_KEY = 'ts_custom_currencies'
 
+// Preset swatches offered in the account color picker — kept visually
+// distinct from each other and from the overdraft warning colors
+// (#d97706 amber, #dc2626 red) so a custom color never gets confused
+// with an overdraft state at a glance.
+const CARD_COLOR_PRESETS = [
+  '#2563eb', '#16a34a', '#7c3aed', '#0891b2',
+  '#db2777', '#4f46e5', '#0d9488', '#ea580c',
+  '#65a30d', '#9333ea', '#0369a1', '#be123c',
+]
+
 // Keyword → domain map for auto-detecting a logo when the user names a
 // well-known institution. Uses Clearbit's free logo API (no key required):
 // https://logo.clearbit.com/{domain} returns that company's logo as a PNG.
@@ -153,6 +163,7 @@ const accountSchema = z.object({
   exclude_from_net: z.boolean().optional(),
   custody_for:      z.string().optional(),
   logo_url:         z.string().optional(),
+  card_color:       z.string().optional(),
 })
 type AccountFormData = z.infer<typeof accountSchema>
 
@@ -390,7 +401,7 @@ export function UserAccountsContent({
   // ── CRUD ──────────────────────────────────────────────────────────
   const openCreate = () => {
     setEditing(null)
-    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false, is_custody: false, exclude_from_net: false, custody_for: '', logo_url: '' })
+    accountForm.reset({ opening_balance: 0, currency: appCurrency || 'GHS', allow_negative: false, is_custody: false, exclude_from_net: false, custody_for: '', logo_url: '', card_color: '' })
     setOpen(true)
   }
 
@@ -404,6 +415,7 @@ export function UserAccountsContent({
       exclude_from_net: (acc as any).exclude_from_net  ?? false,
       custody_for:      (acc as any).custody_for       ?? '',
       logo_url:         (acc as any).logo_url          ?? '',
+      card_color:       (acc as any).card_color        ?? '',
     })
     setOpen(true)
   }
@@ -418,6 +430,7 @@ export function UserAccountsContent({
       exclude_from_net: data.is_custody        ? true : (data.exclude_from_net ?? false),
       custody_for:      data.custody_for       || null,
       logo_url:         data.logo_url          || null,
+      card_color:       data.card_color        || null,
     }
     if (editing) {
       const { data: updated, error } = await supabase.from('user_accounts').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editing.id).select().single()
@@ -855,7 +868,7 @@ export function UserAccountsContent({
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {filteredAccounts.map(acc => {
                 const Icon      = getIcon(acc.type)
-                const color     = acc.overdraftStatus === 'overdraft' ? '#d97706' : acc.overdraftStatus === 'blocked' ? '#dc2626' : ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+                const color     = acc.overdraftStatus === 'overdraft' ? '#d97706' : acc.overdraftStatus === 'blocked' ? '#dc2626' : (acc as any).card_color || ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
                 const typeLabel = ACCOUNT_TYPES.find(t => t.value === acc.type)?.label || acc.type
                 const isSelected = selectedAcc === acc.id
                 const isStarred  = starredAccs.has(acc.id)
@@ -1032,7 +1045,7 @@ export function UserAccountsContent({
         {/* ── Detail Panel ── */}
         {selectedAccount && (() => {
           const acc   = selectedAccount
-          const color = acc.overdraftStatus === 'overdraft' ? '#d97706' : acc.overdraftStatus === 'blocked' ? '#dc2626' : ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
+          const color = acc.overdraftStatus === 'overdraft' ? '#d97706' : acc.overdraftStatus === 'blocked' ? '#dc2626' : (acc as any).card_color || ACCOUNT_TYPE_COLORS[acc.type] || '#94a3b8'
           const Icon  = getIcon(acc.type)
           const recentTxns = [
             ...transfers.filter(t => t.from_account_id === acc.id || t.to_account_id === acc.id).map(t => ({
@@ -1410,6 +1423,48 @@ export function UserAccountsContent({
               <Label>Institution / Provider <span className="text-muted-foreground">(optional)</span></Label>
               <Input placeholder="e.g. GCB Bank, MTN, Ecobank" {...accountForm.register('institution')} />
               <p className="text-xs text-muted-foreground">A logo will be auto-detected for well-known banks/telcos if you leave the field below blank.</p>
+            </div>
+
+            {/* Card Color */}
+            <div className="space-y-1.5">
+              <Label>Card Color <span className="text-muted-foreground">(optional)</span></Label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {CARD_COLOR_PRESETS.map(c => {
+                  const selected = accountForm.watch('card_color') === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => accountForm.setValue('card_color', selected ? '' : c)}
+                      className="w-7 h-7 rounded-full flex-shrink-0 transition-transform"
+                      style={{
+                        background: c,
+                        boxShadow: selected ? `0 0 0 2px #fff, 0 0 0 4px ${c}` : 'none',
+                        transform: selected ? 'scale(1.05)' : 'scale(1)',
+                      }}
+                      aria-label={`Use color ${c}`}
+                    />
+                  )
+                })}
+                {/* Custom color swatch input */}
+                <input
+                  type="color"
+                  value={accountForm.watch('card_color') || '#94a3b8'}
+                  onChange={e => accountForm.setValue('card_color', e.target.value)}
+                  className="w-7 h-7 rounded-full flex-shrink-0 cursor-pointer border border-border p-0 bg-transparent"
+                  title="Pick a custom color"
+                />
+                {accountForm.watch('card_color') && (
+                  <button
+                    type="button"
+                    onClick={() => accountForm.setValue('card_color', '')}
+                    className="text-xs font-semibold text-muted-foreground hover:text-destructive ml-1"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Default color is based on account type if none is chosen.</p>
             </div>
 
             {/* Account Logo */}
