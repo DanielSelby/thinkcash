@@ -1339,7 +1339,7 @@ export function UserAccountsContent({
 
       {/* ══ Add / Edit Account Dialog ══════════════════════════════ */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Account' : 'Add Account'}</DialogTitle>
           </DialogHeader>
