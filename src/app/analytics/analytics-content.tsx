@@ -1,28 +1,25 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from 'date-fns'
+import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import {
-  BrainCircuit, TrendingUp, TrendingDown, AlertCircle, Lightbulb, BarChart3,
-  Heart, Wallet, Target, PieChart as PieChartIcon, ShieldCheck, Trophy,
+  BrainCircuit, TrendingUp, TrendingDown, AlertCircle, Lightbulb,
+  Heart, PieChart as PieChartIcon, ShieldCheck, Trophy,
   Info, Calendar, ChevronDown, AlertTriangle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/misc'
 import { TrendChart, SpendingPieChart } from '@/components/charts'
-import { formatCurrency, CATEGORY_COLORS, calculateHealthScore, getHealthScoreLabel, getHealthScoreColor } from '@/lib/utils'
+import { formatCurrency, CATEGORY_COLORS } from '@/lib/utils'
+import { calculateFinancialHealth, healthGrade } from '@/lib/financialHealth'
 import type { Income, Expense } from '@/types'
 import { KPICard } from '@/components/ui/kpi-card'
 
 interface Props {
   incomes: Income[]
   expenses: Expense[]
-  // Optional — only needed to power the Debt Ratio and Budget Adherence
-  // metrics inside the Financial Health breakdown below. If the page
-  // wrapper doesn't pass these yet, those two metrics gracefully fall back
-  // to "Not set up" instead of the section breaking.
-  accounts?: any[]
   budgets?: any[]
+  goals?: any[]
 }
 
 // ── Financial Health gauge (semi-circle with colored zones + needle) ──────
@@ -99,40 +96,24 @@ function HealthGauge({ score, needleColor }: { score: number; needleColor: strin
   )
 }
 
-function healthStatus(score: number) {
-  if (score >= 85) return { label: 'Excellent',       color: '#22c55e', bg: 'bg-green-50',  ring: 'border-green-200'  }
-  if (score >= 70) return { label: 'Good',             color: '#3b82f6', bg: 'bg-blue-50',   ring: 'border-blue-200'   }
-  if (score >= 50) return { label: 'Fair',             color: '#f59e0b', bg: 'bg-amber-50',  ring: 'border-amber-200'  }
-  return               { label: 'Needs Attention', color: '#ef4444', bg: 'bg-red-50',    ring: 'border-red-200'    }
+// Distinct icon background tint per component key (icon itself comes from
+// the shared calculateFinancialHealth() component definition).
+const ICON_BG: Record<string, string> = {
+  savings: '#ede9fe',
+  budget: '#dcfce7',
+  expense: '#ffedd5',
+  goals: '#dbeafe',
+  emergency: '#e0f2fe',
+}
+const ICON_COLOR: Record<string, string> = {
+  savings: '#7c3aed',
+  budget: '#16a34a',
+  expense: '#f97316',
+  goals: '#2563eb',
+  emergency: '#0284c7',
 }
 
-// One-line, score-tier-driven encouragement/advice per metric — dynamic,
-// not hardcoded to any single example, so it tracks the person's real numbers.
-function metricMessage(key: string, score: number | null) {
-  if (score === null) return "Set this up to include it in your score."
-  const tiers = {
-    savings:   ['Consider increasing your savings rate.', 'Try to save a bit more each month.', 'Good savings habits.', 'Great job saving consistently!'],
-    budget:    ['Spending is running high — review your budgets.', 'A few categories are over budget.', "You're mostly staying within budget.", "You're staying within budget."],
-    debt:      ['Debt ratio is high — prioritize paying it down.', 'Consider reducing your debt.', 'Debt is manageable.', 'Low debt — nicely managed.'],
-    emergency: ['Build up your emergency fund — aim for 6 months.', 'Your emergency fund could use some padding.', 'Solid emergency fund.', 'Excellent emergency fund!'],
-    growth:    ['Net worth is declining — review income vs expenses.', 'Net worth is roughly flat.', 'Net worth is trending up.', 'Your net worth is growing.'],
-  } as Record<string, string[]>
-  const bucket = score >= 85 ? 3 : score >= 70 ? 2 : score >= 50 ? 1 : 0
-  return tiers[key]?.[bucket] ?? ''
-}
-
-function focusText(key: string, label: string) {
-  const texts: Record<string, string> = {
-    savings:   'Increase your savings rate toward the 20-30% benchmark',
-    budget:    'Review categories that are running over budget',
-    debt:      'Reduce debt ratio below 30% to improve your score',
-    emergency: 'Grow your emergency fund toward 6 months of expenses',
-    growth:    'Focus on growing net cash flow month over month',
-  }
-  return texts[key] ?? `Improve your ${label.toLowerCase()}`
-}
-
-export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [] }: Props) {
+export function AnalyticsContent({ incomes, expenses, budgets = [], goals = [] }: Props) {
   const now = new Date()
 
   // Monthly breakdown for last 6 months
@@ -165,14 +146,42 @@ export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [
   const totalIncome = currentMonth.income
   const totalExpenses = currentMonth.expenses
   const savings = currentMonth.savings
-  const savingsRate = totalIncome > 0 ? (savings / totalIncome) * 100 : 0
-  const expenseRatio = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0
-  const healthScore = calculateHealthScore(totalIncome, totalExpenses, savings, 75)
+  const savingsRateSimple = totalIncome > 0 ? (savings / totalIncome) * 100 : 0
+  const expenseRatioSimple = totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0
   const expenseChange = prevMonth.expenses > 0 ? ((totalExpenses - prevMonth.expenses) / prevMonth.expenses) * 100 : 0
   const incomeChange = prevMonth.income > 0 ? ((totalIncome - prevMonth.income) / prevMonth.income) * 100 : 0
-
-  // Top spending category
   const topCategory = categorySpending[0]
+
+  // ── Financial Health — same calculation as the Health Score page ──────
+  const health = useMemo(() => {
+    const mStart = format(startOfMonth(now), 'yyyy-MM-dd')
+    const mEnd = format(endOfMonth(now), 'yyyy-MM-dd')
+    return calculateFinancialHealth({ incomes, expenses, budgets, goals, monthStart: mStart, monthEnd: mEnd })
+  }, [incomes, expenses, budgets, goals])
+
+  const statusMeta = healthGrade(health.percentage)
+  const ranked = [...health.components].sort((a, b) => (a.score / a.maxScore) - (b.score / b.maxScore))
+  const weakest = ranked.filter(c => c.status !== 'good').slice(0, 2)
+  const strongest = ranked[ranked.length - 1]
+  const focusAreas = [
+    ...weakest.map(c => ({ color: ICON_COLOR[c.key] ?? '#64748b', text: c.tip })),
+    strongest ? { color: ICON_COLOR[strongest.key] ?? '#64748b', text: `Maintain your ${strongest.name.toLowerCase()}` } : null,
+  ].filter((x): x is { color: string; text: string } => x !== null)
+
+  const overallBlurb = health.percentage >= 80
+    ? { title: "You're Doing Great!", message: "Your financial habits are strong and you're building a secure future. Keep it up!" }
+    : health.percentage >= 65
+    ? { title: "You're Doing Well", message: "Your finances are in good shape overall, with a little room to tighten things up." }
+    : health.percentage >= 50
+    ? { title: "Room to Improve", message: "You're on the right track — a few changes could meaningfully strengthen your finances." }
+    : { title: "Needs Attention", message: "Your finances could use some focus this month — start with the areas below." }
+
+  const metrics = [
+    { label: 'Savings Rate', value: `${savingsRateSimple.toFixed(1)}%`, status: savingsRateSimple >= 20 ? 'success' : savingsRateSimple >= 10 ? 'warning' : 'destructive', description: 'Of income saved' },
+    { label: 'Expense Ratio', value: `${expenseRatioSimple.toFixed(1)}%`, status: expenseRatioSimple <= 70 ? 'success' : expenseRatioSimple <= 85 ? 'warning' : 'destructive', description: 'Of income spent' },
+    { label: 'Health Score', value: `${health.percentage}/100`, status: health.percentage >= 80 ? 'success' : health.percentage >= 60 ? 'warning' : 'destructive', description: statusMeta.label },
+    { label: 'Income Growth', value: `${incomeChange > 0 ? '+' : ''}${incomeChange.toFixed(1)}%`, status: incomeChange >= 0 ? 'success' : 'destructive', description: 'vs last month' },
+  ]
 
   // AI-style insights
   const insights = useMemo(() => {
@@ -180,105 +189,15 @@ export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [
     if (expenseChange > 10) list.push({ type: 'warning', message: `Your spending increased by ${expenseChange.toFixed(0)}% this month compared to last month.` })
     if (expenseChange < -5) list.push({ type: 'positive', message: `Great job! Your spending decreased by ${Math.abs(expenseChange).toFixed(0)}% compared to last month.` })
     if (topCategory) list.push({ type: 'info', message: `${topCategory.category.charAt(0).toUpperCase() + topCategory.category.slice(1)} accounts for ${topCategory.percentage.toFixed(0)}% of your monthly spending at ${formatCurrency(topCategory.amount)}.` })
-    if (savingsRate < 10) list.push({ type: 'warning', message: `Your savings rate is ${savingsRate.toFixed(0)}%. Financial experts recommend saving at least 20% of your income.` })
-    if (savingsRate >= 20) list.push({ type: 'positive', message: `Excellent! You're saving ${savingsRate.toFixed(0)}% of your income — well above the recommended 20%.` })
+    if (savingsRateSimple < 10) list.push({ type: 'warning', message: `Your savings rate is ${savingsRateSimple.toFixed(0)}%. Financial experts recommend saving at least 20% of your income.` })
+    if (savingsRateSimple >= 20) list.push({ type: 'positive', message: `Excellent! You're saving ${savingsRateSimple.toFixed(0)}% of your income — well above the recommended 20%.` })
     if (incomeChange > 5) list.push({ type: 'positive', message: `Your income grew by ${incomeChange.toFixed(0)}% this month. Consider putting the extra toward savings goals.` })
     const entertainmentSpend = expenses.filter(e => e.category === 'entertainment' && e.date >= format(startOfMonth(now), 'yyyy-MM-dd')).reduce((s, e) => s + e.amount, 0)
     if (entertainmentSpend > totalIncome * 0.1) {
       list.push({ type: 'info', message: `Entertainment spending (${formatCurrency(entertainmentSpend)}) is ${((entertainmentSpend / totalIncome) * 100).toFixed(0)}% of your income. Reducing it by half could save ${formatCurrency(entertainmentSpend / 2)} monthly.` })
     }
     return list
-  }, [expenseChange, incomeChange, savingsRate, topCategory, totalIncome, expenses])
-
-  const metrics = [
-    { label: 'Savings Rate', value: `${savingsRate.toFixed(1)}%`, status: savingsRate >= 20 ? 'success' : savingsRate >= 10 ? 'warning' : 'destructive', description: 'Of income saved' },
-    { label: 'Expense Ratio', value: `${expenseRatio.toFixed(1)}%`, status: expenseRatio <= 70 ? 'success' : expenseRatio <= 85 ? 'warning' : 'destructive', description: 'Of income spent' },
-    { label: 'Health Score', value: `${healthScore}/100`, status: healthScore >= 80 ? 'success' : healthScore >= 60 ? 'warning' : 'destructive', description: getHealthScoreLabel(healthScore) },
-    { label: 'Income Growth', value: `${incomeChange > 0 ? '+' : ''}${incomeChange.toFixed(1)}%`, status: incomeChange >= 0 ? 'success' : 'destructive', description: 'vs last month' },
-  ]
-
-  // ── Financial Health breakdown (Savings Rate, Budget Adherence, Debt
-  // Ratio, Emergency Fund, Net Worth Growth) — same five-metric model used
-  // on the Dashboard's compact gauge, computed here in full with a
-  // per-metric breakdown. Debt Ratio and Emergency Fund need account
-  // balances; Budget Adherence needs budgets — both degrade gracefully to
-  // "Not set up" if those aren't passed in yet. ─────────────────────────
-  const { overallScore, healthMetrics, focusAreas, statusMeta } = useMemo(() => {
-    const savingsScore = Math.max(0, Math.min(100, Math.round((savingsRate / 30) * 100)))
-
-    const mStart = format(startOfMonth(now), 'yyyy-MM-dd')
-    const mEnd = format(endOfMonth(now), 'yyyy-MM-dd')
-    const activeBudgets = budgets
-      .map((b: any) => {
-        const limit = Number(b.monthly_limit ?? b.amount ?? 0)
-        const spent = expenses.filter(e => e.category === b.category && e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0)
-        return { limit, spent }
-      })
-      .filter(b => b.limit > 0)
-    const budgetScore = activeBudgets.length === 0 ? null : Math.round(
-      activeBudgets.reduce((sum, b) => {
-        const used = b.spent / b.limit
-        const s = used <= 1 ? 100 : Math.max(0, 100 - (used - 1) * 100)
-        return sum + s
-      }, 0) / activeBudgets.length
-    )
-
-    // Account balances — income & expenses only (no transfer data available
-    // here), same simplification used by the Dashboard's Cash Flow Waterfall.
-    const accountBalances = accounts.map((acc: any) => {
-      const inc = incomes.filter(i => i.account_id === acc.id).reduce((s, i) => s + Number(i.amount), 0)
-      const exp = expenses.filter(e => e.account_id === acc.id).reduce((s, e) => s + Number(e.amount), 0)
-      return Number(acc.opening_balance ?? 0) + inc - exp
-    })
-    const hasAccounts = accounts.length > 0
-    const totalAssets = accountBalances.reduce((s, b) => s + Math.max(0, b), 0)
-    const totalDebt   = accountBalances.reduce((s, b) => s + Math.max(0, -b), 0)
-    const debtRatio   = (totalAssets + totalDebt) > 0 ? totalDebt / (totalAssets + totalDebt) : 0
-    const debtScore   = hasAccounts ? Math.max(0, Math.min(100, Math.round(100 - debtRatio * 200))) : null
-
-    const avgMonthlyExpense = monthlyData.length > 0 ? monthlyData.reduce((s, m) => s + m.expenses, 0) / monthlyData.length : 0
-    const emergencyMonths = avgMonthlyExpense > 0 ? totalAssets / avgMonthlyExpense : (totalAssets > 0 ? 6 : 0)
-    const emergencyScore = hasAccounts ? Math.max(0, Math.min(100, Math.round((emergencyMonths / 6) * 100))) : null
-
-    const curM  = monthlyData[monthlyData.length - 1]
-    const prevM = monthlyData.length > 1 ? monthlyData[monthlyData.length - 2] : null
-    const curNet  = curM ? curM.income - curM.expenses : 0
-    const prevNet = prevM ? prevM.income - prevM.expenses : null
-    let growthScore: number
-    if (prevNet === null) growthScore = curNet > 0 ? 70 : curNet < 0 ? 30 : 50
-    else if (prevNet === 0) growthScore = curNet > 0 ? 100 : curNet < 0 ? 0 : 50
-    else growthScore = Math.max(0, Math.min(100, Math.round(50 + ((curNet - prevNet) / Math.abs(prevNet)) * 50)))
-
-    const healthMetrics = [
-      { key: 'savings',   label: 'Savings Rate',     icon: Wallet,        iconBg: '#ede9fe', iconColor: '#7c3aed', score: savingsScore   },
-      { key: 'budget',    label: 'Budget Adherence', icon: Target,        iconBg: '#dcfce7', iconColor: '#16a34a', score: budgetScore    },
-      { key: 'debt',      label: 'Debt Ratio',       icon: PieChartIcon,  iconBg: '#ffedd5', iconColor: '#f97316', score: debtScore      },
-      { key: 'emergency', label: 'Emergency Fund',   icon: ShieldCheck,   iconBg: '#dbeafe', iconColor: '#2563eb', score: emergencyScore },
-      { key: 'growth',    label: 'Net Worth Growth', icon: TrendingUp,    iconBg: '#ede9fe', iconColor: '#7c3aed', score: growthScore    },
-    ]
-
-    const scored = healthMetrics.map(m => m.score).filter((s): s is number => s !== null)
-    const overallScore = scored.length > 0 ? Math.round(scored.reduce((a, b) => a + b, 0) / scored.length) : 0
-    const statusMeta = healthStatus(overallScore)
-
-    const ranked = healthMetrics.filter(m => m.score !== null).sort((a, b) => (a.score as number) - (b.score as number))
-    const weakest = ranked.slice(0, 2)
-    const strongest = ranked[ranked.length - 1]
-    const focusAreas = [
-      ...weakest.map(m => ({ color: m.iconColor, text: focusText(m.key, m.label) })),
-      strongest ? { color: strongest.iconColor, text: `Maintain your ${strongest.label.toLowerCase()}` } : null,
-    ].filter((x): x is { color: string; text: string } => x !== null)
-
-    return { overallScore, healthMetrics, focusAreas, statusMeta }
-  }, [savingsRate, budgets, expenses, accounts, incomes, monthlyData])
-
-  const overallBlurb = overallScore >= 85
-    ? { title: "You're Doing Great!", message: "Your financial habits are strong and you're building a secure future. Keep it up!" }
-    : overallScore >= 70
-    ? { title: "You're Doing Well", message: "Your finances are in good shape overall, with a little room to tighten things up." }
-    : overallScore >= 50
-    ? { title: "Room to Improve", message: "You're on the right track — a few changes could meaningfully strengthen your finances." }
-    : { title: "Needs Attention", message: "Your finances could use some focus this month — start with the areas below." }
+  }, [expenseChange, incomeChange, savingsRateSimple, topCategory, totalIncome, expenses])
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -324,7 +243,7 @@ export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
             {/* Gauge */}
             <div className="flex flex-col items-center">
-              <HealthGauge score={overallScore} needleColor={statusMeta.color} />
+              <HealthGauge score={health.percentage} needleColor={statusMeta.color} />
               <span
                 className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-bold mt-1 ${statusMeta.bg}`}
                 style={{ color: statusMeta.color }}
@@ -334,27 +253,27 @@ export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [
               <p className="text-sm text-muted-foreground text-center mt-3 max-w-xs">{overallBlurb.message}</p>
             </div>
 
-            {/* Score breakdown */}
+            {/* Score breakdown — same 5 components as the Health Score page */}
             <div>
               <div className="flex items-center gap-1.5 mb-4">
                 <h3 className="font-bold text-base">Score Breakdown</h3>
                 <Info className="w-4 h-4 text-muted-foreground" />
               </div>
               <div className="space-y-4">
-                {healthMetrics.map(m => {
-                  const Icon = m.icon
-                  const display = m.score ?? 0
-                  const color = m.score === null ? '#cbd5e1' : m.iconColor
+                {health.components.map(c => {
+                  const Icon = c.icon
+                  const display = Math.round((c.score / c.maxScore) * 100)
+                  const color = ICON_COLOR[c.key] ?? '#64748b'
                   return (
-                    <div key={m.key} className="flex items-start gap-3">
-                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: m.iconBg }}>
-                        <Icon className="w-4 h-4" style={{ color: m.iconColor }} />
+                    <div key={c.key} className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: ICON_BG[c.key] ?? '#f1f5f9' }}>
+                        <Icon className="w-4 h-4" style={{ color }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="font-semibold text-sm">{m.label}</p>
+                          <p className="font-semibold text-sm">{c.name}</p>
                           <p className="text-sm font-bold tabular-nums flex-shrink-0" style={{ color }}>
-                            {m.score === null ? 'Not set up' : <>{m.score} <span className="text-muted-foreground font-normal">/100</span></>}
+                            {display} <span className="text-muted-foreground font-normal">/100</span>
                           </p>
                         </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden mt-1.5">
@@ -363,7 +282,7 @@ export function AnalyticsContent({ incomes, expenses, accounts = [], budgets = [
                             style={{ width: `${display}%`, background: color }}
                           />
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">{metricMessage(m.key, m.score)}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{c.message}</p>
                       </div>
                     </div>
                   )

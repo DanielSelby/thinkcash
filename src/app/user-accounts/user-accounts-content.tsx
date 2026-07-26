@@ -694,6 +694,7 @@ export function UserAccountsContent({
     // output already has it.
     const safeFmt = (n: number) =>
       formatCurrency(n, acc.currency)
+        .replace(/GH₵/g, 'GHS ')   // must run before the bare ₵ replacement below
         .replace(/₵/g, 'GHS ')
         .replace(/\$/g, 'USD ')
         .replace(/€/g, 'EUR ')
@@ -710,13 +711,20 @@ export function UserAccountsContent({
     doc.text(`Currency: ${currLabel}  |  Opening Balance: ${safeFmt(acc.opening_balance)}`, 14, 30)
     doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 36)
 
+    // Column right-edges, right-aligned — this keeps numbers lined up
+    // and prevents overlap regardless of how wide a formatted amount is
+    // (e.g. "GHS 12,450.00" vs "GHS 0.00").
+    const COL_DEBIT_X   = 145
+    const COL_CREDIT_X  = 172
+    const COL_BALANCE_X = 196
+
     let y = 48
     doc.setFontSize(9)
     doc.text('Date', 14, y)
     doc.text('Description', 42, y)
-    doc.text('Debit', 128, y)
-    doc.text('Credit', 152, y)
-    doc.text('Balance', 176, y)
+    doc.text('Debit',   COL_DEBIT_X,   y, { align: 'right' })
+    doc.text('Credit',  COL_CREDIT_X,  y, { align: 'right' })
+    doc.text('Balance', COL_BALANCE_X, y, { align: 'right' })
     y += 4
     doc.line(14, y, 196, y)
     y += 5
@@ -724,18 +732,18 @@ export function UserAccountsContent({
     rows.forEach(r => {
       if (y > 275) { doc.addPage(); y = 20 }
       doc.text(r.date || '—', 14, y)
-      doc.text(r.title.slice(0, 34), 42, y)
+      doc.text(r.title.slice(0, 30), 42, y)
       // Debit = money out (negative amount), Credit = money in (positive
       // or zero, e.g. the opening balance row). Only one of the two ever
       // has a value per row — never both — so each column stays blank
       // rather than showing 0.00 for the side that doesn't apply.
       const isDebit = r.amount < 0
       if (isDebit) {
-        doc.text(safeFmt(Math.abs(r.amount)), 128, y)
+        doc.text(safeFmt(Math.abs(r.amount)), COL_DEBIT_X, y, { align: 'right' })
       } else if (r.amount > 0) {
-        doc.text(safeFmt(r.amount), 152, y)
+        doc.text(safeFmt(r.amount), COL_CREDIT_X, y, { align: 'right' })
       }
-      doc.text(safeFmt(r.balance ?? 0), 176, y)
+      doc.text(safeFmt(r.balance ?? 0), COL_BALANCE_X, y, { align: 'right' })
       y += 7
     })
 
