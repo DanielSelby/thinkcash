@@ -610,7 +610,7 @@ export function UserAccountsContent({
 
   // Statement helpers
   const getStatementRows = (acc: typeof accountsWithBalance[0]) => {
-    const rows: { id: string; date: string; title: string; type: 'income' | 'expense' | 'transfer'; amount: number; balance?: number }[] = []
+    const rows: { id: string; date: string; title: string; type: 'income' | 'expense' | 'transfer'; amount: number; balance?: number; isOpeningRow?: boolean }[] = []
 
     localIncomes.filter(i => i.account_id === acc.id).forEach((i: any) => {
       rows.push({ id: i.id ?? Math.random().toString(), date: i.date ?? '', title: i.title || 'Income', type: 'income', amount: Number(i.amount) })
@@ -628,18 +628,53 @@ export function UserAccountsContent({
       })
     })
 
-    return rows
-      .filter(r => {
-        if (stmtTypeFilter !== 'all' && r.type !== stmtTypeFilter) return false
-        if (stmtDateFrom && r.date < stmtDateFrom) return false
-        if (stmtDateTo   && r.date > stmtDateTo)   return false
-        return true
-      })
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((r, i, arr) => {
-        const runningBal = acc.opening_balance + arr.slice(0, i + 1).reduce((s, x) => s + x.amount, 0)
-        return { ...r, balance: runningBal }
-      })
+    // Sort ALL rows first (before any filter)
+    const allSorted = rows.sort((a, b) => a.date.localeCompare(b.date))
+
+    // Calculate the opening balance for the filtered window:
+    // = account opening_balance + sum of all transactions BEFORE the date filter starts
+    const balanceBeforeWindow = acc.opening_balance + (
+      stmtDateFrom
+        ? allSorted.filter(r => r.date < stmtDateFrom).reduce((s, r) => s + r.amount, 0)
+        : 0
+    )
+
+    // Now filter to the visible window
+    const filtered = allSorted.filter(r => {
+      if (stmtDateFrom && r.date < stmtDateFrom) return false
+      if (stmtDateTo   && r.date > stmtDateTo)   return false
+      return true
+    })
+
+    // Apply type filter separately (doesn't affect running balance base)
+    const typeFiltered = stmtTypeFilter !== 'all'
+      ? filtered.filter(r => r.type === stmtTypeFilter)
+      : filtered
+
+    // Add opening balance row at the top of the statement
+    const openingRow = {
+      id: '__opening__',
+      date: stmtDateFrom || allSorted[0]?.date || '',
+      title: 'Opening Balance',
+      type: 'income' as const,
+      amount: 0,
+      balance: balanceBeforeWindow,
+      isOpeningRow: true,
+    }
+
+    // Calculate running balance from balanceBeforeWindow
+    let running = balanceBeforeWindow
+    const withBalances = filtered.map(r => {
+      running += r.amount
+      return { ...r, balance: running }
+    })
+
+    // For type-filtered view, still show correct balances
+    const finalRows = stmtTypeFilter !== 'all'
+      ? withBalances.filter(r => r.type === stmtTypeFilter)
+      : withBalances
+
+    return [openingRow, ...finalRows]
   }
 
   const exportStatementPDF = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
@@ -1833,7 +1868,17 @@ export function UserAccountsContent({
                       <span className="col-span-2 text-right">Balance</span>
                     </div>
                     <div className="divide-y divide-border max-h-72 overflow-y-auto">
-                      {rows.map(r => (
+                  {rows.map(r => r.isOpeningRow ? (
+                  <div key="__opening__" className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs bg-muted/40">
+                    <span className="col-span-2 text-muted-foreground tabular-nums">{r.date}</span>
+                   <span className="col-span-4 truncate font-semibold text-muted-foreground italic">Opening Balance</span>
+                  <span className="col-span-2" />
+                    <span className="col-span-2 text-right text-muted-foreground">—</span>
+                   <span className="col-span-2 text-right font-bold tabular-nums">
+                    {formatCurrency(r.balance ?? 0, actionAccount.currency)}
+                </span>
+                </div>
+                   ) : (
                         <div key={r.id} className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs hover:bg-muted/20 transition-colors">
                           <span className="col-span-2 text-muted-foreground tabular-nums">{r.date}</span>
                           <span className="col-span-4 truncate font-medium">{r.title}</span>
@@ -1850,9 +1895,9 @@ export function UserAccountsContent({
                           <span className="col-span-2 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(r.balance ?? 0, actionAccount.currency)}
                           </span>
-                        </div>
+                      </div>
                       ))}
-                    </div>
+                  </div>
                     <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/30 text-xs font-semibold border-t border-border">
                       <span className="col-span-8">{rows.length} transaction{rows.length !== 1 ? 's' : ''}</span>
                       <span className={`col-span-2 text-right ${netFlow >= 0 ? 'text-green-600' : 'text-red-500'}`}>
