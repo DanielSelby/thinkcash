@@ -32,12 +32,25 @@ const MONTH_NAMES = [
   'July','August','September','October','November','December',
 ]
 const YEARS = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i + 1)
+
+// Preset swatches for the budget card color picker — same palette used on
+// the Accounts page for visual consistency across the app. Overdraft-style
+// warning colors (#d97706 amber, #dc2626 red) are intentionally excluded
+// since Budget status badges already use those and a custom color must
+// never be confusable with "Approaching Limit" / "Over Budget".
+const CARD_COLOR_PRESETS = [
+  '#2563eb', '#16a34a', '#7c3aed', '#0891b2',
+  '#db2777', '#4f46e5', '#0d9488', '#ea580c',
+  '#65a30d', '#9333ea', '#0369a1', '#be123c',
+]
 const schema = z.object({
   budget_name:   z.string().min(1, 'Budget name is required'),
   category:      z.string().min(1, 'Category is required'),
   monthly_limit: z.coerce.number().positive('Limit must be positive'),
   budget_month:  z.coerce.number().min(1).max(12),
   budget_year:   z.coerce.number().min(2020).max(2100),
+  card_color:    z.string().optional(),
+  logo_url:      z.string().optional(),
 })
 type FormData = z.infer<typeof schema>
 interface Props {
@@ -136,6 +149,11 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
     })
   }
 
+  const budgetedCategories = useMemo(() =>
+    new Set<string>(budgetsWithSpent.map((b: any) => b.category as string)),
+  [budgetsWithSpent])
+
+
   const chartData = useMemo(() => {
     return allDays
       .filter(d => selectedDays.size === 0 || selectedDays.has(d.dayName))
@@ -143,10 +161,11 @@ function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget
         const dayExp = monthExpenses
           .filter(e => e.date === d.date)
           .filter(e => selectedCategory === 'all' || e.category === selectedCategory)
+          .filter(e => budgetedCategories.has(e.category))
           .reduce((s, e) => s + Number(e.amount), 0)
         return { label: d.label, dayName: d.dayName, spent: dayExp, target: dailyTarget }
       })
-  }, [allDays, monthExpenses, selectedDays, selectedCategory, dailyTarget])
+  }, [allDays, monthExpenses, selectedDays, selectedCategory, dailyTarget, budgetedCategories])
 
   const categories = useMemo(() =>
     ['all', ...Array.from(new Set(budgetsWithSpent.map(b => b.category)))],
@@ -369,6 +388,8 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
       (b.budget_year  ?? now.getFullYear())  === year
     ), [budgets, month, year])
 
+    
+
   const monthExpenses = useMemo(() => {
     const pad = (n: number) => String(n).padStart(2, '0')
     const prefix = `${year}-${pad(month)}`
@@ -412,6 +433,10 @@ function BudgetVsActualAreaChart({ expenses, budgets, fmt, theme, MONTH_NAMES, d
       return { label: d.label, dayName: d.dayName, date: d.date, actual: cumActual, budget: cumBudget }
     })
   }, [allDays, monthExpenses, selectedCategory, dailyTarget])
+
+  const budgetedCategories = useMemo(() =>
+    new Set<string>(monthBudgets.map((b: any) => b.category as string)),
+  [monthBudgets])
 
   const chartData = useMemo(() =>
     fullChartData.filter(d => {
@@ -723,7 +748,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const [view, setView] = useState<'overview' | 'breakdown'>('overview')
   const [showGuidanceDetails, setShowGuidanceDetails] = useState(true)
   const [guideChartView, setGuideChartView] = useState<'daily' | 'budget'>('daily')
-  const { register, handleSubmit, setValue, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       budget_month: now.getMonth() + 1,
@@ -767,7 +792,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     setSelCategory('')
     setSelMonth(mo)
     setSelYear(yr)
-    reset({ budget_month: viewMonth, budget_year: viewYear, budget_name: '', monthly_limit: 0 as any, category: '' })
+    reset({ budget_month: viewMonth, budget_year: viewYear, budget_name: '', monthly_limit: 0 as any, category: '', card_color: '', logo_url: '' })
     setOpen(true)
   }
   const openEdit = (b: Budget) => {
@@ -783,6 +808,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       monthly_limit: b.monthly_limit,
       budget_month:  b.budget_month ?? viewMonth,
       budget_year:   b.budget_year  ?? viewYear,
+      card_color:    (b as any).card_color ?? '',
+      logo_url:      (b as any).logo_url   ?? '',
     })
     setOpen(true)
   }
@@ -1349,10 +1376,19 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               }`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
-                      <span className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ background: CATEGORY_COLORS[b.category] || '#94a3b8' }} />
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
+                      style={{ background: (b as any).logo_url ? '#fff' : `${(b as any).card_color || CATEGORY_COLORS[b.category] || '#94a3b8'}20`, border: (b as any).logo_url ? '1px solid #e5e7eb' : 'none' }}>
+                      {(b as any).logo_url ? (
+                        <img
+                          src={(b as any).logo_url}
+                          alt={b.budget_name}
+                          className="w-full h-full object-contain p-1"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <span className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ background: (b as any).card_color || CATEGORY_COLORS[b.category] || '#94a3b8' }} />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-sm truncate">{b.budget_name}</p>
@@ -1416,7 +1452,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
       )}
       {/* ── Dialog — key forces full remount on open/edit ── */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent key={dialogKey}>
+        <DialogContent key={dialogKey} className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Budget' : 'Create Budget'}</DialogTitle>
           </DialogHeader>
@@ -1445,6 +1481,81 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <Label>Monthly Limit</Label>
               <Input type="number" step="0.01" placeholder="0.00" {...register('monthly_limit')} />
               {errors.monthly_limit && <p className="text-xs text-destructive">{errors.monthly_limit.message}</p>}
+            </div>
+
+            {/* Card Color */}
+            <div className="space-y-1.5">
+              <Label>Card Color <span className="text-muted-foreground">(optional)</span></Label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {CARD_COLOR_PRESETS.map(c => {
+                  const selected = watch('card_color') === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setValue('card_color', selected ? '' : c)}
+                      className="w-7 h-7 rounded-full flex-shrink-0 transition-transform"
+                      style={{
+                        background: c,
+                        boxShadow: selected ? `0 0 0 2px #fff, 0 0 0 4px ${c}` : 'none',
+                        transform: selected ? 'scale(1.05)' : 'scale(1)',
+                      }}
+                      aria-label={`Use color ${c}`}
+                    />
+                  )
+                })}
+                <input
+                  type="color"
+                  value={watch('card_color') || '#94a3b8'}
+                  onChange={e => setValue('card_color', e.target.value)}
+                  className="w-7 h-7 rounded-full flex-shrink-0 cursor-pointer border border-border p-0 bg-transparent"
+                  title="Pick a custom color"
+                />
+                {watch('card_color') && (
+                  <button
+                    type="button"
+                    onClick={() => setValue('card_color', '')}
+                    className="text-xs font-semibold text-muted-foreground hover:text-destructive ml-1"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Default color is based on category if none is chosen.</p>
+            </div>
+
+            {/* Budget Logo/Icon Image */}
+            <div className="space-y-1.5">
+              <Label>Custom Icon Image <span className="text-muted-foreground">(optional)</span></Label>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl border border-border flex items-center justify-center flex-shrink-0 overflow-hidden bg-white">
+                  {watch('logo_url') ? (
+                    <img
+                      src={watch('logo_url')}
+                      alt="Icon preview"
+                      className="w-full h-full object-contain p-1"
+                      onError={e => { (e.target as HTMLImageElement).style.opacity = '0.2' }}
+                    />
+                  ) : (
+                    <Wallet className="w-5 h-5 text-muted-foreground/40" />
+                  )}
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <Input
+                    placeholder="Paste an image URL to override the category icon"
+                    {...register('logo_url')}
+                  />
+                  {watch('logo_url') && (
+                    <button
+                      type="button"
+                      onClick={() => setValue('logo_url', '')}
+                      className="text-xs font-semibold text-muted-foreground hover:text-destructive"
+                    >
+                      Clear — use category icon instead
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -2052,9 +2163,16 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                         onClick={() => setSelectedBudgetId(p => p === b.id ? null : b.id)}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base"
-                              style={{ background: `${CATEGORY_COLORS[b.category] || '#94a3b8'}20` }}>
-                             {(() => {
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-base overflow-hidden"
+                              style={{ background: (b as any).logo_url ? '#fff' : `${(b as any).card_color || CATEGORY_COLORS[b.category] || '#94a3b8'}20`, border: (b as any).logo_url ? '1px solid #e5e7eb' : 'none' }}>
+                             {(b as any).logo_url ? (
+                               <img
+                                 src={(b as any).logo_url}
+                                 alt={b.budget_name}
+                                 className="w-full h-full object-contain p-1"
+                                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                               />
+                             ) : (() => {
                                 const iconMap: Record<string, React.ReactNode> = {
                                   'Food & Dining':    <UtensilsCrossed className="w-4 h-4" />,
                                   'Transport':        <Car className="w-4 h-4" />,
