@@ -688,8 +688,10 @@ export function UserAccountsContent({
     }
     const currLabel = CURRENCY_TEXT[acc.currency] ?? acc.currency
 
-    // Replace any unicode currency symbols in a formatted amount string with
-    // the plain ISO code so the PDF font can render it correctly.
+    // formatCurrency already includes the currency symbol/code (e.g. "GHS
+    // 2,800.00"), so prefixing currLabel again produced "GHGHS". Strip the
+    // unicode symbol only — don't re-add the ISO code, formatCurrency's own
+    // output already has it.
     const safeFmt = (n: number) =>
       formatCurrency(n, acc.currency)
         .replace(/₵/g, 'GHS ')
@@ -699,6 +701,8 @@ export function UserAccountsContent({
         .replace(/₦/g, 'NGN ')
         .replace(/KSh/g, 'KES ')
         .replace(/R\s/g, 'ZAR ')
+        .replace(/\s+/g, ' ')
+        .trim()
 
     doc.setFontSize(16)
     doc.text(`Account Statement - ${acc.name}`, 14, 20)
@@ -709,20 +713,29 @@ export function UserAccountsContent({
     let y = 48
     doc.setFontSize(9)
     doc.text('Date', 14, y)
-    doc.text('Description', 45, y)
-    doc.text('Amount', 130, y)
-    doc.text('Balance', 165, y)
+    doc.text('Description', 42, y)
+    doc.text('Debit', 128, y)
+    doc.text('Credit', 152, y)
+    doc.text('Balance', 176, y)
     y += 4
     doc.line(14, y, 196, y)
     y += 5
 
     rows.forEach(r => {
       if (y > 275) { doc.addPage(); y = 20 }
-      doc.text(r.date, 14, y)
-      doc.text(r.title.slice(0, 40), 45, y)
-      const amtStr = (r.amount >= 0 ? '+' : '') + safeFmt(Math.abs(r.amount))
-      doc.text(amtStr, 130, y)
-      doc.text(safeFmt(r.balance ?? 0), 165, y)
+      doc.text(r.date || '—', 14, y)
+      doc.text(r.title.slice(0, 34), 42, y)
+      // Debit = money out (negative amount), Credit = money in (positive
+      // or zero, e.g. the opening balance row). Only one of the two ever
+      // has a value per row — never both — so each column stays blank
+      // rather than showing 0.00 for the side that doesn't apply.
+      const isDebit = r.amount < 0
+      if (isDebit) {
+        doc.text(safeFmt(Math.abs(r.amount)), 128, y)
+      } else if (r.amount > 0) {
+        doc.text(safeFmt(r.amount), 152, y)
+      }
+      doc.text(safeFmt(r.balance ?? 0), 176, y)
       y += 7
     })
 
@@ -731,8 +744,10 @@ export function UserAccountsContent({
 
   const exportStatementExcel = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
     const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
-      Date: r.date, Description: r.title, Type: r.type,
-      Amount: r.amount, Balance: r.balance ?? 0, Currency: acc.currency,
+      Date: r.date || '', Description: r.title, Type: r.type,
+      Debit: r.amount < 0 ? Math.abs(r.amount) : '',
+      Credit: r.amount > 0 ? r.amount : '',
+      Balance: r.balance ?? 0, Currency: acc.currency,
     })))
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Statement')
@@ -740,8 +755,12 @@ export function UserAccountsContent({
   }
 
   const exportStatementCSV = (acc: typeof accountsWithBalance[0], rows: ReturnType<typeof getStatementRows>) => {
-    const header = 'Date,Description,Type,Amount,Balance,Currency\n'
-    const body   = rows.map(r => `${r.date},"${r.title}",${r.type},${r.amount},${r.balance ?? 0},${acc.currency}`).join('\n')
+    const header = 'Date,Description,Type,Debit,Credit,Balance,Currency\n'
+    const body   = rows.map(r => {
+      const debit  = r.amount < 0 ? Math.abs(r.amount) : ''
+      const credit = r.amount > 0 ? r.amount : ''
+      return `${r.date},"${r.title}",${r.type},${debit},${credit},${r.balance ?? 0},${acc.currency}`
+    }).join('\n')
     const blob   = new Blob([header + body], { type: 'text/csv' })
     const url    = URL.createObjectURL(blob)
     const a      = document.createElement('a'); a.href = url; a.download = `statement-${acc.name.replace(/\s+/g, '-')}.csv`; a.click()
@@ -1862,35 +1881,40 @@ export function UserAccountsContent({
                   <div className="border border-border rounded-xl overflow-hidden">
                     <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
                       <span className="col-span-2">Date</span>
-                      <span className="col-span-4">Description</span>
-                      <span className="col-span-2">Type</span>
-                      <span className="col-span-2 text-right">Amount</span>
+                      <span className="col-span-3">Description</span>
+                      <span className="col-span-1">Type</span>
+                      <span className="col-span-2 text-right">Debit</span>
+                      <span className="col-span-2 text-right">Credit</span>
                       <span className="col-span-2 text-right">Balance</span>
                     </div>
                     <div className="divide-y divide-border max-h-72 overflow-y-auto">
                   {rows.map(r => r.isOpeningRow ? (
                   <div key="__opening__" className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs bg-muted/40">
-                    <span className="col-span-2 text-muted-foreground tabular-nums">{r.date}</span>
-                   <span className="col-span-4 truncate font-semibold text-muted-foreground italic">Opening Balance</span>
-                  <span className="col-span-2" />
+                    <span className="col-span-2 text-muted-foreground tabular-nums">{r.date || '—'}</span>
+                    <span className="col-span-3 truncate font-semibold text-muted-foreground italic">Opening Balance</span>
+                    <span className="col-span-1" />
                     <span className="col-span-2 text-right text-muted-foreground">—</span>
-                   <span className="col-span-2 text-right font-bold tabular-nums">
-                    {formatCurrency(r.balance ?? 0, actionAccount.currency)}
-                </span>
-                </div>
+                    <span className="col-span-2 text-right text-muted-foreground">—</span>
+                    <span className="col-span-2 text-right font-bold tabular-nums">
+                      {formatCurrency(r.balance ?? 0, actionAccount.currency)}
+                    </span>
+                  </div>
                    ) : (
                         <div key={r.id} className="grid grid-cols-12 gap-2 px-3 py-2.5 text-xs hover:bg-muted/20 transition-colors">
                           <span className="col-span-2 text-muted-foreground tabular-nums">{r.date}</span>
-                          <span className="col-span-4 truncate font-medium">{r.title}</span>
-                          <span className="col-span-2">
+                          <span className="col-span-3 truncate font-medium">{r.title}</span>
+                          <span className="col-span-1">
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold capitalize ${
                               r.type === 'income'   ? 'bg-green-100 text-green-700' :
                               r.type === 'expense'  ? 'bg-red-100 text-red-700' :
                               'bg-blue-100 text-blue-700'
                             }`}>{r.type}</span>
                           </span>
-                          <span className={`col-span-2 text-right font-semibold tabular-nums ${r.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {r.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(r.amount), actionAccount.currency)}
+                          <span className="col-span-2 text-right font-semibold tabular-nums text-red-500">
+                            {r.amount < 0 ? formatCurrency(Math.abs(r.amount), actionAccount.currency) : ''}
+                          </span>
+                          <span className="col-span-2 text-right font-semibold tabular-nums text-green-600">
+                            {r.amount > 0 ? formatCurrency(r.amount, actionAccount.currency) : ''}
                           </span>
                           <span className="col-span-2 text-right tabular-nums text-muted-foreground">
                             {formatCurrency(r.balance ?? 0, actionAccount.currency)}
