@@ -1077,15 +1077,13 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
 
   // ── Spending Guidance Breakdown (per category) ────────────────────────
   const breakdownRows = useMemo(() => {
-    const now = new Date()
-    const dayOfMonth = now.getDate()
     return budgetsWithSpent.map(b => {
       const daily   = daysInPeriod > 0 ? b.monthly_limit / daysInPeriod : 0
       const weekly  = daily * 7
-      // Projected spend = (spent so far / days elapsed) × total days in month
-      const projected = dayOfMonth > 0
-        ? Math.round(((b.spent || 0) / dayOfMonth) * daysInPeriod)
-        : 0
+      // Projected spend = (spent so far / days elapsed in the VIEWED month) × total days in month
+      const projected = daysElapsed > 0
+        ? Math.round(((b.spent || 0) / daysElapsed) * daysInPeriod)
+        : (b.spent || 0)
       const projectedStatus = projected > b.monthly_limit
         ? 'over'
         : projected > b.monthly_limit * 0.8
@@ -1093,7 +1091,7 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
         : 'ok'
       return { ...b, dailyTarget: daily, weeklyTarget: weekly, projectedSpend: projected, projectedStatus }
     })
-  }, [budgetsWithSpent, daysInPeriod])
+  }, [budgetsWithSpent, daysInPeriod, daysElapsed])
 
   const filteredBreakdownRows = useMemo(() => {
     return breakdownRows
