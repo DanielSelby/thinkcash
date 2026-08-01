@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -123,6 +123,40 @@ function smoothLinePath(points: { x: number; y: number }[]): string {
     d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${points[i + 1].x} ${points[i + 1].y}`
   }
   return d
+}
+
+// ── Month-over-Month comparison row ──────────────────────────────────────
+// Shows "previous → current" plus a %-change badge. `variant="spend"` colors
+// the badge red/green (spending more is bad, spending less is good).
+// `variant="neutral"` (default, used for budget/target amounts) stays a
+// plain slate color since a bigger or smaller budget isn't inherently
+// good or bad.
+function MoMRow({ label, current, previous, fmt, variant = 'neutral' }: {
+  label: string
+  current: number
+  previous: number
+  fmt: (n: number) => string
+  variant?: 'neutral' | 'spend'
+}) {
+  const change = previous === 0 ? (current > 0 ? 100 : 0) : ((current - previous) / previous) * 100
+  const isFlat = Math.abs(change) < 0.5
+  const isUp = change > 0
+  const color = variant === 'neutral'
+    ? '#64748b'
+    : isFlat ? '#64748b' : isUp ? '#dc2626' : '#16a34a'
+  const Icon = isFlat ? null : isUp ? TrendingUp : TrendingDown
+  return (
+    <div className="flex items-center justify-between text-[11px] py-0.5 gap-2">
+      <span className="text-muted-foreground flex-shrink-0">{label}</span>
+      <span className="flex items-center gap-1.5 min-w-0">
+        <span className="text-muted-foreground tabular-nums truncate">{fmt(previous)} → {fmt(current)}</span>
+        <span className="font-semibold flex items-center gap-0.5 tabular-nums flex-shrink-0" style={{ color }}>
+          {Icon && <Icon className="w-3 h-3" />}
+          {isFlat ? '0%' : `${isUp ? '+' : ''}${change.toFixed(0)}%`}
+        </span>
+      </span>
+    </div>
+  )
 }
 
 function DailySpendChart({ allDays, monthExpenses, budgetsWithSpent, dailyTarget, fmt, theme, viewMonth, viewYear, MONTH_NAMES }: {
@@ -777,6 +811,49 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
     exceeded:      budgetsWithSpent.filter(b => (b.percentage || 0) >= 100).length,
     safe:          budgetsWithSpent.filter(b => (b.percentage || 0) < 80).length,
   }), [monthBudgets, budgetsWithSpent])
+
+  // ── Month-over-Month comparison base data ─────────────────────────────
+  // The calendar month immediately before the one currently being viewed.
+  // Used to compare both the *budget* (target) and the *spend* for the
+  // Daily / Weekly / Monthly Spending Guidance cards against last month.
+  const cmpMonth = viewMonth === 1 ? 12 : viewMonth - 1
+  const cmpYear  = viewMonth === 1 ? viewYear - 1 : viewYear
+
+  const cmpMonthBudgets = useMemo(() =>
+    budgets.filter(b =>
+      (b.budget_month ?? now.getMonth() + 1) === cmpMonth &&
+      (b.budget_year  ?? now.getFullYear())  === cmpYear
+    ), [budgets, cmpMonth, cmpYear])
+
+  const cmpMonthExpenses = useMemo(() => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const prefix = `${cmpYear}-${pad(cmpMonth)}`
+    return expenses.filter(e => e.date?.startsWith(prefix))
+  }, [expenses, cmpMonth, cmpYear])
+
+  const cmpBudgetedCategories = useMemo(() =>
+    new Set(cmpMonthBudgets.map(b => b.category)), [cmpMonthBudgets])
+
+  const cmpTotalBudgeted = useMemo(() =>
+    cmpMonthBudgets.reduce((s, b) => s + b.monthly_limit, 0), [cmpMonthBudgets])
+
+  const cmpTotalSpent = useMemo(() =>
+    cmpMonthExpenses.filter(e => cmpBudgetedCategories.has(e.category as any)).reduce((s, e) => s + e.amount, 0),
+    [cmpMonthExpenses, cmpBudgetedCategories])
+
+  const cmpDaysInPeriod  = new Date(cmpYear, cmpMonth, 0).getDate()
+  const cmpDailyTarget   = cmpDaysInPeriod > 0 ? cmpTotalBudgeted / cmpDaysInPeriod : 0
+  const cmpWeeklyTarget  = cmpDailyTarget * 7
+  const cmpMonthlyTarget = cmpTotalBudgeted
+  // Average daily/weekly spend rate for the (assumed complete) previous
+  // month — used to compare against this month's rate-so-far, since
+  // comparing a single day's spend to a whole month's total wouldn't be
+  // a fair "apples to apples" comparison.
+  const cmpAvgDailySpend  = cmpDaysInPeriod > 0 ? cmpTotalSpent / cmpDaysInPeriod : 0
+  const cmpAvgWeeklySpend = cmpAvgDailySpend * 7
+
+  const cmpMonthLabel = `${MONTH_NAMES[cmpMonth - 1].slice(0, 3)} ${cmpYear}`
+
   const prevMonth = () => {
     if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1) }
     else setViewMonth(m => m - 1)
@@ -984,6 +1061,11 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
   const pctDailyUsed   = dailyTarget   > 0 ? (spentToday       / dailyTarget)   * 100 : 0
   const pctWeeklyUsed  = weeklyTarget  > 0 ? (spentThisWeek     / weeklyTarget)  * 100 : 0
   const pctMonthlyUsed = monthlyTarget > 0 ? (summary.totalSpent / monthlyTarget) * 100 : 0
+
+  // Average daily/weekly spend rate so far this month — the fair
+  // comparison point against cmpAvgDailySpend / cmpAvgWeeklySpend above.
+  const avgDailySpendSoFar  = daysElapsed > 0 ? summary.totalSpent / daysElapsed : 0
+  const avgWeeklySpendSoFar = avgDailySpendSoFar * 7
 
   const aggregatePct = summary.totalBudgeted > 0 ? (summary.totalSpent / summary.totalBudgeted) * 100 : 0
   const aggregateStatusKey = getBudgetStatus(aggregatePct)
@@ -1267,6 +1349,12 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
                 {Math.round(Math.min(999, pctDailyUsed))}% of daily target used
               </div>
+              {/* MoM comparison */}
+              <div className="mt-3 pt-3 border-t border-blue-200/70 space-y-0.5">
+                <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide mb-1">vs {cmpMonthLabel}</p>
+                <MoMRow label="Daily target" current={dailyTarget} previous={cmpDailyTarget} fmt={fmt} variant="neutral" />
+                <MoMRow label="Avg daily spend" current={avgDailySpendSoFar} previous={cmpAvgDailySpend} fmt={fmt} variant="spend" />
+              </div>
             </div>
 
             {/* Weekly */}
@@ -1294,6 +1382,12 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
                 {Math.round(Math.min(999, pctWeeklyUsed))}% of weekly target used
               </div>
+              {/* MoM comparison */}
+              <div className="mt-3 pt-3 border-t border-purple-200/70 space-y-0.5">
+                <p className="text-[10px] font-semibold text-purple-700 uppercase tracking-wide mb-1">vs {cmpMonthLabel}</p>
+                <MoMRow label="Weekly target" current={weeklyTarget} previous={cmpWeeklyTarget} fmt={fmt} variant="neutral" />
+                <MoMRow label="Avg weekly spend" current={avgWeeklySpendSoFar} previous={cmpAvgWeeklySpend} fmt={fmt} variant="spend" />
+              </div>
             </div>
 
             {/* Monthly */}
@@ -1320,6 +1414,12 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
               )}
               <div className="text-center text-xs font-semibold rounded-lg py-1.5 mt-3" style={{ background: '#dcfce7', color: '#15803d' }}>
                 {Math.round(Math.min(999, pctMonthlyUsed))}% of monthly budget used
+              </div>
+              {/* MoM comparison */}
+              <div className="mt-3 pt-3 border-t border-green-200/70 space-y-0.5">
+                <p className="text-[10px] font-semibold text-green-700 uppercase tracking-wide mb-1">vs {cmpMonthLabel}</p>
+                <MoMRow label="Monthly budget" current={monthlyTarget} previous={cmpMonthlyTarget} fmt={fmt} variant="neutral" />
+                <MoMRow label="Spent so far" current={summary.totalSpent} previous={cmpTotalSpent} fmt={fmt} variant="spend" />
               </div>
             </div>
           </div>
@@ -2158,7 +2258,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                       ? { label: 'Approaching',       color: '#d97706', bg: '#fef3c7' }
                       : { label: 'On Track',           color: '#16a34a', bg: '#dcfce7' }
                     return (
-                      <tr key={b.id}
+                      <Fragment key={b.id}>
+                      <tr
                         className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
                         onClick={() => setSelectedBudgetId(p => p === b.id ? null : b.id)}>
                         <td className="px-5 py-3">
@@ -2300,9 +2401,6 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                           </span>
                         </td>
                       </tr>
-                      )
-                      
-
 
                       {/* Detail panel row */}
                       {selectedBudgetId === b.id && (() => {
@@ -2374,6 +2472,8 @@ export function BudgetsContent({ initialBudgets, expenses, userId }: Props) {
                           </tr>
                         )
                       })()}
+                      </Fragment>
+                    )
                   })}
                 </tbody>
               </table>
